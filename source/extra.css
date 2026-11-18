@@ -501,3 +501,9 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
   .util .util-prov{max-width:none}
   .util .util-acct{width:100%}
 }
+/* v35: back button */
+.tb-back{display:inline-flex;align-items:center;gap:5px;flex:0 0 auto;background:#fff;border:1px solid var(--line2);border-radius:4px;padding:6px 11px 6px 8px;font-size:13px;font-weight:600;color:var(--ink);cursor:pointer}
+.tb-back:hover{border-color:#9AA8BC;background:#F6F8FB}
+.tb-back:focus-visible{outline:2px solid var(--blue);outline-offset:2px}
+.tb-back + .crumbs{border-left:1px solid #E3E9F1;padding-left:14px}
+@media (max-width:900px){.tb-back{padding:6px 9px 6px 7px}}

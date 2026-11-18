@@ -146,7 +146,7 @@ function Sidebar({ logo, view, filter, onFilter, counts, project, onNew, onSetti
     </aside>
   );
 }
-function TopBar({ crumbs, connected, userEmail, onConnect, finder }) {
+function TopBar({ crumbs, connected, userEmail, onConnect, finder, onBack }) {
   const [open, setOpen] = useState(false);
   const initials = (userEmail || "")
     .split("@")[0]
@@ -157,6 +157,11 @@ function TopBar({ crumbs, connected, userEmail, onConnect, finder }) {
     .join("");
   return (
     <div className="topbar no-print">
+      {onBack && (
+        <button className="tb-back" onClick={onBack} title="Back to the previous screen (Alt+←)" aria-label="Back to the previous screen">
+          <Icon name="back" size={16} /> <span>Back</span>
+        </button>
+      )}
       <div className="crumbs">
         {crumbs.map((c, i) => (
           <React.Fragment key={i}>

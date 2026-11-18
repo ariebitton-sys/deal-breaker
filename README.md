@@ -27,7 +27,7 @@ The source is in `source/`:
 cd source
 npm install        # once
 python3 build.py   # writes ../index.html
-npm test           # calc, flow, draft, key and utilities tests
+npm test           # calc, flow, draft, key, utilities and navigation tests
 ```
 
 Then commit `index.html` together with the source change and push to `main`.

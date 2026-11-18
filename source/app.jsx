@@ -3066,6 +3066,117 @@ function App() {
     setView("portfolio");
     window.scrollTo({ top: 0 });
   };
+  // ---- Back / Forward: each screen (dashboard, deal + tab) is a browser history entry ----
+  // The URL doesn't change; the screen lives in history.state, with the scroll position.
+  const loadedId = loadedRef.current ? loadedRef.current.id : null;
+  const screen = view === "deal" ? { v: "deal", f: loadedId, m: mode } : { v: "portfolio", d: normDash(pfFilter) };
+  const screenKey = JSON.stringify(screen);
+  const navRef = useRef({ ready: false, target: null, timer: null });
+  const [navIndex, setNavIndex] = useState(0);
+  useEffect(() => {
+    const n = navRef.current;
+    const hs = window.history.state || {};
+    const st = { ...screen, key: screenKey, i: hs.i || 0, y: 0 };
+    try {
+      if (!n.ready) {
+        // first render (or a reload): keep the position in the history stack
+        n.ready = true;
+        try {
+          window.history.scrollRestoration = "manual";
+        } catch (e) {}
+        window.history.replaceState({ ...st, y: hs.key === screenKey ? hs.y || 0 : 0 }, "");
+        setNavIndex(st.i);
+        return;
+      }
+      if (n.target) {
+        // restoring an entry after Back / Forward: update it, don't add one
+        window.history.replaceState({ ...st, y: hs.y || 0 }, "");
+        if (n.target === screenKey) n.target = null;
+        return;
+      }
+      if (hs.key === screenKey) return;
+      // a new deal that was just saved for the first time is still the same screen
+      if (hs.v === "deal" && !hs.f && screen.v === "deal" && screen.f && hs.m === screen.m) {
+        window.history.replaceState({ ...st, y: hs.y || 0 }, "");
+        return;
+      }
+      window.history.pushState({ ...st, i: (hs.i || 0) + 1 }, "");
+      setNavIndex((hs.i || 0) + 1);
+    } catch (e) {}
+  }, [screenKey]);
+  // remember the scroll position of the current entry
+  useEffect(() => {
+    let t = null;
+    const h = () => {
+      clearTimeout(t);
+      t = setTimeout(() => {
+        try {
+          const hs = window.history.state;
+          if (hs && hs.key) window.history.replaceState({ ...hs, y: Math.round(window.scrollY) }, "");
+        } catch (e) {}
+      }, 400);
+    };
+    window.addEventListener("scroll", h, { passive: true });
+    return () => {
+      clearTimeout(t);
+      window.removeEventListener("scroll", h);
+    };
+  }, []);
+  const popRef = useRef(null);
+  popRef.current = (e) => {
+    const s = e.state;
+    if (!s || !s.v) return;
+    const n = navRef.current;
+    const restoreScroll = () => setTimeout(() => window.scrollTo(0, s.y || 0), 60);
+    const settle = () => {
+      clearTimeout(n.timer);
+      n.timer = setTimeout(() => (n.target = null), 3000);
+    };
+    setNavIndex(s.i || 0);
+    if (s.v === "portfolio") {
+      n.target = s.key;
+      setLoadOpen(false);
+      setView("portfolio");
+      setPfFilter(s.d);
+      restoreScroll();
+      return;
+    }
+    const cur = loadedRef.current ? loadedRef.current.id : null;
+    if (s.f === cur) {
+      n.target = s.key;
+      setView("deal");
+      setMode(s.m);
+      restoreScroll();
+      return;
+    }
+    // a different deal: open it from Drive (asking first if this one has unsaved changes)
+    const file = s.f ? driveFiles.find((x) => x.id === s.f) : null;
+    if (!file || !accessToken) {
+      n.target = JSON.stringify({ v: "portfolio", d: normDash(pfFilter) });
+      setView("portfolio");
+      return;
+    }
+    if (dirty) {
+      // stay on this deal until the user decides; put its entry back
+      try {
+        window.history.pushState({ ...screen, key: screenKey, i: (s.i || 0) + 1, y: Math.round(window.scrollY) }, "");
+        setNavIndex((s.i || 0) + 1);
+      } catch (err) {}
+      setPendingAction({ kind: "load", file });
+      return;
+    }
+    n.target = s.key;
+    openDeal(file).then(() => {
+      if (loadedRef.current && loadedRef.current.id === s.f && s.m !== "overview") setMode(s.m);
+      settle();
+    });
+  };
+  useEffect(() => {
+    const h = (e) => popRef.current && popRef.current(e);
+    window.addEventListener("popstate", h);
+    return () => window.removeEventListener("popstate", h);
+  }, []);
+  const goBack = () => window.history.back();
   const addActual = () => {
     if (!newItem.label && !newItem.amount) return;
     setActuals((p) => [
@@ -3689,6 +3800,7 @@ function App() {
             connected={!!accessToken}
             userEmail={userEmail}
             onConnect={signIn}
+            onBack={navIndex > 0 ? goBack : null}
             finder={{ files: driveFiles, summaries, onOpen: (f) => loadDeal(f), onDelete: deleteDeal, onRefresh: () => refreshFiles() }}
           />
           <div className="app-main-inner">
