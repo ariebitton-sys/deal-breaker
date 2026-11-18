@@ -22,6 +22,16 @@ const mk = (address, stage, extra) => ({
   const drive = makeDrive();
   drive.add("100 Alpha St, Cleveland, OH 44102.json", mk("100 Alpha St, Cleveland, OH 44102", "contract"));
   drive.add("200 Beta Ave, Cleveland, OH 44103.json", mk("200 Beta Ave, Cleveland, OH 44103", "contract"));
+  const gid = drive.add(
+    "300 Gamma Rd, Cleveland, OH 44104.json",
+    mk("300 Gamma Rd, Cleveland, OH 44104", "contract", {
+      cmaFiles: [
+        { type: "drive_file", driveFileId: "cma1", name: "Gamma comps.pdf", mimeType: "application/pdf" },
+        { type: "link", url: "https://example.com/comps", name: "Agent CMA" },
+      ],
+    }),
+  );
+  { const g = JSON.parse(drive.files[gid].content); g.mgmt.docs = [{ id: "d0", type: "drive_file", driveFileId: "cma1", name: "Gamma comps.pdf" }]; drive.files[gid].content = JSON.stringify(g); }
   const t = await boot({ drive, settings: { clientId: "c", folderId: "f" } });
   const H = t.win.history;
   const back = async () => { H.back(); await t.sleep(30); await t.settle(10); };
@@ -84,6 +94,29 @@ const mk = (address, stage, extra) => ({
   assert(/No offers were logged for this deal/.test(ana.textContent) && !/\+ Offer/.test(ana.textContent) && /Log an offer/.test(ana.textContent), "past Analyzing: history only, the offer form folded behind “Log an offer”");
   await t.click(t.btn("Log an offer", ana));
   assert(/\+ Offer/.test(ana.textContent), "“Log an offer” opens the form");
+
+  console.log("6. Property section removed from Flip analysis; comps moved to Documents; photos link from the overview");
+  await t.click(nav(/^\s*Active projects/));
+  await openRow("300 Gamma Rd");
+  if (/Discard and open/.test(t.text())) await t.click(t.btn("Discard and open"));
+  await t.sleep(30); await t.settle(10);
+  assert(t.doc.querySelector(".dh-addr").value === "300 Gamma Rd, Cleveland, OH 44104", "deal with old comps opened");
+  const ovLinks = () => t.doc.querySelector(".ov-links").textContent;
+  assert(/Comps \(2\)/.test(ovLinks()) && /Add photos link/.test(ovLinks()), "overview: Comps (2) — the already-filed one isn't doubled — and Add photos link");
+  await t.click(t.btn("Add photos link", t.doc.querySelector(".ov-links")));
+  await t.setVal(t.doc.querySelector(".ov-photo-edit input"), "photos.app.goo.gl/abc");
+  await t.click(t.btn("Save", t.doc.querySelector(".ov-photo-edit")));
+  const ph = [...t.doc.querySelectorAll(".ov-links a")].find((a) => /Photos/.test(a.textContent));
+  assert(ph && ph.href === "https://photos.app.goo.gl/abc" && /Change photos link/.test(ovLinks()), "photos link set from the overview");
+  await t.click(t.btn(/Comps \(2\)/, t.doc.querySelector(".ov-links")));
+  assert(/Gamma comps\.pdf/.test(t.text()) && /Agent CMA/.test(t.text()) && (t.text().match(/Gamma comps\.pdf/g) || []).length === 1, "Comps (2) opens Documents with both comps, no duplicate");
+  await t.click(nav(/^Flip analysis$/));
+  assert(![...t.doc.querySelectorAll(".grp-head, .grp")].some((g) => /Map, Zillow, photos and comps/.test(g.textContent)), "Flip analysis has no Property section");
+  await t.click(t.btn("Save deal"));
+  await t.sleep(30); await t.settle(10);
+  const saved = JSON.parse(drive.files[gid].content);
+  assert(saved.photosUrl === "https://photos.app.goo.gl/abc" && (saved.cmaFiles || []).length === 0, "saved: photos link, old comps list emptied");
+  assert(saved.mgmt.docs.filter((d) => d.kind === "Comps").length === 2 && saved.mgmt.docs.some((d) => d.driveFileId === "cma1") && saved.mgmt.docs.length === 2, "saved: comps are deal documents, nothing lost or doubled");
   assert(t.errors.length === 0, "no errors " + t.errors.join(" | "));
   console.log("\nALL NAV TESTS PASSED");
   process.exit(0);

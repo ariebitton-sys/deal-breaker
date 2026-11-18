@@ -507,3 +507,9 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
 .tb-back:focus-visible{outline:2px solid var(--blue);outline-offset:2px}
 .tb-back + .crumbs{border-left:1px solid #E3E9F1;padding-left:14px}
 @media (max-width:900px){.tb-back{padding:6px 9px 6px 7px}}
+/* v38: overview links: comps and photos */
+.ov-link-btn{display:inline-flex;align-items:center;gap:5px;background:none;border:0;padding:0;color:var(--blue);font-weight:600;font-size:13.5px;cursor:pointer}
+.ov-link-btn:hover{text-decoration:underline;text-underline-offset:3px}
+.ov-link-btn.quiet{color:var(--mut);font-weight:500;font-size:13px}
+.ov-photo-edit{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.ov-photo-edit input{flex:1 1 260px;min-width:0;border:1px solid var(--line2);border-radius:3px;padding:7px 9px;font-size:13px}

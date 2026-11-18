@@ -1984,6 +1984,17 @@ function solvePurchaseFor(inputs, goal) {
   }
   return Math.floor(lo);
 }
+// Comps (CMA) used to have their own list under Flip analysis; they now sit in the deal's documents.
+function compsIntoDocs(mg, cma) {
+  if (!Array.isArray(cma) || !cma.length) return mg;
+  const docs = Array.isArray(mg.docs) ? mg.docs : [];
+  const same = (a, b) => (a.driveFileId && a.driveFileId === b.driveFileId) || (a.url && a.url === b.url);
+  const list = cma.filter((f) => f && (f.driveFileId || f.url));
+  // a comps file already filed with the documents gets the Comps label instead of a second copy
+  const labeled = docs.map((x) => (!x.kind && list.some((f) => same(x, f)) ? { ...x, kind: "Comps" } : x));
+  const add = list.filter((f) => !docs.some((x) => same(x, f))).map((f) => ({ ...f, id: uid(), kind: "Comps", date: f.date || "" }));
+  return { ...mg, docs: [...labeled, ...add] };
+}
 const TOKEN_KEY = "kappa_google_token";
 function readStoredToken(clientId) {
   try {
@@ -2599,13 +2610,14 @@ function App() {
     if (d.analysisDate !== undefined) setAnalysisDate(d.analysisDate);
     if (d.actuals !== undefined) setActuals(d.actuals);
     if (d.actualSale !== undefined) setActualSale(d.actualSale);
-    if (d.cmaFiles !== undefined) setCmaFiles(d.cmaFiles);
+    // v38: comps (CMA) live with the deal's other files in Documents
+    setCmaFiles([]);
     setPhotosUrl(d.photosUrl || "");
     setLedgerFilter("All");
     setStage(inferStage(d));
     setStageHistory(Array.isArray(d.stageHistory) ? d.stageHistory : []);
     setUwBaseline(d.uwBaseline || null);
-    setMgmt(mergeMgmt(d.mgmt));
+    setMgmt(compsIntoDocs(mergeMgmt(d.mgmt), d.cmaFiles));
     setRehabFunding(d.rehabFunding || DEFAULTS.rehabFunding);
     setDrawCount(d.drawCount !== undefined ? d.drawCount : DEFAULTS.drawCount);
     setDrawMonths(d.drawMonths !== undefined ? d.drawMonths : DEFAULTS.drawMonths);
@@ -3916,6 +3928,7 @@ function App() {
             mapsKey={settings.mapsApiKey}
             folderId={settings.folderId}
             photosUrl={photosUrl}
+            setPhotosUrl={setPhotosUrl}
             sqft={sqft}
             yearBuilt={yearBuilt}
             arv={arv}
@@ -4477,198 +4490,6 @@ function App() {
                   }
                 >
                   <TxnEditor side="Selling" items={sellTxn} setItems={setSellTxn} basis={arv} basisLabel="of ARV" accent={T.blue} />
-                                </Group>
-                <Group id="property" title="Property" sub="Map, Zillow, photos and comps" total={cmaFiles.length ? `${cmaFiles.length} comp${cmaFiles.length === 1 ? "" : "s"}` : null}>
-                  <div className="map-resources-grid" style={{ display: "grid", gap: 12, marginBottom: 4 }}>
-                    <PropertyMapCard address={address} apiKey={settings.mapsApiKey} />
-                    <ResourcesPanel address={address} photosUrl={photosUrl} setPhotosUrl={setPhotosUrl} />
-                  </div>
-                  <div
-                    style={{
-                      marginTop: 10,
-                      paddingTop: 10,
-                      borderTop: `1px solid ${T.border}`,
-                    }}
-                  >
-                    <div
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "space-between",
-                        marginBottom: 8,
-                      }}
-                    >
-                      <span
-                        style={{
-                          fontSize: 11,
-                          fontWeight: 700,
-                          letterSpacing: "0",
-                          color: T.tealLt,
-                        }}
-                      >
-                        CMA / Comps
-                      </span>
-                      <div
-                        style={{
-                          display: "flex",
-                          gap: 6,
-                        }}
-                      >
-                        <button
-                          onClick={() => cmaFileInputRef.current.click()}
-                          style={{
-                            ...bs(`${T.teal}22`, T.tealLt),
-                            fontSize: 11,
-                            padding: "4px 10px",
-                          }}
-                        >
-                          ⬆ Upload
-                        </button>
-                        <button
-                          onClick={() => {
-                            setLinkInputFor("cma");
-                            setLinkInputUrl("");
-                            setLinkInputName("");
-                          }}
-                          style={{
-                            ...bs(T.glass, T.txtDim),
-                            fontSize: 11,
-                            padding: "4px 10px",
-                          }}
-                        >
-                          Add link
-                        </button>
-                      </div>
-                    </div>
-                    <input
-                      ref={cmaFileInputRef}
-                      type="file"
-                      accept="image/*,.pdf"
-                      multiple={true}
-                      style={{
-                        display: "none",
-                      }}
-                      onChange={handleCMAFileSelect}
-                    />
-                    {linkInputFor === "cma" && (
-                      <div
-                        style={{
-                          background: T.inputBg,
-                          borderRadius: 4,
-                          padding: "10px",
-                          marginBottom: 8,
-                          border: `1px solid ${T.border}`,
-                        }}
-                      >
-                        <input
-                          placeholder="Google Drive / Docs URL"
-                          value={linkInputUrl}
-                          onChange={(e) => setLinkInputUrl(e.target.value)}
-                          style={{
-                            ...ss,
-                            marginBottom: 6,
-                            fontSize: 12,
-                          }}
-                        />
-                        <div
-                          style={{
-                            display: "flex",
-                            gap: 6,
-                          }}
-                        >
-                          <input
-                            placeholder="Label (optional)"
-                            value={linkInputName}
-                            onChange={(e) => setLinkInputName(e.target.value)}
-                            onKeyDown={(e) => {
-                              if (e.key === "Enter") confirmLink("cma");
-                            }}
-                            style={{
-                              ...ss,
-                              flex: 1,
-                              fontSize: 12,
-                            }}
-                          />
-                          <button onClick={() => confirmLink("cma")} style={bs(T.teal, "#FFFFFF")}>
-                            Add
-                          </button>
-                          <button onClick={() => setLinkInputFor(null)} style={bs(T.glass, T.txtDim)}>
-                            <Icon name="x" size={14} />
-                          </button>
-                        </div>
-                      </div>
-                    )}
-                    {cmaFiles.length === 0 ? (
-                      <div
-                        style={{
-                          fontSize: 11,
-                          color: T.txtMute,
-                          fontStyle: "italic",
-                        }}
-                      >
-                        No CMA attached yet
-                      </div>
-                    ) : (
-                      cmaFiles.map((f, i) => (
-                        <div
-                          key={i}
-                          style={{
-                            display: "flex",
-                            alignItems: "center",
-                            gap: 8,
-                            padding: "5px 0",
-                            borderBottom: `1px solid ${T.border}`,
-                          }}
-                        >
-                          <span
-                            style={{
-                              fontSize: 12,
-                            }}
-                          >
-                            <Icon name={f.type === "link" ? "link" : "file"} size={14} />
-                          </span>
-                          <span
-                            style={{
-                              flex: 1,
-                              fontSize: 12,
-                              color: T.txt,
-                              overflow: "hidden",
-                              textOverflow: "ellipsis",
-                              whiteSpace: "nowrap",
-                            }}
-                          >
-                            {f.name}
-                          </span>
-                          <button
-                            onClick={() => {
-                              f.type === "link"
-                                ? window.open(f.url, "_blank")
-                                : window.open(`https://drive.google.com/file/d/${f.driveFileId}/view`, "_blank");
-                            }}
-                            style={{
-                              ...bs(`${T.teal}22`, T.tealLt),
-                              fontSize: 11,
-                              padding: "3px 8px",
-                            }}
-                          >
-                            Open
-                          </button>
-                          <button
-                            onClick={() => setCmaFiles((prev) => prev.filter((_, j) => j !== i))}
-                            style={{
-                              background: "transparent",
-                              border: "none",
-                              color: T.red,
-                              cursor: "pointer",
-                              fontSize: 13,
-                            }}
-                          >
-                            <Icon name="x" size={14} />
-                          </button>
-                        </div>
-                      ))
-                    )}
-                  </div>
                                 </Group>
               </div>
               <ResultsRail

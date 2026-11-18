@@ -768,7 +768,7 @@ function OvStat({ k, v, h, tone, big }) {
     </div>
   );
 }
-function ProjectOverview({ address, mapsKey, folderId, photosUrl, sqft, yearBuilt, arv, purchase, stage, mgmt, setMgmt, m, deal, mao, uwBaseline, actuals, actualSale, analysisDate, health, onGo }) {
+function ProjectOverview({ address, mapsKey, folderId, photosUrl, setPhotosUrl, sqft, yearBuilt, arv, purchase, stage, mgmt, setMgmt, m, deal, mao, uwBaseline, actuals, actualSale, analysisDate, health, onGo }) {
   const today = todayISO();
   const [street, city] = splitAddress(address || "");
   const q = encodeURIComponent((address || "").trim());
@@ -778,6 +778,13 @@ function ProjectOverview({ address, mapsKey, folderId, photosUrl, sqft, yearBuil
     folderId && ["Drive folder", `https://drive.google.com/drive/folders/${folderId}`, "folder"],
     photosUrl && ["Photos", photosUrl, "camera"],
   ].filter(Boolean);
+  const comps = (mgmt.docs || []).filter((d) => d.kind === "Comps").length;
+  const [photoEdit, setPhotoEdit] = useState(null);
+  const savePhotos = () => {
+    const t = (photoEdit || "").trim();
+    setPhotosUrl(t ? (/^https?:\/\//i.test(t) ? t : "https://" + t) : "");
+    setPhotoEdit(null);
+  };
   const dates = {
     analyzing: analysisDate,
     contract: mgmt.contract.date,
@@ -962,13 +969,46 @@ function ProjectOverview({ address, mapsKey, folderId, photosUrl, sqft, yearBuil
             <OvStat k="Size" v={sqft ? `${Number(sqft).toLocaleString("en-US")} sq ft` : "—"} />
             <OvStat k="Built" v={yearBuilt ? String(yearBuilt) : "—"} />
           </div>
-          {links.length > 0 && (
+          {photoEdit !== null ? (
+            <div className="ov-photo-edit">
+              <input
+                autoFocus
+                value={photoEdit}
+                onChange={(e) => setPhotoEdit(e.target.value)}
+                onKeyDown={(e) => (e.key === "Enter" ? savePhotos() : e.key === "Escape" ? setPhotoEdit(null) : null)}
+                placeholder="Google Photos, Drive or Dropbox album link"
+                aria-label="Photos link"
+              />
+              <button onClick={savePhotos} style={btnPrimary()}>
+                Save
+              </button>
+              <button onClick={() => setPhotoEdit(null)} style={btnGhost()}>
+                Cancel
+              </button>
+            </div>
+          ) : (
             <div className="ov-links">
               {links.map(([l, href, icn]) => (
                 <a key={l} href={href} target="_blank" rel="noopener noreferrer">
                   <Icon name={icn} size={14} /> {l}
                 </a>
               ))}
+              {comps > 0 && (
+                <button className="ov-link-btn" onClick={() => onGo("docs")}>
+                  <Icon name="file" size={14} /> Comps ({comps})
+                </button>
+              )}
+              {setPhotosUrl && (
+                <button className="ov-link-btn quiet" onClick={() => setPhotoEdit(photosUrl || "")}>
+                  {photosUrl ? (
+                    "Change photos link"
+                  ) : (
+                    <>
+                      <Icon name="camera" size={14} /> Add photos link
+                    </>
+                  )}
+                </button>
+              )}
             </div>
           )}
         </div>
