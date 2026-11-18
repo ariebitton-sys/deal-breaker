@@ -1984,6 +1984,24 @@ function solvePurchaseFor(inputs, goal) {
   }
   return Math.floor(lo);
 }
+const TOKEN_KEY = "kappa_google_token";
+function readStoredToken(clientId) {
+  try {
+    const t = JSON.parse(localStorage.getItem(TOKEN_KEY) || "null");
+    if (t && t.token && t.cid === clientId && t.exp - Date.now() > 60 * 1000) return t;
+  } catch (e) {}
+  return null;
+}
+function storeToken(clientId, token, exp) {
+  try {
+    localStorage.setItem(TOKEN_KEY, JSON.stringify({ token, exp, cid: clientId }));
+  } catch (e) {}
+}
+function clearStoredToken() {
+  try {
+    localStorage.removeItem(TOKEN_KEY);
+  } catch (e) {}
+}
 function App() {
   T = SITE_T;
   const [mode, setMode] = useState("underwrite");
@@ -2098,7 +2116,12 @@ function App() {
     }
   });
   const [showSettings, setShowSettings] = useState(false);
-  const [accessToken, setAccessToken] = useState(null);
+  // Google access token: valid for about an hour. Kept in localStorage with its expiry so a refresh,
+  // an app update or a second tab doesn't disconnect; renewed on the user's next click near expiry.
+  const [accessToken, setAccessToken] = useState(() => {
+    const t = readStoredToken(settings.clientId);
+    return t ? t.token : null;
+  });
   const [userEmail, setUserEmail] = useState(() => {
     try {
       return localStorage.getItem("kappa_user_email") || null;
@@ -2137,6 +2160,7 @@ function App() {
     setSettings(s);
     setShowSettings(false);
     if (!authChanged) return; // e.g. only the Maps or Anthropic key changed — stay connected
+    clearStoredToken();
     setAccessToken(null);
     setUserEmail(null);
     try {
@@ -2144,54 +2168,75 @@ function App() {
     } catch {}
     setDriveFiles([]);
   };
-  const getFreshToken = () =>
-    new Promise((resolve, reject) => {
-      if (!settings.clientId) {
-        reject(new Error("No client ID configured"));
-        return;
-      }
-      if (!window.google) {
-        reject(new Error("Google script not loaded"));
-        return;
-      }
+  const tokenRef = useRef({ exp: (readStoredToken(settings.clientId) || {}).exp || 0, inflight: null, connecting: null });
+  const accessTokenRef = useRef(accessToken);
+  accessTokenRef.current = accessToken;
+  const userEmailRef = useRef(userEmail);
+  userEmailRef.current = userEmail;
+  const dropToken = () => {
+    tokenRef.current.exp = 0;
+    clearStoredToken();
+    setAccessToken(null);
+  };
+  // One token request at a time: a click that renews and a Connect button pressed together share it.
+  // Google opens its window only from a click; anywhere else the browser blocks it (error_callback).
+  const requestToken = () => {
+    const r = tokenRef.current;
+    if (r.inflight) return r.inflight;
+    if (!settings.clientId) return Promise.reject(new Error("No client ID configured"));
+    if (!window.google || !google.accounts || !google.accounts.oauth2) return Promise.reject(new Error("Google script not loaded"));
+    const p = new Promise((resolve, reject) => {
+      const hint = userEmailRef.current || undefined;
       const tc = google.accounts.oauth2.initTokenClient({
         client_id: settings.clientId,
         scope: "https://www.googleapis.com/auth/drive https://www.googleapis.com/auth/userinfo.email",
-        hint: userEmail || undefined,
+        login_hint: hint,
+        hint,
         callback: (resp) => {
           if (resp.error) {
             reject(new Error(resp.error));
             return;
           }
+          const exp = Date.now() + (Number(resp.expires_in) || 3599) * 1000;
+          tokenRef.current.exp = exp;
+          storeToken(settings.clientId, resp.access_token, exp);
           setAccessToken(resp.access_token);
+          accessTokenRef.current = resp.access_token;
           resolve(resp.access_token);
         },
+        error_callback: (err) => reject(new Error(err && err.type === "popup_failed_to_open" ? "popup_blocked" : (err && err.type) || "auth_failed")),
       });
-      tc.requestAccessToken({
-        prompt: "",
-      });
+      tc.requestAccessToken({ prompt: "" });
     });
+    r.inflight = p;
+    p.then(
+      () => (r.inflight = null),
+      () => (r.inflight = null),
+    );
+    return p;
+  };
+  const getFreshToken = requestToken;
   const withAuthRetry = async (action, token) => {
+    let tok = token || accessTokenRef.current;
+    const r = tokenRef.current;
+    // a renewal is already under way (e.g. started by this click): wait for it
+    if (!token && r.inflight) tok = await r.inflight.catch(() => tok);
     try {
-      return await action(token || accessToken);
+      return await action(tok);
     } catch (err) {
       if (err && err.status === 401) {
-        const freshToken = await getFreshToken();
-        return await action(freshToken);
+        let fresh;
+        try {
+          fresh = await requestToken();
+        } catch (e) {
+          dropToken();
+          throw new Error("Google sign-in expired. Click anywhere to reconnect.");
+        }
+        return await action(fresh);
       }
       throw err;
     }
   };
-  useEffect(() => {
-    if (!accessToken) return;
-    const id = setInterval(
-      () => {
-        getFreshToken().catch(() => {});
-      },
-      45 * 60 * 1000,
-    );
-    return () => clearInterval(id);
-  }, [accessToken, settings.clientId, userEmail]);
   const refreshFiles = async (token) => {
     if (!settings.folderId) return;
     try {
@@ -2206,6 +2251,46 @@ function App() {
       console.error(e);
     }
   };
+  const afterConnect = async (token) => {
+    try {
+      const info = await fetch("https://www.googleapis.com/oauth2/v3/userinfo", {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      }).then((r) => r.json());
+      setUserEmail(info.email);
+      userEmailRef.current = info.email;
+      try {
+        localStorage.setItem("kappa_user_email", info.email || "");
+      } catch {}
+      await refreshFiles(token);
+      setDriveMsg("✓ Connected");
+      setTimeout(() => setDriveMsg(""), 2000);
+    } catch (e) {
+      setDriveMsg("❌ " + e.message);
+    }
+    if (pendingSave.current) {
+      pendingSave.current = false;
+      const cb = afterSaveRef.current;
+      afterSaveRef.current = null;
+      await doSave(token, { cb });
+    }
+  };
+  // Connect (or reconnect) once, however many clicks ask for it.
+  const connect = () => {
+    const r = tokenRef.current;
+    if (r.connecting) return r.connecting;
+    const p = requestToken().then(async (tok) => {
+      await afterConnect(tok);
+      return tok;
+    });
+    r.connecting = p;
+    p.then(
+      () => (r.connecting = null),
+      () => (r.connecting = null),
+    );
+    return p;
+  };
   const signIn = () => {
     if (!settings.clientId) {
       setDriveMsg("⚠ Configure settings first");
@@ -2217,46 +2302,35 @@ function App() {
       setTimeout(() => setDriveMsg(""), 3000);
       return;
     }
-    const tc = google.accounts.oauth2.initTokenClient({
-      client_id: settings.clientId,
-      scope: "https://www.googleapis.com/auth/drive https://www.googleapis.com/auth/userinfo.email",
-      hint: userEmail || undefined,
-      callback: async (resp) => {
-        if (resp.error) {
-          setDriveMsg("❌ " + resp.error);
-          pendingSave.current = false;
-          afterSaveRef.current = null;
-          return;
-        }
-        setAccessToken(resp.access_token);
-        try {
-          const info = await fetch("https://www.googleapis.com/oauth2/v3/userinfo", {
-            headers: {
-              Authorization: `Bearer ${resp.access_token}`,
-            },
-          }).then((r) => r.json());
-          setUserEmail(info.email);
-          try {
-            localStorage.setItem("kappa_user_email", info.email || "");
-          } catch {}
-          await refreshFiles(resp.access_token);
-          setDriveMsg("✓ Connected");
-          setTimeout(() => setDriveMsg(""), 2000);
-        } catch (e) {
-          setDriveMsg("❌ " + e.message);
-        }
-        if (pendingSave.current) {
-          pendingSave.current = false;
-          const cb = afterSaveRef.current;
-          afterSaveRef.current = null;
-          await doSave(resp.access_token, { cb });
-        }
-      },
-    });
-    tc.requestAccessToken({
-      prompt: "",
+    connect().catch((e) => {
+      setDriveMsg(e.message === "popup_blocked" ? "⚠ The browser blocked Google's sign-in window. Allow pop-ups for this site and try again." : "❌ " + e.message);
+      pendingSave.current = false;
+      afterSaveRef.current = null;
     });
   };
+  // A token saved by an earlier page load: load the deal list straight away.
+  useEffect(() => {
+    if (accessToken && settings.folderId) refreshFiles(accessToken);
+  }, []);
+  // Renew on the user's click: when the hour is nearly up, or after it ran out for someone who was
+  // connected before. A click is the only moment the browser lets Google open its window.
+  const clickRenewRef = useRef(null);
+  clickRenewRef.current = (e) => {
+    if (!settings.clientId || !window.google || !google.accounts || showSettings) return;
+    const r = tokenRef.current;
+    if (r.inflight || r.connecting) return;
+    const left = r.exp - Date.now();
+    if (accessTokenRef.current) {
+      if (r.exp && left < 10 * 60 * 1000) requestToken().catch(() => (left <= 0 ? dropToken() : null));
+    } else if (userEmailRef.current && !(e.target && e.target.closest && e.target.closest("[data-no-autoconnect]"))) {
+      connect().catch(() => {});
+    }
+  };
+  useEffect(() => {
+    const h = (e) => clickRenewRef.current && clickRenewRef.current(e);
+    window.addEventListener("click", h, true);
+    return () => window.removeEventListener("click", h, true);
+  }, []);
   // Save with conflict protection: never silently overwrite a deal someone else saved after we
   // opened it, or a different deal that already uses this address. Renaming the address renames
   // the Drive file instead of leaving a duplicate behind.

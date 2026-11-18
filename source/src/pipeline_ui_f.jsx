@@ -140,7 +140,7 @@ function Sidebar({ logo, view, filter, onFilter, counts, project, onNew, onSetti
       <button className="sb-new" onClick={onNew}>
         <Icon name="plus" size={16} stroke={2.2} /> New deal
       </button>
-      <button className="sb-link" onClick={onSettings}>
+      <button className="sb-link" onClick={onSettings} data-no-autoconnect="">
         <Icon name="settings" /> Settings
       </button>
     </aside>

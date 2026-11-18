@@ -8,6 +8,7 @@ const REACT = fs.readFileSync(path.join(__dirname,"../node_modules/react/umd/rea
 const REACTDOM = fs.readFileSync(path.join(__dirname,"../node_modules/react-dom/umd/react-dom.production.min.js"), "utf8");
 
 function makeDrive() {
+  const rejected = new Set();
   const files = {};
   let seq = 1,
     clock = Date.parse("2026-11-10T10:00:00Z");
@@ -37,9 +38,11 @@ function makeDrive() {
   };
   const handle = async (url, opts = {}) => {
     const method = (opts.method || "GET").toUpperCase();
-    calls.push({ method, url });
+    const auth = (opts.headers && (opts.headers.Authorization || opts.headers.authorization)) || "";
+    calls.push({ method, url, auth });
     const u = new URL(url);
     const json = (o, status = 200) => ({ ok: status < 400, status, json: async () => o, text: async () => JSON.stringify(o) });
+    if (rejected.has(String(auth).replace(/^Bearer\s+/, ""))) return json({ error: { code: 401, message: "Invalid Credentials" } }, 401);
     const bin = (b) => ({ ok: true, status: 200, arrayBuffer: async () => b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength) });
     if (u.pathname === "/drive/v3/files" && method === "GET" && /application\/pdf/.test(u.searchParams.get("q") || "")) {
       const nm = ((u.searchParams.get("q") || "").match(/name contains '([^']*)'/) || [])[1];
@@ -92,7 +95,7 @@ function makeDrive() {
     }
     throw new Error("Unhandled fetch " + method + " " + url);
   };
-  return { files, bins, addBinary, add, handle, calls, touch: (id, by) => ((files[id].modifiedTime = tick()), (files[id].lastModifyingUser = { displayName: by || "Partner", emailAddress: "partner@kappainv.com" })) };
+  return { files, bins, addBinary, add, handle, calls, rejected, touch: (id, by) => ((files[id].modifiedTime = tick()), (files[id].lastModifyingUser = { displayName: by || "Partner", emailAddress: "partner@kappainv.com" })) };
 }
 
 // Default answers from the free map services, for a property at 4623 Carrollton Ave, Indianapolis.
@@ -116,7 +119,8 @@ const GEO_FIXTURE = {
     "gis.indy.gov/SolidWaste": [{ HAULER: "LRS", DISTRICT: 7, DAY_: "TUESDAY" }],
   },
 };
-async function boot({ drive, settings, anthropic, localStorageInit, geo } = {}) {
+async function boot({ drive, settings, anthropic, localStorageInit, geo, gisInit } = {}) {
+  const gis = { requests: 0, hints: [], fail: null, expiresIn: 3599, ...(gisInit || {}) };
   const G = geo || GEO_FIXTURE;
   const geoCalls = [];
   let html = fs.readFileSync(path.join(__dirname, "../../index.html"), "utf8");
@@ -146,7 +150,16 @@ async function boot({ drive, settings, anthropic, localStorageInit, geo } = {}) 
       win.google = {
         accounts: {
           oauth2: {
-            initTokenClient: (cfg) => ({ requestAccessToken: () => setTimeout(() => cfg.callback({ access_token: "tok123" }), 0) }),
+            initTokenClient: (cfg) => ({
+              requestAccessToken: () => {
+                gis.requests++;
+                gis.hints.push(cfg.login_hint || null);
+                setTimeout(() => {
+                  if (gis.fail) cfg.error_callback && cfg.error_callback({ type: gis.fail });
+                  else cfg.callback({ access_token: "tok" + gis.requests, expires_in: gis.expiresIn });
+                }, 0);
+              },
+            }),
           },
         },
       };
@@ -228,6 +241,6 @@ async function boot({ drive, settings, anthropic, localStorageInit, geo } = {}) 
     return ms[ms.length - 1] || null;
   };
   await settle(10);
-  return { dom, win, doc, errors, anthropicCalls, geoCalls, settle, sleep, text, btn, click, setVal, field, modal };
+  return { dom, win, doc, errors, anthropicCalls, geoCalls, gis, settle, sleep, text, btn, click, setVal, field, modal };
 }
 module.exports = { boot, makeDrive, GEO_FIXTURE };
