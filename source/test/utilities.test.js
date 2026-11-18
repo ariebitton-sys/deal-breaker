@@ -211,6 +211,55 @@ async function openDeal(t) {
   const ak = await find("100 Main St, Akron, OH 44308");
   assert(ak.area === "" && !by(ak, "sewer").name, "outside Cuyahoga: no Cleveland rules applied");
   assert(t4.errors.length === 0, "no errors " + t4.errors.join(" | "));
+
+  console.log("9. Willoughby (Lake County): PUCO map answers, national maps down");
+  const WIL_GEO = {
+    census: {
+      result: {
+        addressMatches: [
+          {
+            matchedAddress: "635 TIOGA BLVD, WILLOUGHBY, OH, 44094",
+            coordinates: { x: -81.4065, y: 41.6398 },
+            addressComponents: { city: "WILLOUGHBY", state: "OH", zip: "44094" },
+            geographies: { "Incorporated Places": [{ NAME: "Willoughby city", BASENAME: "Willoughby" }], Counties: [{ NAME: "Lake County", BASENAME: "Lake" }] },
+          },
+        ],
+      },
+    },
+    layers: {
+      puco: [{ COMPANY_NAME: "The Illuminating Company", COMPANY_CD: "CEI" }],
+      "services.arcgis.com/Water_System_Boundaries": [{ PWS_Name: "LAKE COUNTY WEST WATER SUBDISTRICT", Population_Served_Count: 78000 }],
+    },
+  };
+  const t5 = await boot({ drive: makeDrive(), settings: {}, geo: WIL_GEO });
+  const wil = await t5.win.findUtilities("635 Tioga Blvd, Willoughby, OH 44094");
+  const wb = (type) => wil.items.find((x) => x.type === type);
+  assert(t5.geoCalls.some((u) => /PUCO_Electric_Service_Areas\/MapServer\/0\/query\?geometry=-81.4065,41.6398/.test(u)), "PUCO electric map queried for an Ohio address");
+  assert(t5.geoCalls.some((u) => /eedgis\.pnnl\.gov/.test(u)) && t5.geoCalls.some((u) => /utility_rates\/v3\.json\?api_key=DEMO_KEY&lat=41.6398&lon=-81.4065/.test(u)), "second national copy and NREL asked in parallel");
+  assert(wb("electric").id === "illuminating" && wb("electric").source === "map" && wb("electric").via === "PUCO", "electric: The Illuminating Company from the PUCO map");
+  assert(wb("gas").id === "enbridge-ohio" && wb("gas").source === "county" && wb("gas").alt.includes("Columbia Gas of Ohio"), "gas: Enbridge as the Lake County default, Columbia as the alternative");
+  assert(wb("water").id === "lcdu" && wb("sewer").id === "lcdu" && /440-951-2800/.test(wb("sewer").note), "water and sewer: one Lake County bill, city sewer contact in the note");
+  assert(wb("trash").id === "republic-willoughby", "trash: Republic Services under the city contract");
+  assert(wil.warn.some((x) => /natural gas map didn't answer, so gas shows the usual company/.test(x)) && !wil.warn.some((x) => /electric maps/.test(x)), "warns about gas only");
+  const wt = t5.win.utilityTasks(wil);
+  assert(wt.buy.some((x) => x.label === "Lake County Dept. of Utilities: start water and sewer in the LLC's name from the closing date" && /440-918-2070/.test(x.note)), "one Lake County task with the billing phones");
+  assert(wt.buy.some((x) => x.label === "Republic Services (Willoughby city contract): start trash in the LLC's name from the closing date") && wt.sell.some((x) => /Republic Services.*stop trash/.test(x.label)), "Republic trash account opened and closed like a utility");
+  const t7 = await boot({ drive: makeDrive(), settings: {}, geo: { census: new Error("down"), layers: {} } });
+  const me = await t7.win.findUtilities("8500 Civic Center Blvd, Mentor, OH 44060");
+  assert(me.area === "lake" && me.items.find((x) => x.type === "water").id === "aqua-ohio" && me.items.find((x) => x.type === "electric").source === "county", "Mentor (typed address): Aqua Ohio water, county electric default");
+  assert(me.items.find((x) => x.type === "sewer").id === "lcdu", "Mentor: county sewer");
+  const ea = await t7.win.findUtilities("35150 Lakeshore Blvd, Eastlake, OH 44095");
+  assert(ea.items.find((x) => x.type === "sewer").name === "City of Eastlake" && ea.items.find((x) => x.type === "sewer").phone === "440-951-1416", "Eastlake: city sewer with its phone");
+  assert(t5.errors.length === 0 && t7.errors.length === 0, "no errors " + t5.errors.concat(t7.errors).join(" | "));
+
+  console.log("10. Indianapolis with the national map down: NREL names the electric company");
+  const NREL_GEO = { census: require("./harness").GEO_FIXTURE.census, layers: { nrel: "Indianapolis Power & Light Co", "services.arcgis.com/Water_System_Boundaries": [{ PWS_Name: "CITIZENS WATER" }] } };
+  const t6 = await boot({ drive: makeDrive(), settings: {}, geo: NREL_GEO });
+  const ind = await t6.win.findUtilities("4623 Carrollton Ave, Indianapolis, IN 46205");
+  const iel = ind.items.find((x) => x.type === "electric");
+  assert(iel.id === "aes-indiana" && iel.via === "NREL", "electric: AES Indiana from NREL data");
+  assert(!t6.geoCalls.some((u) => /PUCO/.test(u)), "no PUCO query outside Ohio");
+  assert(t6.errors.length === 0, "no errors " + t6.errors.join(" | "));
   console.log("\nALL UTILITIES TESTS PASSED");
   process.exit(0);
 })().catch((e) => {

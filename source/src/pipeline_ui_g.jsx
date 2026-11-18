@@ -193,6 +193,45 @@ const UTILITY_DIR = [
     buy: "Call option 2 as soon as possible with the title transfer date, the title company and the new owner's name.",
     sell: "Call option 2 with the title transfer date, the title company and the buyer's name.",
   },
+  {
+    id: "lcdu",
+    name: "Lake County Dept. of Utilities",
+    types: ["water", "sewer"],
+    state: "OH",
+    match: /lake county/i,
+    start: "https://www.lakecountyohio.gov/utilities/",
+    stop: "https://www.lakecountyohio.gov/utilities/",
+    startLabel: "Utilities office",
+    links: [{ label: "Pay online", url: "https://lakecountyoh.municipalonlinepayments.com/lakecountyoh" }],
+    phone: "440-918-2070",
+    buy: "Call billing to put the account in the LLC's name from the closing date: western Lake County 440-918-2070, eastern and central 440-350-2070. Weekdays 8:00 to 4:30.",
+    sell: "Call billing for a final reading on the sale closing date.",
+  },
+  {
+    id: "aqua-ohio",
+    name: "Aqua Ohio",
+    types: ["water"],
+    state: "OH",
+    match: /aqua/i,
+    start: "https://aquawater.com/start-or-stop-service",
+    stop: "https://aquawater.com/start-or-stop-service",
+    phone: "877-987-2782",
+    buy: "Start online through the Aqua ePortal with the service address and start date. Aqua may ask for the settlement statement and an ID.",
+    sell: "Stopping online needs an ePortal login; otherwise call customer service.",
+  },
+  {
+    id: "republic-willoughby",
+    name: "Republic Services (Willoughby city contract)",
+    types: ["trash"],
+    state: "OH",
+    match: /^$/,
+    start: "https://willoughbyohio.com/department/service/refuse-collection/",
+    stop: "https://willoughbyohio.com/department/service/refuse-collection/",
+    startLabel: "City trash page",
+    billed: true,
+    buy: "The city contracts Republic Services, which bills residents quarterly in advance. Put the account in the LLC's name from the closing date.",
+    sell: "Close the Republic account on the sale closing date.",
+  },
 ];
 // Cities and towns inside Marion County that run some utilities themselves.
 const INDY_OWN_UTILITIES = {
@@ -235,6 +274,46 @@ const CUYAHOGA_RULES = {
     sewer: { dir: "neorsd", own: true, note: "Cleveland Heights also bills a local sewer charge itself" },
   },
 };
+// Lake County municipalities, used when the geocoder can't name the county.
+const LAKE_PLACES = new Set([
+  "willoughby", "willoughby hills", "eastlake", "willowick", "wickliffe", "mentor", "mentor-on-the-lake", "painesville",
+  "fairport harbor", "grand river", "kirtland", "kirtland hills", "north perry", "timberlake", "lakeline", "waite hill",
+]);
+// Water and sanitary sewer by municipality, from the Lake County Dept. of Utilities welcome packet.
+const LAKE_RULES = {
+  willoughby: {
+    water: { dir: "lcdu", own: true },
+    sewer: { dir: "lcdu", own: true, note: "Willoughby's sewer charge is on the Lake County utility bill; the city maintains the sewers (440-951-2800)" },
+    trash: { dir: "republic-willoughby", own: true },
+  },
+  eastlake: { sewer: { name: "City of Eastlake", phone: "440-951-1416", own: true } },
+  lakeline: { sewer: { name: "City of Eastlake", phone: "440-951-1416", own: true } },
+  timberlake: { sewer: { name: "City of Eastlake", phone: "440-951-1416", own: true } },
+  wickliffe: { sewer: { name: "City of Wickliffe", phone: "440-943-7100", own: true } },
+  "willoughby hills": { sewer: { name: "City of Willoughby Hills", phone: "440-946-1234", own: true } },
+  willowick: { sewer: { name: "City of Willowick", phone: "440-585-3700", own: true } },
+  mentor: { water: { dir: "aqua-ohio" }, sewer: { dir: "lcdu", own: true } },
+  "mentor-on-the-lake": { water: { dir: "aqua-ohio" }, sewer: { dir: "lcdu", own: true } },
+  kirtland: { water: { dir: "aqua-ohio" }, sewer: { dir: "lcdu", note: "Only part of Kirtland is on county sewer; the rest is private septic" } },
+  painesville: { water: { name: "City of Painesville", phone: "440-352-9301", own: true }, sewer: { name: "City of Painesville", phone: "440-352-9301", own: true } },
+  "grand river": { water: { name: "City of Painesville", own: true }, sewer: { dir: "lcdu", own: true } },
+  "fairport harbor": { water: { name: "Fairport Harbor Village", phone: "440-352-3620", own: true }, sewer: { dir: "lcdu", own: true } },
+  "north perry": { water: { dir: "lcdu", own: true }, sewer: { dir: "lcdu", own: true } },
+};
+// Northeast Ohio: the usual electric and gas company per county, used when the maps don't answer.
+const OH_NE_COUNTIES = {
+  cuyahoga: { electric: "illuminating", gas: "enbridge-ohio" },
+  lake: { electric: "illuminating", gas: "enbridge-ohio" },
+  geauga: { electric: "illuminating", gas: "enbridge-ohio" },
+  ashtabula: { electric: "illuminating", gas: "enbridge-ohio" },
+  summit: { electric: "ohio-edison", gas: "enbridge-ohio" },
+  portage: { electric: "ohio-edison", gas: "enbridge-ohio" },
+  medina: { electric: "ohio-edison", gas: "enbridge-ohio" },
+  lorain: { electric: "ohio-edison", gas: "columbia-gas-oh" },
+  mahoning: { electric: "ohio-edison", gas: "enbridge-ohio" },
+  trumbull: { electric: "ohio-edison", gas: "enbridge-ohio" },
+};
+const SUBURB_TRASH_NOTE = "Most cities here collect trash as a city service or through a city contract. Confirm the pickup day and billing with the city";
 // What the national maps can't tell (sewer, trash, city-run utilities) and the default provider
 // when a map doesn't answer.
 function localRules(state, county, placeKey, placeName) {
@@ -250,30 +329,48 @@ function localRules(state, county, placeKey, placeName) {
     else if (placeKey === "indianapolis" || (!own && placeKey === "")) r.trash = { indyLayer: true };
     return r;
   }
-  const inCuyahoga = county ? /cuyahoga/i.test(county) : CUYAHOGA_PLACES.has(placeKey);
-  if (state === "OH" && inCuyahoga) {
-    const r = {
-      area: "cuyahoga",
-      electric: { dir: "illuminating" },
-      gas: { dir: "enbridge-ohio", alt: ["Columbia Gas of Ohio"], note: "Columbia Gas of Ohio serves some western and southern suburbs" },
-      water: { dir: "cleveland-water" },
-      sewer: {
-        dir: "neorsd",
-        note: "Most of Cuyahoga County is in the Sewer District; some cities also bill a local sewer charge or run their own. The seller's last bill shows which",
-      },
-      trash: placeName
-        ? { name: `City of ${placeName}`, note: "Most suburbs collect trash as a city service or through a city contract. Confirm the pickup day with the city" }
-        : {},
+  if (state !== "OH") return null;
+  const cty = county
+    ? county.replace(/\s+county$/i, "").trim().toLowerCase()
+    : CUYAHOGA_PLACES.has(placeKey)
+      ? "cuyahoga"
+      : LAKE_PLACES.has(placeKey)
+        ? "lake"
+        : "";
+  const ne = OH_NE_COUNTIES[cty];
+  if (!ne) return null;
+  const label = cty.charAt(0).toUpperCase() + cty.slice(1);
+  const otherGas = ne.gas === "enbridge-ohio" ? "Columbia Gas of Ohio" : "Enbridge Gas Ohio";
+  const r = {
+    area: cty,
+    electric: { dir: ne.electric, basis: "county", note: `Usual electric company in ${label} County` },
+    gas: { dir: ne.gas, basis: "county", alt: [otherGas], note: `Usual gas company in ${label} County; ${otherGas} serves some areas` },
+    trash: placeName ? { name: `City of ${placeName}`, note: SUBURB_TRASH_NOTE } : {},
+  };
+  if (cty === "cuyahoga") {
+    r.water = { dir: "cleveland-water", basis: "county" };
+    r.sewer = {
+      dir: "neorsd",
+      basis: "county",
+      note: "Most of Cuyahoga County is in the Sewer District; some cities also bill a local sewer charge or run their own. The seller's last bill shows which",
     };
     return { ...r, ...(CUYAHOGA_RULES[placeKey] || {}) };
   }
-  return null;
+  if (cty === "lake") {
+    r.water = { dir: "lcdu", basis: "county" };
+    r.sewer = { dir: "lcdu", basis: "county", note: "In Lake County, sewer is the county's or the city's. The seller's last bill shows which" };
+    return { ...r, ...(LAKE_RULES[placeKey] || {}) };
+  }
+  return r;
 }
 const UTIL_LAYERS = {
   electric: [
     "https://maps.nccs.nasa.gov/mapping/rest/services/hifld_open/energy/FeatureServer/26",
+    "https://eedgis.pnnl.gov/arcgis/rest/services/Hosted/Electric_Service_Territories/FeatureServer/0",
     "https://services1.arcgis.com/Hp6G80Pky0om7QvQ/arcgis/rest/services/Retail_Service_Territories/FeatureServer/0",
   ],
+  // PUCO electric service areas (Ohio), published by ODOT
+  ohElectric: ["https://tims.dot.state.oh.us/ags/rest/services/Boundaries/PUCO_Electric_Service_Areas/MapServer/0"],
   gas: ["https://maps.nccs.nasa.gov/mapping/rest/services/hifld_open/energy/FeatureServer/29"],
   water: ["https://services.arcgis.com/cJ9YHowT8TU7DUyn/arcgis/rest/services/Water_System_Boundaries/FeatureServer/0"],
   indyTrash: [
@@ -347,7 +444,7 @@ function utilJsonp(url, cbParam = "callback", timeout = 15000) {
     document.head.appendChild(s);
   });
 }
-async function utilGetJson(url, { jsonp, timeout = 12000 } = {}) {
+async function utilGetJson(url, { jsonp, timeout = 10000 } = {}) {
   try {
     const ctl = typeof AbortController !== "undefined" ? new AbortController() : null;
     const t = ctl ? setTimeout(() => ctl.abort(), timeout) : null;
@@ -356,23 +453,44 @@ async function utilGetJson(url, { jsonp, timeout = 12000 } = {}) {
     if (!r.ok) throw new Error("HTTP " + r.status);
     return await r.json();
   } catch (e) {
-    if (jsonp) return utilJsonp(url, jsonp, timeout);
+    // A blocked request (no CORS) fails at once and is worth retrying as JSONP; a timeout isn't.
+    if (jsonp && !(e && e.name === "AbortError")) return utilJsonp(url, jsonp, timeout);
     throw e;
   }
 }
-// Point-in-polygon against an ArcGIS layer. Returns attribute rows, [] if the point is outside
-// every polygon, or null if no copy of the layer answered.
+// Resolves with the first promise that succeeds; null when all of them fail.
+const firstOk = (ps) =>
+  new Promise((resolve) => {
+    let left = ps.length;
+    if (!left) resolve(null);
+    ps.forEach((p) => p.then(resolve, () => --left === 0 && resolve(null)));
+  });
+// Point-in-polygon against an ArcGIS layer. All copies are asked at once and the first answer wins.
+// Returns attribute rows, [] if the point is outside every polygon, or null if no copy answered.
 async function utilPointQuery(urls, lat, lon) {
-  for (const base of urls) {
-    const q = `${base}/query?geometry=${lon},${lat}&geometryType=esriGeometryPoint&inSR=4326&spatialRel=esriSpatialRelIntersects&outFields=*&returnGeometry=false&f=json`;
-    try {
-      const j = await utilGetJson(q, { jsonp: "callback" });
+  return firstOk(
+    urls.map(async (base) => {
+      const q = `${base}/query?geometry=${lon},${lat}&geometryType=esriGeometryPoint&inSR=4326&spatialRel=esriSpatialRelIntersects&outFields=*&returnGeometry=false&f=json`;
+      const j = await utilGetJson(q, { jsonp: "callback", timeout: 8000 });
       if (j && Array.isArray(j.features)) return j.features.map((f) => f.attributes || {});
-    } catch (e) {
-      /* try the next copy */
-    }
-  }
-  return null;
+      throw new Error("no features");
+    }),
+  );
+}
+// NREL utility rates API (free, browser-friendly): electric utility names for a point, from 2012 data.
+const NREL_KEY = "DEMO_KEY";
+async function utilNrel(lat, lon) {
+  return firstOk(
+    ["https://developer.nlr.gov", "https://developer.nrel.gov"].map(async (host) => {
+      const j = await utilGetJson(`${host}/api/utility_rates/v3.json?api_key=${NREL_KEY}&lat=${lat}&lon=${lon}`, { timeout: 8000 });
+      const names = String((j && j.outputs && j.outputs.utility_name) || "")
+        .split("|")
+        .map((x) => x.trim())
+        .filter((x) => x && !/^no data$/i.test(x));
+      if (!j || !j.outputs) throw new Error("no outputs");
+      return names.map((name) => ({ name }));
+    }),
+  );
 }
 const attr = (a, ...keys) => {
   for (const k of keys) {
@@ -458,7 +576,8 @@ const dirName = (type, name, state) => {
 function ruleItem(type, rule, state) {
   if (!rule || (!rule.dir && !rule.name)) return null;
   const d = rule.dir ? dirById(rule.dir) : null;
-  const base = d ? { ...makeUtilItem(type, "", "city"), id: d.id, name: d.name, phone: d.phone || "" } : makeUtilItem(type, rule.name, "city", { state });
+  const src = rule.basis === "county" ? "county" : "city";
+  const base = d ? { ...makeUtilItem(type, "", src), id: d.id, name: d.name, phone: d.phone || "" } : makeUtilItem(type, rule.name, src, { state, phone: rule.phone });
   return { ...base, note: rule.note || "", alt: rule.alt || [] };
 }
 // Map answer vs local rule: a rule marked `own` wins (keeping "map" as the source when they agree);
@@ -487,16 +606,19 @@ async function findUtilities(address) {
   const placeKey = placeName.toLowerCase();
   const rules = localRules(state, (geo && geo.county) || "", placeKey, placeName) || {};
   const ll = geo && isFinite(geo.lat) && isFinite(geo.lon);
-  const [el, gas, water, trash] = ll
+  const none = Promise.resolve(null);
+  const [elState, elMap, elNrel, gas, water, trash] = ll
     ? await Promise.all([
+        state === "OH" ? utilPointQuery(UTIL_LAYERS.ohElectric, geo.lat, geo.lon) : none,
         utilPointQuery(UTIL_LAYERS.electric, geo.lat, geo.lon),
+        utilNrel(geo.lat, geo.lon),
         utilPointQuery(UTIL_LAYERS.gas, geo.lat, geo.lon),
         utilPointQuery(UTIL_LAYERS.water, geo.lat, geo.lon),
-        rules.trash && rules.trash.indyLayer ? utilPointQuery(UTIL_LAYERS.indyTrash, geo.lat, geo.lon) : Promise.resolve(null),
+        rules.trash && rules.trash.indyLayer ? utilPointQuery(UTIL_LAYERS.indyTrash, geo.lat, geo.lon) : none,
       ])
-    : [null, null, null, null];
+    : [null, null, null, null, null, null];
   const items = [];
-  const fromMap = (type, rows, nameKeys, weightKeys) => {
+  const fromMap = (type, rows, nameKeys, weightKeys, via) => {
     if (!rows || !rows.length) return null;
     const sorted = [...rows].sort((a, b) => (parseFloat(attr(b, ...weightKeys)) || 0) - (parseFloat(attr(a, ...weightKeys)) || 0));
     const names = [...new Set(sorted.map((r) => attr(r, ...nameKeys)).filter(Boolean))];
@@ -507,18 +629,30 @@ async function findUtilities(address) {
       phone: attr(top, "telephone"),
       website: attr(top, "website"),
     });
+    it.via = via || "";
     it.alt = [...new Set(names.slice(1).map((n) => dirName(type, n, state)))].filter((n) => n !== it.name).slice(0, 2);
     return it;
   };
   const empty = (type, note) => ({ ...makeUtilItem(type, "", "city"), note: note || "" });
-  // electric
-  items.push(resolveUtil("electric", fromMap("electric", el, ["name"], ["customers", "total_mwh"]), rules.electric, state) || makeUtilItem("electric", "", "map"));
-  if (el === null && ll) warn.push("The electric service-area map didn't answer.");
+  // electric: the state's own map first (PUCO in Ohio), then the national map, then NREL.
+  // The first source with an answer names the provider; the others add alternatives.
+  const elSources = [
+    [elState, ["COMPANY_NAME", "name"], [], "PUCO"],
+    [elMap, ["name"], ["customers", "total_mwh"], "national map"],
+    [elNrel, ["name"], [], "NREL"],
+  ].map(([rows, keys, w, via]) => fromMap("electric", rows, keys, w, via));
+  let elItem = elSources.find(Boolean) || null;
+  if (elItem) {
+    const extra = elSources.filter((x) => x && x !== elItem).flatMap((x) => [x.name, ...x.alt]);
+    elItem.alt = [...new Set([...elItem.alt, ...extra])].filter((n) => n && n !== elItem.name).slice(0, 2);
+  }
+  items.push(resolveUtil("electric", elItem, rules.electric, state) || makeUtilItem("electric", "", "map"));
+  if (ll && elState === null && elMap === null && elNrel === null) warn.push("The electric maps didn't answer.");
   // gas
-  items.push(resolveUtil("gas", fromMap("gas", gas, ["name"], ["total_cust", "res_cust"]), rules.gas, state) || makeUtilItem("gas", "", "map"));
-  if (gas === null && ll) warn.push("The natural gas service-area map didn't answer.");
+  items.push(resolveUtil("gas", fromMap("gas", gas, ["name"], ["total_cust", "res_cust"], "national map"), rules.gas, state) || makeUtilItem("gas", "", "map"));
+  if (gas === null && ll) warn.push(rules.gas ? "The natural gas map didn't answer, so gas shows the usual company for the area." : "The natural gas map didn't answer.");
   // water
-  const w = resolveUtil("water", fromMap("water", water, ["PWS_Name"], ["Population_Served_Count"]), rules.water, state);
+  const w = resolveUtil("water", fromMap("water", water, ["PWS_Name"], ["Population_Served_Count"], "EPA map"), rules.water, state);
   items.push(w || makeUtilItem("water", "", "map"));
   if (water === null && ll) warn.push("The EPA water service-area map didn't answer.");
   // sewer: no national map — local rules, otherwise the water utility when it also runs sewer
@@ -585,7 +719,7 @@ function utilityTasks(u) {
     const what = joinTypes(types);
     const phone = it.phone ? ` Phone ${it.phone}.` : "";
     const fill = (tpl) => tpl.replace("{what}", what);
-    if ((dir && dir.noAccount) || types.every((t) => t === "trash")) {
+    if ((dir && dir.noAccount) || (types.every((t) => t === "trash") && !(dir && dir.billed))) {
       buy.push({
         ut: `${key}:buy`,
         label: `${it.name}: confirm trash pickup${it.detail ? ` (${it.detail})` : ""}`,
@@ -657,6 +791,18 @@ const sentence = (s) => {
   const t = String(s || "").trim().replace(/\.+$/, "");
   return t ? t.charAt(0).toUpperCase() + t.slice(1) + "." : "";
 };
+const utilSourceLabel = (it) =>
+  it.source === "map"
+    ? it.via === "PUCO"
+      ? "PUCO map"
+      : it.via === "NREL"
+        ? "NREL utility data"
+        : "Service-area map"
+    : it.source === "manual"
+      ? "Entered by hand"
+      : it.source === "county"
+        ? "County default"
+        : "City default";
 // ---------- card ----------
 function UtilitiesCard({ address, stage, mgmt, setMgmt }) {
   const [busy, setBusy] = useState(false);
@@ -785,7 +931,7 @@ function UtilitiesCard({ address, stage, mgmt, setMgmt }) {
                               {it.confirmed ? (
                                 <em className="util-ok">Confirmed</em>
                               ) : it.name ? (
-                                <em className="util-src">{it.source === "map" ? "Service-area map" : it.source === "manual" ? "Entered by hand" : "City default"}, verify</em>
+                                <em className="util-src">{utilSourceLabel(it)}, verify</em>
                               ) : null}
                               {it.alt && it.alt.length > 0 && (
                                 <>
@@ -838,7 +984,11 @@ function UtilitiesCard({ address, stage, mgmt, setMgmt }) {
                             {it.phone && <span>{it.phone}</span>}
                           </div>
                         ) : (
-                          <span className="dt-mute">—</span>
+                          <div className="util-links">
+                            <a href={searchLink(`${u.matched || u.address} ${UTIL_LABEL[it.type].toLowerCase()} provider`)} target="_blank" rel="noopener noreferrer">
+                              Look it up <Icon name="link" size={12} />
+                            </a>
+                          </div>
                         )}
                       </td>
                       <td>{st ? <span className={"util-st " + st.tone}>{st.label}</span> : <span className="dt-mute">—</span>}</td>

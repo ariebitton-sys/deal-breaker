@@ -165,11 +165,15 @@ async function boot({ drive, settings, anthropic, localStorageInit, geo } = {}) 
           /maps\.nccs\.nasa\.gov\/.*FeatureServer\/29\//.test(su) ? "maps.nccs.nasa.gov/29" :
           /Water_System_Boundaries/.test(su) ? "services.arcgis.com/Water_System_Boundaries" :
           /indy\.gov\/.*SolidWaste/.test(su) ? "gis.indy.gov/SolidWaste" :
+          /tims\.dot\.state\.oh\.us\/.*PUCO_Electric/.test(su) ? "puco" :
+          /eedgis\.pnnl\.gov/.test(su) ? "pnnl" :
+          /\/api\/utility_rates\/v3/.test(su) ? "nrel" :
           /services1\.arcgis\.com|nominatim\.openstreetmap\.org/.test(su) ? "other" : null;
         if (geoHit) {
           geoCalls.push(su);
           const rows = G.layers && G.layers[geoHit];
           if (rows instanceof Error || rows === undefined) throw rows || new Error("offline");
+          if (geoHit === "nrel") return { ok: true, status: 200, json: async () => ({ outputs: { utility_name: rows } }) };
           return { ok: true, status: 200, json: async () => (geoHit === "other" ? [] : { features: rows.map((a) => ({ attributes: a })) }) };
         }
         if (String(url).startsWith("https://api.anthropic.com")) {
