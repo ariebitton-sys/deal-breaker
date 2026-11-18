@@ -59,17 +59,25 @@ function Checklist({ items, onChange, by }) {
         </div>
       </div>
       {items.map((i) => (
-        <div key={i.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "4px 0", borderBottom: `1px solid ${T.border}` }}>
+        <div key={i.id} style={{ display: "flex", alignItems: "flex-start", gap: 8, padding: "6px 0", borderBottom: `1px solid ${T.border}` }}>
           <input type="checkbox" checked={!!i.done} onChange={() => toggle(i.id)} style={{ cursor: "pointer" }} />
-          <span style={{ flex: 1, fontSize: 12.5, color: i.done ? T.txtMute : T.txt, textDecoration: i.done ? "line-through" : "none" }}>{i.label}</span>
+          <span style={{ flex: 1, minWidth: 0 }}>
+            <span style={{ fontSize: 13, color: i.done ? T.txtMute : T.txt, textDecoration: i.done ? "line-through" : "none" }}>{i.label}</span>
+            {i.note && !i.done && <span style={{ display: "block", fontSize: 12, color: T.txtMute, marginTop: 1 }}>{i.note}</span>}
+          </span>
+          {i.url && (
+            <a href={i.url} target="_blank" rel="noopener noreferrer" className="ck-link" title="Open the provider's page">
+              Open <Icon name="link" size={12} />
+            </a>
+          )}
           {i.done && i.doneAt && (
             <span style={{ fontSize: 10, color: T.txtMute, fontFamily: MONO }}>
               {fmtDateShort(isoOf(new Date(i.doneAt)))}
               {i.by ? `, ${nameOnly(i.by)}` : ""}
             </span>
           )}
-          <button onClick={() => onChange(items.filter((x) => x.id !== i.id))} title="Remove" style={iconBtn()}>
-            ×
+          <button onClick={() => onChange(items.filter((x) => x.id !== i.id))} title="Remove" aria-label="Remove item" style={iconBtn()}>
+            <Icon name="x" size={13} />
           </button>
         </div>
       ))}

@@ -757,7 +757,7 @@ function OvStat({ k, v, h, tone, big }) {
     </div>
   );
 }
-function ProjectOverview({ address, mapsKey, folderId, photosUrl, sqft, yearBuilt, arv, purchase, stage, mgmt, m, deal, mao, uwBaseline, actuals, actualSale, analysisDate, health, onGo }) {
+function ProjectOverview({ address, mapsKey, folderId, photosUrl, sqft, yearBuilt, arv, purchase, stage, mgmt, setMgmt, m, deal, mao, uwBaseline, actuals, actualSale, analysisDate, health, onGo }) {
   const today = todayISO();
   const [street, city] = splitAddress(address || "");
   const q = encodeURIComponent((address || "").trim());
@@ -1043,6 +1043,7 @@ function ProjectOverview({ address, mapsKey, folderId, photosUrl, sqft, yearBuil
           )}
         </OvCard>
       </div>
+      {stage !== "dead" && <UtilitiesCard address={address} stage={stage} mgmt={mgmt} setMgmt={setMgmt} />}
       <div className="ov-lower">
         <OvCard icon="cal" title="Key dates">
           <div className="ov-k">Transaction</div>

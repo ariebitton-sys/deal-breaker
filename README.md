@@ -18,7 +18,7 @@ The source is in `source/`:
 | --- | --- |
 | `app.jsx` | Main app: calculator, state, Drive save/load |
 | `src/pipeline_core.jsx` | Deal model, stages, summaries, Drive and Claude helpers |
-| `src/pipeline_ui_*.jsx` | UI: stages and modals (a), deal cards (b), management (c), AI document import (d), shell pieces (e), dashboards, project overview and budget vs actual (f) |
+| `src/pipeline_ui_*.jsx` | UI: stages and modals (a), deal cards (b), management (c), AI document import (d), shell pieces (e), dashboards, project overview and budget vs actual (f), utilities lookup and transfer tasks (g) |
 | `head.html`, `extra.css`, `logo.html` | Page head, styles, embedded logo |
 | `VERSION` | Version label shown in the footer |
 | `test/` | Calculation regression tests and full-flow UI tests (jsdom) |
@@ -27,7 +27,7 @@ The source is in `source/`:
 cd source
 npm install        # once
 python3 build.py   # writes ../index.html
-npm test           # calc + flow + draft + key tests
+npm test           # calc, flow, draft, key and utilities tests
 ```
 
 Then commit `index.html` together with the source change and push to `main`.

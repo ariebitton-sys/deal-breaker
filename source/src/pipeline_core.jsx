@@ -180,6 +180,7 @@ const emptyMgmt = () => ({
   log: [],
   lessons: "",
   analyses: [],
+  utilities: null,
 });
 function mergeMgmt(x) {
   const e = emptyMgmt();
@@ -206,6 +207,7 @@ function mergeMgmt(x) {
     log: x.log || [],
     lessons: x.lessons || "",
     analyses: Array.isArray(x.analyses) ? x.analyses : [],
+    utilities: x.utilities && Array.isArray(x.utilities.items) ? x.utilities : null,
     dead: x.dead || null,
   };
 }
@@ -458,6 +460,11 @@ function summarizeDeal(d) {
     rte: mg.rehab.targetEnd || undefined,
     red: mg.rehab.endDate || undefined,
     mp: milestonePct(mg.rehab.milestones),
+    // open utility set-up tasks while under contract (for the "closing soon" warning)
+    uo: (() => {
+      const n = ((mg.checklists && mg.checklists.contract) || []).filter((i) => i.ut && /:buy$/.test(i.ut) && !i.done).length;
+      return n || undefined;
+    })(),
     nm: (() => {
       const ms = mg.rehab.milestones || [];
       const x = ms.find((y) => y.status === "doing") || ms.find((y) => y.status !== "done");
@@ -524,6 +531,7 @@ function attentionFor(s, today) {
     else if (dc != null && dc <= 7) out.push({ lvl: "amber", text: `Closing ${relDays(dc)}` });
     const di = daysBetween(t, s.ied);
     if (di != null && di >= 0 && di <= 3) out.push({ lvl: "amber", text: `Inspection period ends ${relDays(di)}` });
+    if (s.uo && dc != null && dc <= 7) out.push({ lvl: "amber", text: `${s.uo} utility task${s.uo === 1 ? "" : "s"} still open before closing` });
   }
   if (st === "rehab") {
     if (s.rb > 0 && s.rsp > s.rb * 1.1) out.push({ lvl: "red", text: `Rehab over budget by ${Math.round((s.rsp / s.rb - 1) * 100)}%` });

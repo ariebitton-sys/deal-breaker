@@ -18,6 +18,7 @@ const sentenceCase = (s) => {
 
 // ---------- tiny line icons (no emoji in the chrome) ----------
 const ICONS = {
+  plug: "M9 2v6M15 2v6M6 8h12v3a6 6 0 0 1-12 0zM12 17v5",
   grid: "M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z",
   funnel: "M4 5h16l-6 8v6l-4-2v-4z",
   hammer: "M14 4l6 6-3 3-6-6zM11 7l-8 8 3 3 8-8",

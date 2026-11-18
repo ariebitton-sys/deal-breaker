@@ -95,7 +95,30 @@ function makeDrive() {
   return { files, bins, addBinary, add, handle, calls, touch: (id, by) => ((files[id].modifiedTime = tick()), (files[id].lastModifyingUser = { displayName: by || "Partner", emailAddress: "partner@kappainv.com" })) };
 }
 
-async function boot({ drive, settings, anthropic, localStorageInit } = {}) {
+// Default answers from the free map services, for a property at 4623 Carrollton Ave, Indianapolis.
+const GEO_FIXTURE = {
+  census: {
+    result: {
+      addressMatches: [
+        {
+          matchedAddress: "4623 CARROLLTON AVE, INDIANAPOLIS, IN, 46205",
+          coordinates: { x: -86.1419, y: 39.8393 },
+          addressComponents: { city: "INDIANAPOLIS", state: "IN", zip: "46205" },
+          geographies: { "Incorporated Places": [{ NAME: "Indianapolis city (balance)", BASENAME: "Indianapolis" }], Counties: [{ NAME: "Marion County", BASENAME: "Marion" }] },
+        },
+      ],
+    },
+  },
+  layers: {
+    "maps.nccs.nasa.gov/26": [{ name: "INDIANAPOLIS POWER & LIGHT CO", telephone: "317-261-8261", website: "https://www.aesindiana.com", customers: 500000 }],
+    "maps.nccs.nasa.gov/29": [{ name: "CITIZENS GAS", total_cust: 270000 }],
+    "services.arcgis.com/Water_System_Boundaries": [{ PWS_Name: "CITIZENS WATER", Population_Served_Count: 800000 }],
+    "gis.indy.gov/SolidWaste": [{ HAULER: "LRS", DISTRICT: 7, DAY_: "TUESDAY" }],
+  },
+};
+async function boot({ drive, settings, anthropic, localStorageInit, geo } = {}) {
+  const G = geo || GEO_FIXTURE;
+  const geoCalls = [];
   let html = fs.readFileSync(path.join(__dirname, "../../index.html"), "utf8");
   html = html
     .replace('<script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>', () => "<script>" + REACT + "</script>")
@@ -127,7 +150,28 @@ async function boot({ drive, settings, anthropic, localStorageInit } = {}) {
           },
         },
       };
+      win.__jsonpMock = async (url) => {
+        geoCalls.push(url);
+        if (/geocoding\.geo\.census\.gov/.test(url)) {
+          if (G.census instanceof Error) throw G.census;
+          return G.census;
+        }
+        throw new Error("jsonp not mocked: " + url);
+      };
       win.fetch = async (url, opts) => {
+        const su = String(url);
+        const geoHit =
+          /maps\.nccs\.nasa\.gov\/.*FeatureServer\/26\//.test(su) ? "maps.nccs.nasa.gov/26" :
+          /maps\.nccs\.nasa\.gov\/.*FeatureServer\/29\//.test(su) ? "maps.nccs.nasa.gov/29" :
+          /Water_System_Boundaries/.test(su) ? "services.arcgis.com/Water_System_Boundaries" :
+          /indy\.gov\/.*SolidWaste/.test(su) ? "gis.indy.gov/SolidWaste" :
+          /services1\.arcgis\.com|nominatim\.openstreetmap\.org/.test(su) ? "other" : null;
+        if (geoHit) {
+          geoCalls.push(su);
+          const rows = G.layers && G.layers[geoHit];
+          if (rows instanceof Error || rows === undefined) throw rows || new Error("offline");
+          return { ok: true, status: 200, json: async () => (geoHit === "other" ? [] : { features: rows.map((a) => ({ attributes: a })) }) };
+        }
         if (String(url).startsWith("https://api.anthropic.com")) {
           anthropicCalls.push({ url, opts, body: JSON.parse(opts.body) });
           return anthropic(JSON.parse(opts.body), opts);
@@ -180,6 +224,6 @@ async function boot({ drive, settings, anthropic, localStorageInit } = {}) {
     return ms[ms.length - 1] || null;
   };
   await settle(10);
-  return { dom, win, doc, errors, anthropicCalls, settle, sleep, text, btn, click, setVal, field, modal };
+  return { dom, win, doc, errors, anthropicCalls, geoCalls, settle, sleep, text, btn, click, setVal, field, modal };
 }
-module.exports = { boot, makeDrive };
+module.exports = { boot, makeDrive, GEO_FIXTURE };

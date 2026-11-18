@@ -3736,6 +3736,7 @@ function App() {
             purchase={purchase}
             stage={stage}
             mgmt={mgmt}
+            setMgmt={setMgmt}
             m={m}
             deal={deal}
             mao={mao}
