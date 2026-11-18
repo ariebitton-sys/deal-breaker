@@ -1,0 +1,43 @@
+(function(){
+const dTxn=(o)=>{const b={};["escrow","recording","realtor","transfer","warranty","staging","marketing","misc"].forEach(k=>b[k]={on:false,val:0});return Object.assign(b,o||{});};
+const base=(addr,o)=>Object.assign({address:addr,sqft:1300,holdMonths:5,arv:210000,yearBuilt:1948,purchase:105000,repairs:[],useRepairBuilder:false,manualRepair:42000,loanOnPurchasePct:.8,loanOnRehabPct:1,intRatePurchase:.18,intRateRehab:.16,points:1800,investorAuto:true,investorRate:.09,analysisDate:"2026-08-02",insMonthly:120,utilGas:75,utilWater:75,utilElec:50,buyTxn:dTxn({escrow:{on:true,val:1200},transfer:{on:true,val:.45}}),sellTxn:dTxn({escrow:{on:true,val:1500},realtor:{on:true,val:6},transfer:{on:true,val:.4},staging:{on:true,val:1500}}),actuals:[],actualSale:0,savedAt:"2026-11-16T09:00:00Z"},o||{});
+const ms=(n)=>["Demo & cleanout","Roof & exterior","Rough-ins (plumbing / electric / HVAC)","Permits & inspections","Drywall","Kitchen","Bathrooms","Flooring","Paint","Fixtures & finishes","Landscaping","Final clean & punch list"].map((l,i)=>({id:"m"+i,label:l,status:i<n?"done":i===n?"doing":"todo"}));
+const snap=(np,g,rep,arv,pp,h)=>({date:"2026-08-20",by:"arie@kappainv.com",inputs:{arv,purchase:pp,repair:rep,holdMonths:h},m:{purchase:pp,repair:rep,netProfit:np,totalBuying:1700,totalFinancing:11800,totalHolding:1600,totalSelling:17300,totalCosts:arv-np},grade:g,riskLevel:3,threshold:40000});
+const log=(t,by,ts)=>({id:Math.random().toString(36).slice(2),ts,by,text:t});
+const deals=[
+ base("3417 W 98th St, Cleveland, OH 44102",{stage:"rehab",purchase:98000,manualRepair:46000,uwBaseline:snap(31200,"C",46000,215000,98000,5),
+   mgmt:{source:"Wholesaler",contract:{date:"2026-09-02",price:98000,expectedClosing:"2026-10-01",inspectionEnd:"2026-09-12",emd:2000},closing:{date:"2026-10-01",price:98000},rehab:{startDate:"2026-10-03",targetEnd:"2027-01-03",endDate:"",milestones:ms(5)},
+   contacts:[{id:"c1",role:"Contractor",name:"Dan Kowalski",company:"DK Renovations",phone:"216-555-0142",email:"dan@dkreno.com"},{id:"c2",role:"Title company",name:"Lisa Park",company:"Ohio Real Title",phone:"216-555-0110",email:""}],
+   log:[log("Drywall started on 2nd floor; kitchen cabinets delivered","partner@kappainv.com","2026-11-15T15:20:00Z"),log("Rough-in electrical passed city inspection","arie@kappainv.com","2026-11-08T11:05:00Z")]},
+   actuals:[{id:1,cat:"Acquisition",label:"Purchase price",amount:98000,date:"2026-10-01",tag:"purchase_price",files:[]},{id:2,cat:"Acquisition",label:"Settlement fee to Ohio Real Title",amount:495,date:"2026-10-01",files:[]},{id:3,cat:"Rehab / Construction",label:"DK Renovations — draw 1",amount:14000,date:"2026-10-10",files:[]},{id:4,cat:"Rehab / Construction",label:"DK Renovations — draw 2",amount:12500,date:"2026-11-01",files:[]},{id:5,cat:"Holding",label:"Insurance — annual",amount:1440,date:"2026-10-02",files:[]}]}),
+ base("1876 Lakeland Ave, Lakewood, OH 44107",{stage:"market",purchase:142000,arv:265000,manualRepair:58000,uwBaseline:snap(38400,"C+",58000,265000,142000,6),
+   mgmt:{source:"MLS",contract:{date:"2026-06-10",price:142000,expectedClosing:"2026-07-08",emd:3000},closing:{date:"2026-07-08",price:142000},rehab:{startDate:"2026-07-09",targetEnd:"2026-09-30",endDate:"2026-10-05",milestones:ms(12)},listing:{date:"2026-10-10",price:254900,agent:"Mike R. / Howard Hanna",prices:[{date:"2026-10-10",price:264900},{date:"2026-11-02",price:254900}],offers:[]},buyer:{date:"",price:0}}}),
+ base("4520 Sandusky Blvd, Cleveland, OH 44105",{stage:"contract",purchase:76000,arv:168000,manualRepair:31000,uwBaseline:snap(27100,"C+",31000,168000,76000,4),mgmt:{source:"Off-market / direct",contract:{date:"2026-11-04",price:76000,expectedClosing:"2026-11-21",inspectionEnd:"2026-11-18",emd:1500}}}),
+ base("907 Brookpark Rd, Parma, OH 44129",{stage:"sold",purchase:121000,arv:238000,manualRepair:39000,actualSale:241500,uwBaseline:snap(36900,"C",39000,238000,121000,5),
+   mgmt:{contract:{date:"2026-03-01",price:121000},closing:{date:"2026-03-28",price:121000},rehab:{startDate:"2026-03-30",targetEnd:"2026-06-15",endDate:"2026-06-20",milestones:ms(12)},listing:{date:"2026-06-25",price:244900,prices:[{date:"2026-06-25",price:244900}]},buyer:{date:"2026-07-12",price:241500,expectedClosing:"2026-08-14"},sale:{date:"2026-08-14"}},
+   actuals:[{id:1,cat:"Acquisition",label:"Purchase price",amount:121000,date:"2026-03-28",files:[]},{id:2,cat:"Acquisition",label:"Closing costs",amount:2210,date:"2026-03-28",files:[]},{id:3,cat:"Rehab / Construction",label:"Contractor",amount:42600,date:"2026-06-01",files:[]},{id:4,cat:"Financing",label:"Lender interest + investor return",amount:15900,date:"2026-08-14",files:[]},{id:5,cat:"Holding",label:"Utilities & insurance",amount:2100,date:"2026-08-14",files:[]},{id:6,cat:"Selling",label:"Commission, title, conveyance",amount:18620,date:"2026-08-14",files:[]}]}),
+ base("2245 Elmwood Ave, Lakewood, OH 44107",{stage:"analyzing",purchase:118000,arv:232000,mgmt:{source:"MLS",offers:[{id:"o1",date:"2026-11-14",amount:112000,status:"Countered"}]}}),
+ base("15600 Puritas Ave, Cleveland, OH 44135",{stage:"analyzing",purchase:64000,arv:142000,manualRepair:28000,holdMonths:4,mgmt:{source:"Facebook group"}}),
+ base("3301 Fulton Rd, Cleveland, OH 44109",{stage:"dead",mgmt:{dead:{date:"2026-10-20",reason:"Inspection issues",note:"Foundation crack — $25k+",fromStage:"contract"}}}),
+];
+const files={};let seq=1;
+deals.forEach((d,i)=>{const id="f"+(seq++);files[id]={id,name:d.address+".json",content:JSON.stringify(d),modifiedTime:new Date(Date.parse("2026-11-16T12:00:00Z")-i*86400000*2).toISOString(),appProperties:{},lastModifyingUser:{displayName:i%2?"Partner":"Arie Bitton",emailAddress:i%2?"partner@kappainv.com":"arie@kappainv.com"}};});
+const J=(o,s=200)=>Promise.resolve({ok:s<400,status:s,json:async()=>o,text:async()=>JSON.stringify(o)});
+window.__STMT=null;
+window.fetch=async(url,opts={})=>{url=String(url);const m=(opts.method||"GET").toUpperCase();const u=new URL(url);
+ if(url.startsWith("https://api.anthropic.com")){await new Promise(r=>setTimeout(r,300));const b=JSON.parse(opts.body);const isSow=/Scope of Work/.test(b.messages[0].content[1].text);return J({content:[{type:"text",text:JSON.stringify(isSow?window.__SOW:window.__STMT)}],stop_reason:"end_turn"});}
+ if(u.pathname==="/drive/v3/files"&&m==="GET"&&/application\/pdf/.test(u.searchParams.get("q")||"")){const pdfs=[["3417 W 98th - ALTA final.pdf","application/pdf",412000],["3417 W 98th - lender CD.pdf","application/pdf",268000],["DK Renovations bid - W 98th","application/vnd.google-apps.document",0],["Lakeland - seller statement.pdf","application/pdf",301000],["W98 kitchen photo.jpg","image/jpeg",1800000]].map((x,i)=>({id:"pdf"+i,name:x[0],mimeType:x[1],size:x[2]?String(x[2]):undefined,modifiedTime:new Date(Date.parse("2026-11-15T12:00:00Z")-i*86400000*3).toISOString()}));const nm=((u.searchParams.get("q")||"").match(/name contains '([^']*)'/)||[])[1];return J({files:pdfs.filter(f=>!nm||f.name.toLowerCase().includes(nm.toLowerCase()))});}
+ if(/^\/drive\/v3\/files\/pdf\d/.test(u.pathname))return Promise.resolve({ok:true,status:200,arrayBuffer:async()=>new TextEncoder().encode("%PDF-1.4 x").buffer});
+ if(u.pathname==="/oauth2/v3/userinfo")return J({email:"arie@kappainv.com"});
+ if(u.pathname==="/drive/v3/files"&&m==="GET")return J({files:Object.values(files).sort((a,b)=>b.modifiedTime.localeCompare(a.modifiedTime)).map(f=>({id:f.id,name:f.name,modifiedTime:f.modifiedTime,appProperties:f.appProperties,lastModifyingUser:f.lastModifyingUser}))});
+ const mm=u.pathname.match(/^\/drive\/v3\/files\/([^/]+)$/);
+ if(mm&&m==="GET"){const f=files[mm[1]];if(u.searchParams.get("alt")==="media")return J(JSON.parse(f.content));return J({id:f.id,name:f.name,modifiedTime:f.modifiedTime,lastModifyingUser:f.lastModifyingUser});}
+ return J({id:"x",modifiedTime:new Date().toISOString(),name:"x"});};
+window.google={accounts:{oauth2:{initTokenClient:(cfg)=>({requestAccessToken:()=>setTimeout(()=>cfg.callback({access_token:"t"}),0)})}}};
+window.IntersectionObserver=class{observe(){}disconnect(){}};
+localStorage.setItem("kappa_settings",JSON.stringify({clientId:"c",folderId:"f",anthropicKey:"sk-ant-x"}));
+localStorage.setItem("kappa_pf_filter","all");
+// freeze "today" for consistent screenshots
+const RealDate=Date;const FIX=RealDate.parse("2026-11-17T08:00:00Z");
+window.Date=class extends RealDate{constructor(...a){if(!a.length)super(FIX);else super(...a);}static now(){return FIX;}};
+})();
