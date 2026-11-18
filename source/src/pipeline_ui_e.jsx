@@ -193,7 +193,7 @@ function ResultsRail({ deal, m, mao, purchase, arv, investorAmount, sqft, gradeR
   return (
     <aside className="rail">
       <div ref={gradeRef} className="rail-grade" onMouseEnter={() => onGradeHover(true)} onMouseLeave={() => onGradeHover(false)} title="Hover to see how this grade was calculated">
-        <div className="rail-letter" style={{ color: deal.grade === "REJECT" ? T.red : T.txt }}>
+        <div className={"rail-letter" + (deal.grade === "REJECT" ? " word" : "")} style={{ color: deal.grade === "REJECT" ? T.red : T.txt }}>
           {deal.grade === "REJECT" ? "Reject" : deal.grade}
         </div>
         <div className="rail-grade-meta">
