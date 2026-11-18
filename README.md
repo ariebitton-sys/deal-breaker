@@ -18,7 +18,7 @@ The source is in `source/`:
 | --- | --- |
 | `app.jsx` | Main app: calculator, state, Drive save/load |
 | `src/pipeline_core.jsx` | Deal model, stages, summaries, Drive and Claude helpers |
-| `src/pipeline_ui_*.jsx` | UI: stages and modals (a), deal cards (b), management (c), AI document import (d), shell pieces (e), dashboards, project overview and budget vs actual (f), utilities lookup and transfer tasks (g) |
+| `src/pipeline_ui_*.jsx` | UI: stages and modals (a), deal cards (b), management (c), AI document import (d), shell pieces (e), dashboards, project overview and budget vs actual (f), utilities lookup and transfer tasks, with local rules for Indianapolis (Marion County) and Cleveland (Cuyahoga County) (g) |
 | `head.html`, `extra.css`, `logo.html` | Page head, styles, embedded logo |
 | `VERSION` | Version label shown in the footer |
 | `test/` | Calculation regression tests and full-flow UI tests (jsdom) |
