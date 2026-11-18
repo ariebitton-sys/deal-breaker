@@ -73,6 +73,12 @@ const DASH_META = {
   portfolio: { title: "Portfolio", sub: "Sold flips and how they did against the plan", stages: ["sold"] },
   dead: { title: "Dead deals", sub: "Deals that didn't go ahead", stages: ["dead"] },
 };
+// What an empty dashboard says: where its deals come from.
+const DASH_EMPTY = {
+  portfolio:
+    "No sold flips yet. When a sale closes, open the deal and choose \u201cMark as sold\u201d: it moves here with the actual profit, the hold time and how it did against the original plan.",
+  dead: "No dead deals. Deals you mark as dead from \u201cMore\u201d on a deal are kept here for reference.",
+};
 // Older saved filters (v26–v29) map onto the new dashboards.
 const normDash = (k) =>
   DASH_META[k] ? k : k === "analyzing" ? "leads" : ["contract", "rehab", "market"].includes(k) ? "active" : k === "sold" ? "portfolio" : "overview";
@@ -453,7 +459,7 @@ function Dashboard({ filter: rawFilter, files, summaries, busy, connected, hasCl
           ) : ql ? (
             `No deals match “${q}”.`
           ) : (
-            `No deals in ${meta.title.toLowerCase()} yet.`
+            DASH_EMPTY[filter] || `No deals in ${meta.title.toLowerCase()} yet.`
           )}
         </div>
       ) : lay === "board" ? (

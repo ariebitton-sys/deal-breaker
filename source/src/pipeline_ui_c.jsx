@@ -106,8 +106,10 @@ function MiniRow({ label, value, color, strong }) {
 }
 
 // ----- Analyzing: source & offers we sent -----
-function OffersMade({ mgmt, upd, addLog }) {
+// `past`: the deal has moved beyond analyzing, so the offers are history and the form stays folded.
+function OffersMade({ mgmt, upd, addLog, past }) {
   const [d, setD] = useState({ date: todayISO(), amount: 0, status: "Sent", note: "" });
+  const [adding, setAdding] = useState(!past);
   const add = () => {
     if (!(d.amount > 0)) return;
     upd("offers", [...mgmt.offers, { ...d, id: uid() }]);
@@ -119,7 +121,7 @@ function OffersMade({ mgmt, upd, addLog }) {
     <div>
       <SelectIn label="Deal source" value={mgmt.source} onChange={(v) => upd("source", v)} options={DEAL_SOURCES} placeholder="— select —" style={{ maxWidth: 280 }} />
       <div style={subHead()}>Offers we made</div>
-      {mgmt.offers.length === 0 && <div style={{ fontSize: 12, color: T.txtMute, marginBottom: 8 }}>No offers logged yet.</div>}
+      {mgmt.offers.length === 0 && <div style={{ fontSize: 12, color: T.txtMute, marginBottom: 8 }}>{past ? "No offers were logged for this deal." : "No offers logged yet."}</div>}
       {mgmt.offers.map((o) => (
         <div key={o.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "5px 0", borderBottom: `1px solid ${T.border}`, flexWrap: "wrap" }}>
           <span style={{ fontFamily: MONO, fontSize: 11.5, color: T.txtMute, width: 74 }}>{fmtDateShort(o.date)}</span>
@@ -135,6 +137,11 @@ function OffersMade({ mgmt, upd, addLog }) {
           </button>
         </div>
       ))}
+      {!adding ? (
+        <button className="link-btn" onClick={() => setAdding(true)} style={{ marginTop: 8, fontSize: 12.5 }}>
+          Log an offer
+        </button>
+      ) : (
       <div className="offer-add" style={{ display: "grid", gap: 8, gridTemplateColumns: "130px 120px 120px 1fr auto", marginTop: 10, alignItems: "end" }}>
         <TextIn type="date" value={d.date} onChange={(v) => setD({ ...d, date: v })} style={{ marginBottom: 0 }} />
         <Field label="" value={d.amount} onChange={(v) => setD({ ...d, amount: v })} prefix="$" step={1000} />
@@ -144,6 +151,7 @@ function OffersMade({ mgmt, upd, addLog }) {
           + Offer
         </button>
       </div>
+      )}
     </div>
   );
 }
@@ -944,7 +952,7 @@ function ManagementTab(p) {
     ];
   })();
   const sectionSummary = {
-    analyzing: `${mgmt.source || "no source"}, ${mgmt.offers.length} offer${mgmt.offers.length === 1 ? "" : "s"}`,
+    analyzing: `${mgmt.source ? `Source: ${mgmt.source}` : "Source not set"}, ${mgmt.offers.length ? `${mgmt.offers.length} offer${mgmt.offers.length === 1 ? "" : "s"} logged` : "no offers logged"}`,
     contract: `${fmt(num(c.price))}, contract ${fmtDateShort(c.date)}, EMD ${fmt(num(c.emd))}`,
     rehab: `closed ${fmtDateShort(mgmt.closing.date)}, ${fmt(rehabSpent)} spent, ${mp || 0}% done`,
     market: `listed ${fmtDateShort(mgmt.listing.date)} at ${fmt(num(mgmt.listing.price))}`,
@@ -973,7 +981,7 @@ function ManagementTab(p) {
               onToggle={() => setOpen((o) => ({ ...o, [s.key]: !o[s.key] }))}
               summary={sectionSummary[s.key]}
             >
-              {s.key === "analyzing" && <OffersMade mgmt={mgmt} upd={upd} addLog={addLog} />}
+              {s.key === "analyzing" && <OffersMade mgmt={mgmt} upd={upd} addLog={addLog} past={curKey !== "analyzing"} />}
               {s.key === "contract" && (
                 <React.Fragment>
                   <div className="field-grid-2" style={grid2}>

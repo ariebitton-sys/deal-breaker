@@ -70,6 +70,20 @@ const mk = (address, stage, extra) => ({
   await t.click(t.btn("Discard and open"));
   await t.sleep(40); await t.settle(10);
   assert(addr() === "200 Beta Ave, Cleveland, OH 44103", "discard → second deal opened");
+
+  console.log("5. Empty Portfolio explains how deals get there; past stages keep forms folded");
+  await t.click(nav(/^\s*Portfolio/));
+  assert(/No sold flips yet\. When a sale closes, open the deal and choose “Mark as sold”/.test(t.text()), "empty Portfolio explains how sold deals land there");
+  await t.click(nav(/^\s*Active projects/));
+  await openRow("200 Beta Ave");
+  await t.click(nav(/^Stages and milestones$/));
+  const anaHead = [...t.doc.querySelectorAll(".stg-head")].find((b) => /Analyzing/.test(b.textContent));
+  assert(/Source not set, no offers logged/.test(anaHead.textContent), "collapsed Analyzing shows a one-line summary");
+  await t.click(anaHead);
+  const ana = anaHead.closest("section");
+  assert(/No offers were logged for this deal/.test(ana.textContent) && !/\+ Offer/.test(ana.textContent) && /Log an offer/.test(ana.textContent), "past Analyzing: history only, the offer form folded behind “Log an offer”");
+  await t.click(t.btn("Log an offer", ana));
+  assert(/\+ Offer/.test(ana.textContent), "“Log an offer” opens the form");
   assert(t.errors.length === 0, "no errors " + t.errors.join(" | "));
   console.log("\nALL NAV TESTS PASSED");
   process.exit(0);
