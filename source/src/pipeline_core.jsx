@@ -639,6 +639,7 @@ async function testAnthropicKey(apiKey) {
 }
 const STMT_CATEGORIES = [
   "price",
+  "assignment",
   "deposit",
   "loan",
   "payoff",
@@ -660,12 +661,25 @@ const STMT_CATEGORIES = [
 const STMT_SCHEMA = {
   type: "object",
   additionalProperties: false,
-  required: ["document_type", "closing_date", "property_address", "price", "lines"],
+  required: ["document_type", "closing_date", "property_address", "price", "totals", "lines"],
   properties: {
     document_type: { type: "string" },
     closing_date: { type: "string" },
     property_address: { type: "string" },
     price: { type: "number" },
+    totals: {
+      type: "object",
+      additionalProperties: false,
+      required: ["buyer_debits", "buyer_credits", "due_from_buyer", "seller_debits", "seller_credits", "due_to_seller"],
+      properties: {
+        buyer_debits: { type: "number" },
+        buyer_credits: { type: "number" },
+        due_from_buyer: { type: "number" },
+        seller_debits: { type: "number" },
+        seller_credits: { type: "number" },
+        due_to_seller: { type: "number" },
+      },
+    },
     lines: {
       type: "array",
       items: {
@@ -693,7 +707,12 @@ Extract EVERY individual charge or credit line into "lines". For each line give 
 - Description: the line text, plus the payee if shown (e.g. "Settlement fee to ABC Title").
 
 category (pick one):
-price = contract sales price; deposit = earnest money / deposit; loan = new loan amount / principal;
+price = contract sales price (what the seller sells for);
+assignment = money the buyer pays for the right to buy the property, on top of the sales price: assignment fees, wholesale / wholesaler fees,
+  "Joint Venture Agreement" (JV) payments, contract assignment or finder's fees paid to the assignor or JV partners. These are part of the
+  buyer's real purchase price, NOT closing costs. Title, escrow, settlement or attorney services are never "assignment";
+deposit = earnest money / deposit (EMD) the buyer paid before closing, usually a buyer credit such as "Deposit held by ...";
+loan = new loan amount / principal;
 payoff = payoff of an existing loan's principal (or a combined payoff total); payoff_interest = interest itemized on a payoff;
 title_settlement = settlement/closing/escrow fees, title insurance premiums, endorsements, CPL, title search/exam, attorney/doc fees charged by title or attorney;
 recording = recording fees; transfer_tax = transfer, conveyance or deed taxes; commission = real-estate commissions;
@@ -704,6 +723,11 @@ hoa = HOA dues, transfer or estoppel fees; utilities = water/sewer/utility bills
 concession = seller credits, concessions, repair credits between buyer and seller; misc = anything else (courier, wire, notary, admin, municipal certs).
 
 closing_date: settlement/closing date as YYYY-MM-DD ("" if not shown). price: the contract sales price (0 if not shown). document_type: a short name of the form.
+
+totals: copy the statement's own summary rows exactly as printed (0 if not shown):
+buyer_debits / buyer_credits = the Borrower/Buyer column Subtotals; due_from_buyer = "Due From Borrower", "Cash from Borrower" or "Cash to Close"
+(what the buyer brings to closing); seller_debits / seller_credits = the Seller column Subtotals; due_to_seller = "Due To Seller" / "Cash to Seller".
+These are used to check that every line was read, so never compute them yourself.
 Return only the JSON object.`;
 const fileToBase64 = (file) =>
   new Promise((resolve, reject) => {
@@ -854,11 +878,22 @@ async function extractClosingStatement(apiKey, payload) {
   }));
   out.price = num(out.price);
   out.closing_date = /^\d{4}-\d{2}-\d{2}$/.test(out.closing_date || "") ? out.closing_date : "";
+  const tt = out.totals || {};
+  out.totals = {
+    buyer_debits: num(tt.buyer_debits),
+    buyer_credits: num(tt.buyer_credits),
+    due_from_buyer: num(tt.due_from_buyer),
+    seller_debits: num(tt.seller_debits),
+    seller_credits: num(tt.seller_credits),
+    due_to_seller: num(tt.due_to_seller),
+  };
   return out;
 }
 // Where each statement category lands, per side. "txn:<key>" = a Buying/Selling cost row.
 const STMT_TARGETS = {
   buy: [
+    ["price", "Purchase price (incl. assignment / JV)"],
+    ["deposit", "EMD / deposit, paid before closing"],
     ["txn:escrow", "Escrow / Title / Attorney"],
     ["txn:recording", "Recording Fees"],
     ["txn:transfer", "Transfer & Conveyance"],
@@ -888,6 +923,7 @@ const STMT_TARGETS = {
 };
 const STMT_DEFAULT_TARGET = {
   price: "ignore",
+  assignment: "txn:misc",
   deposit: "ignore",
   loan: "ignore",
   payoff: "ignore",
@@ -906,16 +942,30 @@ const STMT_DEFAULT_TARGET = {
   concession: "txn:misc",
   misc: "txn:misc",
 };
+// Text cues for what the model may have filed elsewhere (and for statements read before v41).
+const STMT_ASSIGNMENT_RE = /\bassign(ment|or)?\b|joint\s*venture|\bJ\.?V\.?\b|wholesal|finder'?s?\s+fee|contract\s+fee/i;
+const STMT_DEPOSIT_RE = /\bdeposit\b|earnest|\bEMD\b/i;
+const stmtCategory = (l) => {
+  if (l.category === "assignment" || l.category === "price" || l.category === "loan" || l.category === "payoff") return l.category;
+  if (l.buyer_debit > 0 && STMT_ASSIGNMENT_RE.test(l.description) && !/title|escrow|settlement|recording|attorney/i.test(l.description)) return "assignment";
+  if (l.buyer_credit > 0 && STMT_DEPOSIT_RE.test(l.description)) return "deposit";
+  return l.category;
+};
+// One row per statement line, with where it goes. On the purchase side the price, assignment / JV
+// fees and the EMD make up the purchase price; they are not closing costs.
 function stmtLinesForSide(out, side) {
   return out.lines
     .map((l, i) => {
+      const category = stmtCategory(l);
       const amount = side === "buy" ? l.buyer_debit - l.buyer_credit : l.seller_debit - l.seller_credit;
-      let target = STMT_DEFAULT_TARGET[l.category] || "txn:misc";
+      let target = STMT_DEFAULT_TARGET[category] || "txn:misc";
+      if (side === "buy" && (category === "price" || category === "assignment")) target = "price";
+      if (side === "buy" && category === "deposit") target = "deposit";
       if (side === "sell" && target === "points") target = "txn:misc";
-      if (side === "sell" && l.category === "inspection") target = "txn:misc";
-      return { id: i, description: l.description, category: l.category, amount: Math.round(amount * 100) / 100, target, include: target !== "ignore" && amount !== 0 };
+      if (side === "sell" && category === "inspection") target = "txn:misc";
+      return { id: i, description: l.description, category, amount: Math.round(amount * 100) / 100, target, include: target !== "ignore" && amount !== 0 };
     })
-    .filter((l) => l.amount !== 0 || l.category === "price");
+    .filter((l) => l.amount !== 0);
 }
 function stmtPriceForSide(out, side) {
   const priceLine = out.lines.find((l) => l.category === "price");
@@ -925,6 +975,39 @@ function stmtPriceForSide(out, side) {
   }
   return out.price || 0;
 }
+const r2 = (v) => Math.round(v * 100) / 100;
+// The money picture of a purchase statement, from the reviewed lines:
+// price = sales price + assignment / JV; costs = title & closing fees; credits = prorations and the like.
+// Paid = cash at closing + EMD paid earlier + loans. "check" compares the lines with the statement's own total.
+function stmtBuySummary(lines, out) {
+  const inc = lines.filter((l) => l.include);
+  const sum = (f) => r2(inc.filter(f).reduce((t, l) => t + l.amount, 0));
+  const price = sum((l) => l.target === "price");
+  const sellerPrice = sum((l) => l.target === "price" && l.category === "price");
+  const assignment = r2(price - sellerPrice);
+  const deposit = -sum((l) => l.target === "deposit");
+  const closing = sum((l) => l.target.startsWith("txn:") || l.target === "points");
+  const other = sum((l) => l.target === "holding" || l.target === "interest");
+  const total = r2(price + closing + other);
+  const allLines = r2(lines.reduce((t, l) => t + l.amount, 0)); // every line, whatever its mapping = cash due at closing
+  const loans = -r2(lines.filter((l) => l.category === "loan").reduce((t, l) => t + l.amount, 0));
+  const due = out && out.totals ? out.totals.due_from_buyer : 0;
+  const check = due > 0 ? (Math.abs(allLines - due) < 1 ? "ok" : "off") : "none";
+  return { price, sellerPrice, assignment, deposit, closing, other, total, cashAtClosing: due > 0 ? due : allLines, linesCash: allLines, loans, check };
+}
+function stmtSellSummary(lines, out) {
+  const allLines = r2(lines.reduce((t, l) => t + l.amount, 0)); // seller debits − credits = −(cash to seller)
+  const due = out && out.totals ? out.totals.due_to_seller : 0;
+  const check = due > 0 ? (Math.abs(-allLines - due) < 1 ? "ok" : "off") : "none";
+  return { proceeds: due > 0 ? due : -allLines, linesProceeds: -allLines, check };
+}
+// EMD the user already logged in the ledger (by hand or from an earlier import).
+const ledgerEmd = (actuals) =>
+  r2(
+    (actuals || [])
+      .filter((a) => a.tag === "emd" || (a.cat === "Acquisition" && !a.tag && STMT_DEPOSIT_RE.test(a.label || "")))
+      .reduce((t, a) => t + num(a.amount), 0),
+  );
 const ledgerCatForTarget = (target, side) => {
   if (target === "points" || target === "interest") return "Financing";
   if (target === "holding") return "Holding";

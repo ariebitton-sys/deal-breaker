@@ -342,6 +342,7 @@ function TransitionModal({ kind, ctx, onConfirm, onClose }) {
         </div>
         <CheckRow checked={f.logPurchase} onChange={set("logPurchase")} disabled={hasTag("purchase_price")}>
           Log the purchase price ({fmt(f.price)}) in the Actuals Ledger as Acquisition
+          {ledgerEmd(actuals) > 0 && !hasTag("purchase_price") ? `: ${fmt(f.price - ledgerEmd(actuals))} at closing, since the ${fmt(ledgerEmd(actuals))} EMD is already logged` : ""}
           {hasTag("purchase_price") ? " — already logged" : ""}
         </CheckRow>
         <CheckRow checked={f.readStmt} onChange={set("readStmt")}>

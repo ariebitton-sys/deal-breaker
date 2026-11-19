@@ -278,6 +278,11 @@ function SaveDocOption({ source, existing, opts, o, connected, dealDocs }) {
   );
 }
 
+const fmt2 = (v) => {
+  const n = Number(v) || 0;
+  const s = Math.abs(n).toLocaleString("en-US", { minimumFractionDigits: Number.isInteger(Math.round(n * 100) / 100) ? 0 : 2, maximumFractionDigits: 2 });
+  return (n < 0 ? "−$" : "$") + s;
+};
 // ---------- Closing statement ----------
 function ClosingImportModal({ initialSide, apiKey, ctx, existing, onAnalyzed, onApply, onClose, onOpenSettings, driveApi }) {
   const [side, setSide] = useState((existing && existing.review && existing.review.side) || (existing && existing.side) || initialSide || "buy");
@@ -293,7 +298,9 @@ function ClosingImportModal({ initialSide, apiKey, ctx, existing, onAnalyzed, on
   const [opts, setOpts] = useState({});
   const sIdx = stageIdx(ctx.stage);
   const prevImported = (ctx.actuals || []).filter((a) => a.tag === `stmt_${side}`).length;
-  const hasPurchaseEntry = (ctx.actuals || []).some((a) => a.tag === "purchase_price");
+  const purchaseEntries = (ctx.actuals || []).filter((a) => a.tag === "purchase_price");
+  const hasPurchaseEntry = purchaseEntries.length > 0;
+  const emdLogged = ledgerEmd(ctx.actuals);
   const resetOpts = (sd) => {
     const advanced = sd === "buy" ? sIdx >= 1 || ctx.stage === "dead" : sIdx >= 3;
     // A closing statement records what was actually paid: it goes to the ledger. The Buying / Selling
@@ -305,13 +312,16 @@ function ClosingImportModal({ initialSide, apiKey, ctx, existing, onAnalyzed, on
       replacePrev: true,
       setPrice: sd === "sell" ? true : advanced,
       addPurchase: sd === "buy" && !hasPurchaseEntry,
+      replacePurchase: sd === "buy" && hasPurchaseEntry,
+      combine: true,
       saveDoc: true,
     });
   };
   // Rebuild review lines; when reopening, restore the mapping that was last applied/edited.
   const build = (o, sd, review) => {
     let ls = stmtLinesForSide(o, sd);
-    if (review && review.side === sd && Array.isArray(review.lines)) {
+    // mappings saved before v41 knew nothing of assignment fees and EMD: start those afresh
+    if (review && review.side === sd && review.v === 2 && Array.isArray(review.lines)) {
       const byId = Object.fromEntries(review.lines.map((r) => [r.id, r]));
       ls = ls.map((l) => (byId[l.id] ? { ...l, target: byId[l.id].target, include: byId[l.id].include, amount: byId[l.id].amount } : l));
     }
@@ -363,14 +373,31 @@ function ClosingImportModal({ initialSide, apiKey, ctx, existing, onAnalyzed, on
   const setLine = (id, k, v) => setLines((ls) => ls.map((l) => (l.id === id ? { ...l, [k]: v } : l)));
   const targets = STMT_TARGETS[side];
   const targetLabel = Object.fromEntries(targets);
-  const relevant = lines.filter((l) => l.category !== "price");
+  const isBuy = side === "buy";
+  const relevant = isBuy ? lines : lines.filter((l) => l.category !== "price");
   const shown = showSkipped ? relevant : relevant.filter((l) => l.target !== "ignore" || l.include);
   const skippedCount = relevant.filter((l) => l.target === "ignore" && !l.include).length;
   const included = relevant.filter((l) => l.include && l.target !== "ignore");
+  const isCost = (l) => l.target !== "price" && l.target !== "deposit";
   const totalsBy = {};
-  included.forEach((l) => (totalsBy[l.target] = (totalsBy[l.target] || 0) + l.amount));
-  const closingCosts = included.filter((l) => l.target.startsWith("txn:") || l.target === "points").reduce((s, l) => s + l.amount, 0);
-  const otherCosts = included.filter((l) => l.target === "holding" || l.target === "interest").reduce((s, l) => s + l.amount, 0);
+  included.filter(isCost).forEach((l) => (totalsBy[l.target] = (totalsBy[l.target] || 0) + l.amount));
+  const buyS = isBuy && out ? stmtBuySummary(lines, out) : null;
+  const sellS = !isBuy && out ? stmtSellSummary(lines, out) : null;
+  const effPrice = buyS ? buyS.price : price;
+  // the ledger's purchase entry: the price, less any EMD already logged on its own
+  const purchaseAmt = buyS ? r2(buyS.price - emdLogged) : 0;
+  const purchaseLabel = buyS
+    ? emdLogged > 0
+      ? `Purchase price ${fmt(buyS.price)}, paid at closing (EMD ${fmt(emdLogged)} logged separately)`
+      : buyS.assignment > 0
+        ? `Purchase price (${fmt(buyS.sellerPrice)} to the seller + ${fmt(buyS.assignment)} assignment / JV)`
+        : "Purchase price"
+    : "";
+  const oldPurchase = r2(purchaseEntries.reduce((t, a) => t + num(a.amount), 0));
+  const costLines = included.filter(isCost);
+  const ledgerAfter = buyS ? r2((ctx.actuals || []).filter((a) => a.tag !== "stmt_buy" && a.tag !== "purchase_price").reduce((t, a) => t + (a.cat === "Acquisition" && (a.tag === "emd" || (!a.tag && STMT_DEPOSIT_RE.test(a.label || ""))) ? num(a.amount) : 0), 0) + purchaseAmt + buyS.closing + buyS.other) : 0;
+  const closingCosts = costLines.filter((l) => l.target.startsWith("txn:") || l.target === "points").reduce((s, l) => s + l.amount, 0);
+  const otherCosts = costLines.filter((l) => l.target === "holding" || l.target === "interest").reduce((s, l) => s + l.amount, 0);
   const dn = houseNo(out && out.property_address),
     an = houseNo(ctx.address);
   const addrMismatch = dn && an && dn !== an;
@@ -381,9 +408,10 @@ function ClosingImportModal({ initialSide, apiKey, ctx, existing, onAnalyzed, on
     onApply({
       analysisId: rec && rec.id,
       side,
-      lines: included,
-      review: { side, price, closingDate, lines: lines.map((l) => ({ id: l.id, target: l.target, include: l.include, amount: l.amount })) },
-      price,
+      lines: costLines,
+      review: { v: 2, side, price: effPrice, closingDate, lines: lines.map((l) => ({ id: l.id, target: l.target, include: l.include, amount: l.amount })) },
+      price: effPrice,
+      purchaseEntry: buyS && buyS.price > 0 ? { amount: purchaseAmt, label: purchaseLabel } : null,
       closingDate,
       opts,
       source,
@@ -495,7 +523,19 @@ function ClosingImportModal({ initialSide, apiKey, ctx, existing, onAnalyzed, on
             </Note>
           )}
           <div className="field-grid-2" style={grid2}>
-            <Field label={`${sideLabel} price on statement`} value={price} onChange={setPrice} prefix="$" step={1000} />
+            {isBuy ? (
+              <div className="stmt-price">
+                <span>Purchase price</span>
+                <b>{fmt(effPrice)}</b>
+                {buyS && buyS.assignment > 0 && (
+                  <em>
+                    {fmt(buyS.sellerPrice)} to the seller + {fmt(buyS.assignment)} assignment / JV
+                  </em>
+                )}
+              </div>
+            ) : (
+              <Field label={`${sideLabel} price on statement`} value={price} onChange={setPrice} prefix="$" step={1000} />
+            )}
             <TextIn label="Closing date" type="date" value={closingDate} onChange={setClosingDate} />
           </div>
           <div style={{ overflowX: "auto", border: `1px solid ${T.border}`, borderRadius: 4 }}>
@@ -548,22 +588,56 @@ function ClosingImportModal({ initialSide, apiKey, ctx, existing, onAnalyzed, on
             <span>Negative amounts are credits to us (they reduce the cost).</span>
             {skippedCount > 0 && (
               <button onClick={() => setShowSkipped((s) => !s)} style={{ ...iconBtn(T.teal), fontSize: 11.5 }}>
-                {showSkipped ? "Hide" : "Show"} {skippedCount} skipped line{skippedCount === 1 ? "" : "s"} (price, loan, deposits, payoffs)
+                {showSkipped ? "Hide" : "Show"} {skippedCount} skipped line{skippedCount === 1 ? "" : "s"} ({isBuy ? "loans, payoffs" : "price, loan, deposits, payoffs"})
               </button>
             )}
           </div>
+          {buyS ? (
+            <div className="stmt-sum">
+              <MiniRow label="Purchase price" value={fmt2(buyS.price)} />
+              <MiniRow label="Closing costs (title, recording and fees)" value={fmt2(buyS.closing)} />
+              {buyS.other !== 0 && <MiniRow label={buyS.other < 0 ? "Prorations and credits" : "Prorations and interest"} value={fmt2(buyS.other)} />}
+              <MiniRow label="Total cost of the purchase" value={fmt2(buyS.total)} strong color={T.violet} />
+              <div className="stmt-paid">
+                Paid: {buyS.deposit > 0 ? `${fmt2(buyS.deposit)} EMD before closing + ` : ""}
+                {fmt2(buyS.cashAtClosing)} at closing{buyS.loans > 0 ? ` + ${fmt2(buyS.loans)} loan` : ""}
+                {Math.abs(buyS.deposit + buyS.cashAtClosing + buyS.loans - buyS.total) < 1 ? ` = ${fmt2(buyS.total)}` : ""}
+              </div>
+              {buyS.check === "ok" && <div className="stmt-check ok">Every line is read: they add up to the statement's {fmt2(buyS.cashAtClosing)} due from the buyer.</div>}
+              {buyS.check === "off" && (
+                <div className="stmt-check off">
+                  The lines add up to {fmt2(buyS.linesCash)} but the statement says {fmt2(buyS.cashAtClosing)} is due from the buyer. A line is missing or misread: compare with the
+                  statement before applying.
+                </div>
+              )}
+              {buyS.check === "none" && <div className="stmt-check">The statement's totals weren't read, so the lines can't be checked against them. Read the statement again to check.</div>}
+            </div>
+          ) : (
           <div style={{ background: T.inputBg, borderRadius: 4, padding: "8px 14px", marginBottom: 10 }}>
             {Object.keys(totalsBy).map((k) => (
               <MiniRow key={k} label={targetLabel[k]} value={fmt(totalsBy[k])} />
             ))}
-            <MiniRow label={side === "buy" ? "Closing costs (cost rows + lender fees)" : "Closing costs (cost rows)"} value={fmt(closingCosts)} strong color={T.violet} />
+            <MiniRow label="Closing costs (cost rows)" value={fmt(closingCosts)} strong color={T.violet} />
             {otherCosts !== 0 && <MiniRow label="Prorations & interest (ledger only)" value={fmt(otherCosts)} />}
+            {sellS && sellS.check === "ok" && <div className="stmt-check ok">Every line is read: they add up to the statement's {fmt2(sellS.proceeds)} to the seller.</div>}
+            {sellS && sellS.check === "off" && (
+              <div className="stmt-check off">
+                The lines leave {fmt2(sellS.linesProceeds)} for the seller but the statement says {fmt2(sellS.proceeds)}. A line is missing or misread.
+              </div>
+            )}
           </div>
+          )}
           <div style={subHead(T.violet)}>Apply to this deal</div>
           <CheckRow checked={opts.addLedger} onChange={o("addLedger")}>
-            Add each line to the Actuals Ledger ({side === "buy" ? "Acquisition / Financing / Holding" : "Selling / Financing / Holding"}), dated{" "}
-            {closingDate ? fmtDate(closingDate) : "today"}
+            Add the {isBuy ? "closing costs and credits" : "selling costs"} to the Actuals Ledger, dated {closingDate ? fmtDate(closingDate) : "today"}
           </CheckRow>
+          {opts.addLedger && costLines.length > 1 && (
+            <div style={{ paddingLeft: 22 }}>
+              <CheckRow checked={opts.combine} onChange={o("combine")}>
+                One entry per ledger category instead of {costLines.length} separate lines (the lines stay in the saved analysis)
+              </CheckRow>
+            </div>
+          )}
           {opts.addLedger && prevImported > 0 && (
             <div style={{ paddingLeft: 22 }}>
               <CheckRow checked={opts.replacePrev} onChange={o("replacePrev")}>
@@ -571,16 +645,30 @@ function ClosingImportModal({ initialSide, apiKey, ctx, existing, onAnalyzed, on
               </CheckRow>
             </div>
           )}
-          {side === "buy" && price > 0 && (
-            <CheckRow checked={opts.addPurchase} onChange={o("addPurchase")} disabled={hasPurchaseEntry}>
-              Log the purchase price ({fmt(price)}) in the ledger as Acquisition{hasPurchaseEntry ? " — already logged" : ""}
+          {buyS && buyS.price > 0 && !hasPurchaseEntry && (
+            <CheckRow checked={opts.addPurchase} onChange={o("addPurchase")}>
+              Log the purchase price in the ledger: {fmt2(purchaseAmt)}
+              {emdLogged > 0 ? ` (${fmt2(buyS.price)} less the ${fmt2(emdLogged)} EMD already in the ledger)` : ""}
             </CheckRow>
           )}
-          {price > 0 && (
-            <CheckRow checked={opts.setPrice} onChange={o("setPrice")}>
-              {side === "buy" ? `Use ${fmt(price)} as the purchase price (current forecast)` : `Record ${fmt(price)} as the final sale price`}
-              {side === "buy" && ctx.purchase && Math.abs(ctx.purchase - price) >= 1 ? ` — now ${fmt(ctx.purchase)}` : ""}
+          {buyS && buyS.price > 0 && hasPurchaseEntry && Math.abs(oldPurchase - purchaseAmt) >= 0.01 && (
+            <CheckRow checked={opts.replacePurchase} onChange={o("replacePurchase")}>
+              Correct the purchase price entry in the ledger from {fmt2(oldPurchase)} to {fmt2(purchaseAmt)}
+              {emdLogged > 0 ? ` (${fmt2(buyS.price)} less the ${fmt2(emdLogged)} EMD already logged)` : ""}
             </CheckRow>
+          )}
+          {buyS && buyS.price > 0 && hasPurchaseEntry && Math.abs(oldPurchase - purchaseAmt) < 0.01 && <div className="stmt-note">Purchase price already logged: {fmt2(oldPurchase)}.</div>}
+          {effPrice > 0 && (
+            <CheckRow checked={opts.setPrice} onChange={o("setPrice")}>
+              {isBuy ? `Use ${fmt(effPrice)} as the purchase price (current forecast)` : `Record ${fmt(effPrice)} as the final sale price`}
+              {isBuy && ctx.purchase && Math.abs(ctx.purchase - effPrice) >= 1 ? ` — now ${fmt(ctx.purchase)}` : ""}
+            </CheckRow>
+          )}
+          {buyS && opts.addLedger && (opts.addPurchase || opts.replacePurchase || (hasPurchaseEntry && Math.abs(oldPurchase - purchaseAmt) < 0.01)) && (
+            <div className={"stmt-check" + (Math.abs(ledgerAfter - buyS.total) < 1 ? " ok" : "")}>
+              Acquisition in the ledger after this: {fmt2(ledgerAfter)}
+              {Math.abs(ledgerAfter - buyS.total) < 1 ? ", the same as the total cost of the purchase." : `; the purchase cost on the statement is ${fmt2(buyS.total)}.`}
+            </div>
           )}
           <SaveDocOption source={source} existing={rec} opts={opts} o={o} connected={ctx.connected} dealDocs={ctx.dealDocs} />
           <CheckRow checked={opts.updateRows} onChange={o("updateRows")}>
@@ -598,8 +686,8 @@ function ClosingImportModal({ initialSide, apiKey, ctx, existing, onAnalyzed, on
             <button onClick={onClose} style={bs(T.glass, T.txtDim)}>
               Close
             </button>
-            <button onClick={apply} disabled={!included.length && !opts.setPrice} style={{ ...bs(T.violet, "#fff"), border: "none" }}>
-              Apply {included.length} line{included.length === 1 ? "" : "s"}
+            <button onClick={apply} disabled={!costLines.length && !opts.setPrice && !opts.addPurchase && !opts.replacePurchase} style={{ ...bs(T.violet, "#fff"), border: "none" }}>
+              Apply {costLines.length} line{costLines.length === 1 ? "" : "s"}
             </button>
           </div>
         </React.Fragment>

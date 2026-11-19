@@ -281,7 +281,7 @@ const STMT = {
   assert(md.textContent.includes("Settlement fee to Ohio Title") && !md.textContent.includes("County conveyance fee"), "seller-only lines hidden on purchase side");
   assert(md.textContent.includes("Apply 9 lines"), "9 buyer-side cost lines selected");
   const optRow = (re) => [...md.querySelectorAll("label")].find((l) => re.test(l.textContent));
-  assert(optRow(/Add each line to the Actuals Ledger/).querySelector("input").checked, "ledger option on by default");
+  assert(optRow(/Add the closing costs and credits to the Actuals Ledger/).querySelector("input").checked, "ledger option on by default");
   assert(!optRow(/Also replace the estimated Buying costs in Flip analysis/).querySelector("input").checked, "replacing the estimate is off by default");
   await click(btn(/Apply \d+ line/, md));
   await sleep(40);
@@ -290,7 +290,7 @@ const STMT = {
   const vals0 = [...group("Buying costs").querySelectorAll('input[type="number"]')].map((i) => i.value);
   assert(JSON.stringify(vals0) === JSON.stringify(estBefore) && field("Points / Lender Fees").value === pointsBefore, "estimated Buying costs and points unchanged");
   await click(nav(/^Expenses/));
-  assert(text().includes("Settlement fee to Ohio Title") && text().includes("County taxes"), "statement lines in ledger");
+  assert(text().includes("Closing costs from the purchase statement (6 items)") && text().includes("Lender fees and interest from the statement (2 items)") && text().includes("County taxes"), "statement in the ledger, one entry per category");
   assert(text().includes("Purchase price"), "purchase price logged");
   const ledgerCount = () => [...doc.querySelectorAll("section")].find((x) => /Expense ledger/i.test(x.textContent)).textContent.match(/(\d+) entries/)[1];
   const before = ledgerCount();

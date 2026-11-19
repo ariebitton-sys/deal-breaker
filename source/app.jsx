@@ -2955,7 +2955,18 @@ function App() {
         closing: { date: f.closingDate, price: f.price },
         rehab: { ...mm.rehab, startDate: f.startDate, targetEnd: f.targetEnd },
       }));
-      if (f.logPurchase) pushActuals([{ cat: "Acquisition", label: "Purchase price", amount: f.price, date: f.closingDate, tag: "purchase_price" }]);
+      if (f.logPurchase) {
+        const emd = ledgerEmd(actuals);
+        pushActuals([
+          {
+            cat: "Acquisition",
+            label: emd > 0 ? `Purchase price ${fmt(f.price)}, paid at closing (EMD ${fmt(emd)} logged separately)` : "Purchase price",
+            amount: Math.round((f.price - emd) * 100) / 100,
+            date: f.closingDate,
+            tag: "purchase_price",
+          },
+        ]);
+      }
       setStage("rehab");
       hist("rehab", f.closingDate);
       addLogEntry(`Closed on ${fmtDate(f.closingDate)} at ${fmt(f.price)} — rehab started`);
@@ -3093,7 +3104,7 @@ function App() {
     setDriveMsg("✓ Milestones created");
     setTimeout(() => setDriveMsg(""), 2500);
   };
-  const applyImport = ({ analysisId, side, lines, review, price, closingDate, opts, source, docType }) => {
+  const applyImport = ({ analysisId, side, lines, review, price, purchaseEntry, closingDate, opts, source, docType }) => {
     const date = closingDate || todayISO();
     if (opts.updateRows) {
       const sums = {};
@@ -3115,14 +3126,34 @@ function App() {
       });
       if (side === "buy" && lenderFees !== null) setPoints(Math.round(lenderFees * 100) / 100);
     }
-    if (opts.addLedger || opts.addPurchase) {
+    const fixPurchase = side === "buy" && purchaseEntry && (opts.addPurchase || opts.replacePurchase);
+    if (opts.addLedger || fixPurchase) {
       const tag = `stmt_${side}`;
-      const entries = opts.addLedger
-        ? lines.map((l) => ({ cat: ledgerCatForTarget(l.target, side), label: l.description, amount: Math.round(l.amount * 100) / 100, date, tag }))
-        : [];
-      if (opts.addPurchase && side === "buy" && price > 0) entries.unshift({ cat: "Acquisition", label: "Purchase price", amount: price, date, tag: "purchase_price" });
+      let entries = [];
+      if (opts.addLedger) {
+        const items = lines.map((l) => ({ cat: ledgerCatForTarget(l.target, side), label: l.description, amount: Math.round(l.amount * 100) / 100 }));
+        if (opts.combine && items.length > 1) {
+          // one entry per category; a category with a single line keeps that line's text
+          const name = {
+            Acquisition: "Closing costs from the purchase statement",
+            Selling: "Closing costs from the sale statement",
+            Holding: "Prorations and adjustments from the statement",
+            Financing: "Lender fees and interest from the statement",
+          };
+          const by = {};
+          items.forEach((it) => (by[it.cat] = by[it.cat] || []).push(it));
+          entries = Object.entries(by).map(([cat, its]) => ({
+            cat,
+            label: its.length === 1 ? its[0].label : `${name[cat] || "From the statement"} (${its.length} items)`,
+            amount: Math.round(its.reduce((t, x) => t + x.amount, 0) * 100) / 100,
+            date,
+            tag,
+          }));
+        } else entries = items.map((it) => ({ ...it, date, tag }));
+      }
+      if (fixPurchase) entries.unshift({ cat: "Acquisition", label: purchaseEntry.label, amount: purchaseEntry.amount, date, tag: "purchase_price" });
       setActuals((p) => [
-        ...(opts.addLedger && opts.replacePrev ? p.filter((a) => a.tag !== tag) : p),
+        ...p.filter((a) => !(opts.addLedger && opts.replacePrev && a.tag === tag) && !(fixPurchase && a.tag === "purchase_price")),
         ...entries.map((e) => ({ files: [], ...e, id: numId() })),
       ]);
     }
