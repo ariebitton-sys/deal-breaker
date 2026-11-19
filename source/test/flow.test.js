@@ -249,11 +249,20 @@ const STMT = {
   await setVal(field("Actual closing date", md), "2026-11-20");
   await setVal(field("Rehab start", md), "2026-11-21");
   await setVal(field("Target completion", md), "2027-02-21");
+  assert([...md.querySelectorAll("label")].find((l) => /Next, read the purchase closing statement \(HUD-1/.test(l.textContent)).querySelector("input").checked, "closing offers to read the HUD-1 next (on by default)");
   await click(btn("Move to rehab", md));
   await settle(8);
+  md = modal();
+  assert(md && /Import a closing statement/.test(md.textContent) && /Use the final statement after closing/.test(md.textContent), "after closing, the statement reader opens");
+  await click(btn("Cancel", md));
+  await settle(4);
   assert(text().includes("Milestones") && text().includes("Rehab day"), "rehab section + KPIs");
 
-  console.log("9. Import the purchase closing statement (PDF → Claude → review → apply)");
+  console.log("9. Import the purchase closing statement (PDF → Claude → review → ledger; the estimate stays)");
+  await click(nav(/^Flip analysis$/));
+  assert(![...group("Buying costs").querySelectorAll("button")].some((b) => /Import PDF/.test(b.textContent)) && ![...group("Selling costs").querySelectorAll("button")].some((b) => /Import PDF/.test(b.textContent)), "no statement import on the estimated Buying / Selling costs");
+  const estBefore = [...group("Buying costs").querySelectorAll('input[type="number"]')].map((i) => i.value);
+  const pointsBefore = field("Points / Lender Fees").value;
   await click(nav(/^Documents$/));
   await click(btn("Purchase closing statement", docsSection()));
   md = modal();
@@ -271,14 +280,15 @@ const STMT = {
   assert(t.anthropicCalls[0].body.model === "claude-sonnet-5-5", "model id");
   assert(md.textContent.includes("Settlement fee to Ohio Title") && !md.textContent.includes("County conveyance fee"), "seller-only lines hidden on purchase side");
   assert(md.textContent.includes("Apply 9 lines"), "9 buyer-side cost lines selected");
+  const optRow = (re) => [...md.querySelectorAll("label")].find((l) => re.test(l.textContent));
+  assert(optRow(/Add each line to the Actuals Ledger/).querySelector("input").checked, "ledger option on by default");
+  assert(!optRow(/Also replace the estimated Buying costs in Flip analysis/).querySelector("input").checked, "replacing the estimate is off by default");
   await click(btn(/Apply \d+ line/, md));
   await sleep(40);
   await settle(8);
   await click(nav(/^Flip analysis$/));
-  const buyPanel = group("Buying costs");
-  const vals = [...buyPanel.querySelectorAll('input[type="number"]')].map((i) => i.value);
-  assert(vals[0] === "1357" && vals[1] === "166", `escrow=1357 recording=166 (got ${vals.slice(0, 2)})`);
-  assert(field("Points / Lender Fees").value === "2563", "points = lender fees 2563");
+  const vals0 = [...group("Buying costs").querySelectorAll('input[type="number"]')].map((i) => i.value);
+  assert(JSON.stringify(vals0) === JSON.stringify(estBefore) && field("Points / Lender Fees").value === pointsBefore, "estimated Buying costs and points unchanged");
   await click(nav(/^Expenses/));
   assert(text().includes("Settlement fee to Ohio Title") && text().includes("County taxes"), "statement lines in ledger");
   assert(text().includes("Purchase price"), "purchase price logged");
@@ -298,8 +308,14 @@ const STMT = {
   // change one mapping and re-apply: ledger entries replaced, not duplicated
   const wireRow = [...md.querySelectorAll("tr")].find((r) => r.textContent.includes("Wire fee"));
   await setVal(wireRow.querySelector("select"), "holding");
+  // this time also overwrite the estimate (the option is still there when wanted)
+  await click([...md.querySelectorAll("label")].find((l) => /Also replace the estimated Buying costs/.test(l.textContent)).querySelector("input"));
   await click(btn(/Apply \d+ line/, md));
   await settle(6);
+  await click(nav(/^Flip analysis$/));
+  const vals = [...group("Buying costs").querySelectorAll('input[type="number"]')].map((i) => i.value);
+  assert(vals[0] === "1357" && vals[1] === "166", `with the option ticked: escrow=1357 recording=166 (got ${vals.slice(0, 2)})`);
+  assert(field("Points / Lender Fees").value === "2563", "with the option ticked: points = lender fees 2563");
   await click(nav(/^Expenses/));
   assert(ledgerCount() === before, `re-apply replaced the imported entries (${before} → ${ledgerCount()})`);
   await click(nav(/^Documents$/));
@@ -413,6 +429,10 @@ const STMT = {
   await setVal(field("Sale closing date", md), "2027-04-20");
   await click(btn("Mark as sold", md));
   await settle(8);
+  md = modal();
+  assert(md && /Import a closing statement/.test(md.textContent) && /seller's side/.test(md.textContent), "after the sale, the sale statement reader opens");
+  await click(btn("Cancel", md));
+  await settle(4);
   assert(text().includes("Original plan") && text().includes("Hold time, closing to sale"), "sold results table");
   assert(text().includes("Investor return") || true, "");
   await click(nav(/^Expenses/));

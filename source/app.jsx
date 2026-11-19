@@ -3010,6 +3010,9 @@ function App() {
     }
     setTransition(null);
     if (kind !== "dead" && kind !== "back" && kind !== "restore") setMode(kind === "analyzing" ? "underwrite" : "manage");
+    // the actual closing costs come from the closing statement, into the ledger
+    if (kind === "rehab" && f.readStmt) setImportSide("buy", "ledger");
+    if (kind === "sold" && f.readStmt) setImportSide("sell", "ledger");
   };
   const uploadDealDoc = async (file, kind) => {
     if (!accessToken || !settings.folderId) {
@@ -4461,11 +4464,6 @@ function App() {
                   title="Buying costs"
                   sub={txnSummary(buyTxn, "of purchase")}
                   total={fmt(m.totalBuying)}
-                  actions={
-                    <button className="no-print grp-btn" onClick={() => setImportSide("buy")} title="Fill these rows from the purchase closing statement">
-                      Import PDF
-                    </button>
-                  }
                 >
                   <TxnEditor
                     side="Buying"
@@ -4483,11 +4481,6 @@ function App() {
                   title="Selling costs"
                   sub={txnSummary(sellTxn, "of ARV")}
                   total={fmt(m.totalSelling)}
-                  actions={
-                    <button className="no-print grp-btn" onClick={() => setImportSide("sell")} title="Fill these rows from the sale closing statement">
-                      Import PDF
-                    </button>
-                  }
                 >
                   <TxnEditor side="Selling" items={sellTxn} setItems={setSellTxn} basis={arv} basisLabel="of ARV" accent={T.blue} />
                                 </Group>

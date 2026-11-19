@@ -296,13 +296,15 @@ function ClosingImportModal({ initialSide, apiKey, ctx, existing, onAnalyzed, on
   const hasPurchaseEntry = (ctx.actuals || []).some((a) => a.tag === "purchase_price");
   const resetOpts = (sd) => {
     const advanced = sd === "buy" ? sIdx >= 1 || ctx.stage === "dead" : sIdx >= 3;
+    // A closing statement records what was actually paid: it goes to the ledger. The Buying / Selling
+    // cost rows in Flip analysis are the estimate and change only if asked.
     setOpts({
-      updateRows: true,
+      updateRows: false,
       turnOffMissing: false,
-      addLedger: ctx.origin === "ledger" || advanced,
+      addLedger: true,
       replacePrev: true,
       setPrice: sd === "sell" ? true : advanced,
-      addPurchase: sd === "buy" && (ctx.origin === "ledger" || advanced) && !hasPurchaseEntry,
+      addPurchase: sd === "buy" && !hasPurchaseEntry,
       saveDoc: true,
     });
   };
@@ -431,8 +433,8 @@ function ClosingImportModal({ initialSide, apiKey, ctx, existing, onAnalyzed, on
           )}
           {step === "error" && readErrorNote(err, onOpenSettings)}
           <Note>
-            Claude reads every line, then you review how each one maps to your cost rows before anything changes. Only the {side === "buy" ? "buyer's" : "seller's"} side
-            is used. The result is saved on the deal, so you can reopen it later without uploading or paying again.
+            Use the final statement after closing. Claude reads every line, then you review each one before it goes to the Actuals Ledger. Only the{" "}
+            {side === "buy" ? "buyer's" : "seller's"} side is used. The result is saved on the deal, so you can reopen it later without uploading or paying again.
           </Note>
           <div style={{ display: "flex", gap: 9, justifyContent: "flex-end" }}>
             <button onClick={onClose} style={bs(T.glass, T.txtDim)}>
@@ -558,16 +560,6 @@ function ClosingImportModal({ initialSide, apiKey, ctx, existing, onAnalyzed, on
             {otherCosts !== 0 && <MiniRow label="Prorations & interest (ledger only)" value={fmt(otherCosts)} />}
           </div>
           <div style={subHead(T.violet)}>Apply to this deal</div>
-          <CheckRow checked={opts.updateRows} onChange={o("updateRows")}>
-            Set the {side === "buy" ? "Buying" : "Selling"} Transaction Cost rows to these exact $ amounts{side === "buy" ? " (and Points / Lender Fees)" : ""}
-          </CheckRow>
-          {opts.updateRows && (
-            <div style={{ paddingLeft: 22 }}>
-              <CheckRow checked={opts.turnOffMissing} onChange={o("turnOffMissing")}>
-                Turn off cost rows that aren't on the statement
-              </CheckRow>
-            </div>
-          )}
           <CheckRow checked={opts.addLedger} onChange={o("addLedger")}>
             Add each line to the Actuals Ledger ({side === "buy" ? "Acquisition / Financing / Holding" : "Selling / Financing / Holding"}), dated{" "}
             {closingDate ? fmtDate(closingDate) : "today"}
@@ -591,7 +583,17 @@ function ClosingImportModal({ initialSide, apiKey, ctx, existing, onAnalyzed, on
             </CheckRow>
           )}
           <SaveDocOption source={source} existing={rec} opts={opts} o={o} connected={ctx.connected} dealDocs={ctx.dealDocs} />
-          {ctx.hasBaseline && <Note>The original underwriting stays frozen — these amounts update the current forecast and the actuals only.</Note>}
+          <CheckRow checked={opts.updateRows} onChange={o("updateRows")}>
+            Also replace the estimated {side === "buy" ? "Buying" : "Selling"} costs in Flip analysis with these amounts{side === "buy" ? " (and Points / Lender Fees)" : ""}
+          </CheckRow>
+          {opts.updateRows && (
+            <div style={{ paddingLeft: 22 }}>
+              <CheckRow checked={opts.turnOffMissing} onChange={o("turnOffMissing")}>
+                Turn off cost rows that aren't on the statement
+              </CheckRow>
+            </div>
+          )}
+          {opts.updateRows && ctx.hasBaseline && <Note>The original underwriting stays frozen; this changes the current forecast only.</Note>}
           <div style={{ display: "flex", gap: 9, justifyContent: "flex-end", marginTop: 6 }}>
             <button onClick={onClose} style={bs(T.glass, T.txtDim)}>
               Close

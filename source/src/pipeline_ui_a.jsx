@@ -265,6 +265,7 @@ function TransitionModal({ kind, ctx, onConfirm, onClose }) {
           startDate: cd,
           targetEnd: addMonthsISO(cd, Math.max(1, (holdMonths || 4) - 2)),
           logPurchase: !hasTag("purchase_price"),
+          readStmt: !hasTag("stmt_buy"),
         };
       }
       case "market":
@@ -280,6 +281,7 @@ function TransitionModal({ kind, ctx, onConfirm, onClose }) {
           rehabIntAmt: null,
           addPurchInt: false,
           purchIntAmt: null,
+          readStmt: !hasTag("stmt_sell"),
         };
       }
       case "dead":
@@ -342,7 +344,11 @@ function TransitionModal({ kind, ctx, onConfirm, onClose }) {
           Log the purchase price ({fmt(f.price)}) in the Actuals Ledger as Acquisition
           {hasTag("purchase_price") ? " — already logged" : ""}
         </CheckRow>
-        <Note>Closing costs: import the purchase closing statement from Flip Management → Documents, or log them in the ledger.</Note>
+        <CheckRow checked={f.readStmt} onChange={set("readStmt")}>
+          Next, read the purchase closing statement (HUD-1 / settlement statement) with AI and add its lines to the Actuals Ledger
+          {hasTag("stmt_buy") ? " — one was already imported" : ""}
+        </CheckRow>
+        <Note>Buying costs in Flip analysis stay as your estimate; the actual closing costs go to the ledger.</Note>
       </React.Fragment>
     );
   } else if (kind === "market") {
@@ -391,7 +397,10 @@ function TransitionModal({ kind, ctx, onConfirm, onClose }) {
             {f.addPurchInt && <Field label="Lender interest" value={purchIntAmt} onChange={set("purchIntAmt")} prefix="$" />}
           </div>
         )}
-        <Note>Selling costs: import the sale closing statement (Flip Management → Documents) so commissions, title and transfer fees land in the ledger.</Note>
+        <CheckRow checked={f.readStmt} onChange={set("readStmt")}>
+          Next, read the sale closing statement with AI so commissions, title and transfer fees go to the Actuals Ledger
+          {hasTag("stmt_sell") ? " — one was already imported" : ""}
+        </CheckRow>
       </React.Fragment>
     );
   } else if (kind === "dead") {
