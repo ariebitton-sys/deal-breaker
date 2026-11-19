@@ -894,6 +894,7 @@ const STMT_TARGETS = {
   buy: [
     ["price", "Purchase price (incl. assignment / JV)"],
     ["deposit", "EMD / deposit, paid before closing"],
+    ["credit", "Credit to us (lowers what we paid)"],
     ["txn:escrow", "Escrow / Title / Attorney"],
     ["txn:recording", "Recording Fees"],
     ["txn:transfer", "Transfer & Conveyance"],
@@ -961,6 +962,8 @@ function stmtLinesForSide(out, side) {
       let target = STMT_DEFAULT_TARGET[category] || "txn:misc";
       if (side === "buy" && (category === "price" || category === "assignment")) target = "price";
       if (side === "buy" && category === "deposit") target = "deposit";
+      // a credit to the buyer (tax proration, seller credit) isn't a cost: it lowers what we paid at closing
+      if (side === "buy" && amount < 0 && target !== "ignore" && target !== "deposit" && target !== "price" && category !== "loan" && category !== "payoff") target = "credit";
       if (side === "sell" && target === "points") target = "txn:misc";
       if (side === "sell" && category === "inspection") target = "txn:misc";
       return { id: i, description: l.description, category, amount: Math.round(amount * 100) / 100, target, include: target !== "ignore" && amount !== 0 };
@@ -988,12 +991,15 @@ function stmtBuySummary(lines, out) {
   const deposit = -sum((l) => l.target === "deposit");
   const closing = sum((l) => l.target.startsWith("txn:") || l.target === "points");
   const other = sum((l) => l.target === "holding" || l.target === "interest");
-  const total = r2(price + closing + other);
+  const credits = sum((l) => l.target === "credit"); // negative
+  const creditLines = inc.filter((l) => l.target === "credit");
+  const taxCredit = creditLines.some((l) => l.category === "tax_proration");
+  const total = r2(price + closing + other + credits);
   const allLines = r2(lines.reduce((t, l) => t + l.amount, 0)); // every line, whatever its mapping = cash due at closing
   const loans = -r2(lines.filter((l) => l.category === "loan").reduce((t, l) => t + l.amount, 0));
   const due = out && out.totals ? out.totals.due_from_buyer : 0;
   const check = due > 0 ? (Math.abs(allLines - due) < 1 ? "ok" : "off") : "none";
-  return { price, sellerPrice, assignment, deposit, closing, other, total, cashAtClosing: due > 0 ? due : allLines, linesCash: allLines, loans, check };
+  return { price, sellerPrice, assignment, deposit, closing, other, credits, creditLines, taxCredit, total, cashAtClosing: due > 0 ? due : allLines, linesCash: allLines, loans, check };
 }
 function stmtSellSummary(lines, out) {
   const allLines = r2(lines.reduce((t, l) => t + l.amount, 0)); // seller debits − credits = −(cash to seller)

@@ -86,16 +86,18 @@ const acq = (actuals) => Math.round(actuals.reduce((t, a) => t + (["Acquisition"
   assert(/\$145,000/.test(price.textContent) && /\$130,000 to the seller \+ \$15,000 assignment \/ JV/.test(price.textContent), "purchase price $145,000 = $130,000 + $15,000 assignment / JV");
   const sum = md.querySelector(".stmt-sum").textContent;
   assert(/Closing costs \(title, recording and fees\)\$1,445\.15/.test(sum), "closing costs $1,445.15 (title company fees only)");
-  assert(/Prorations and credits−\$2,071\.54/.test(sum), "tax proration credit −$2,071.54");
-  assert(/Total cost of the purchase\$144,373\.61/.test(sum), "total cost $144,373.61");
+  assert(/Credit to us from the seller \(property tax\)−\$2,071\.54/.test(sum), "the tax proration shows as the seller's credit to us");
+  assert(/Out of our pocket\$144,373\.61/.test(sum), "out of our pocket $144,373.61");
+  assert(/comes off the purchase entry instead of showing as a negative cost\. When the property tax bill comes, log the full bill/.test(sum), "explains where the credit goes and the coming tax bill");
   assert(/Paid: \$2,500 EMD before closing \+ \$141,873\.61 at closing = \$144,373\.61/.test(sum), "paid: EMD + cash at closing");
   assert(/Every line is read: they add up to the statement's \$141,873\.61 due from the buyer/.test(sum), "lines match the statement's total");
   const row = (re) => [...md.querySelectorAll("tr")].find((r) => re.test(r.textContent));
   assert(row(/BROWN DOOR/).querySelector("select").value === "price" && row(/Assignment Fee/).querySelector("select").value === "price", "assignment / JV lines go to the purchase price, even when filed as misc");
   assert(row(/Deposit held by/).querySelector("select").value === "deposit", "the deposit is the EMD");
+  assert(row(/Property Tax @/).querySelector("select").value === "credit", "the tax proration is a credit to us, not a negative holding cost");
   assert(!row(/Split Proceeds|Payoff Judgment|Transaction Coordination/), "seller-only lines aren't shown");
-  assert(/Correct the purchase price entry in the ledger from \$142,500 to \$142,500/.test(md.textContent) === false && /Purchase price already logged: \$142,500/.test(md.textContent), "purchase entry from closing already right");
-  assert(/Acquisition in the ledger after this: \$144,373\.61, the same as the total cost/.test(md.textContent), "ledger after applying = $144,373.61");
+  assert(/Correct the purchase price entry in the ledger from \$142,500 to \$140,428\.46/.test(md.textContent), "the closing's $142,500 entry is corrected for the seller's credit");
+  assert(/Acquisition in the ledger after this: \$144,373\.61, the same as what left our pocket/.test(md.textContent), "ledger after applying = $144,373.61");
   await click(btn(/Apply \d+ line/, md));
   await sleep(30); await settle(8);
 
@@ -105,10 +107,13 @@ const acq = (actuals) => Math.round(actuals.reduce((t, a) => t + (["Acquisition"
   const saved = JSON.parse(drive.files[fid].content);
   const A = saved.actuals;
   assert(acq(A) === 144373.61, `ledger total $144,373.61 (got ${acq(A)})`);
-  assert(A.filter((a) => a.tag === "purchase_price").length === 1 && A.find((a) => a.tag === "purchase_price").amount === 142500, "one purchase entry: $142,500 at closing");
+  const pe = A.find((a) => a.tag === "purchase_price");
+  assert(A.filter((a) => a.tag === "purchase_price").length === 1 && pe.amount === 140428.46, "one purchase entry: $140,428.46 paid at closing");
+  assert(pe.label === "Purchase price $145,000 ($130,000 to the seller + $15,000 assignment / JV) paid at closing, less the $2,500 EMD paid earlier and a $2,071.54 credit from the seller (property tax)", "its description explains the amount: " + pe.label);
   assert(A.some((a) => a.label === "EMD" && a.amount === 2500), "the EMD entry is kept");
   const st = A.filter((a) => a.tag === "stmt_buy");
-  assert(st.length === 2 && st.some((a) => a.label === "Closing costs from the purchase statement (10 items)" && a.amount === 1445.15) && st.some((a) => a.cat === "Holding" && a.amount === -2071.54), "two statement entries: closing costs $1,445.15 and the tax credit");
+  assert(st.length === 1 && st[0].label === "Closing costs from the purchase statement (10 items)" && st[0].amount === 1445.15, "one statement entry: the title company's closing costs $1,445.15");
+  assert(A.every((a) => a.amount > 0) && !A.some((a) => a.cat === "Holding"), "every ledger entry is money out of our pocket: nothing negative, no negative tax under Holding");
   assert(!A.some((a) => /Joint Venture|Assignment Fee/.test(a.label)), "no assignment / JV lines as extra costs");
   assert(saved.buyTxn.escrow.val === 1500, "the estimated Buying costs are untouched");
   assert(saved.purchase === 145000, "purchase price stays $145,000");
@@ -141,14 +146,14 @@ const acq = (actuals) => Math.round(actuals.reduce((t, a) => t + (["Acquisition"
   await t2.click(t2.btn("Read statement", m2));
   await t2.sleep(60); await t2.settle(10);
   m2 = t2.modal();
-  const fix = [...m2.querySelectorAll("label")].find((l) => /Correct the purchase price entry in the ledger from \$145,000 to \$142,500 \(\$145,000 less the \$2,500 EMD already logged\)/.test(l.textContent));
-  assert(fix && fix.querySelector("input").checked, "offers to correct the $145,000 entry to $142,500 (on by default)");
+  const fix = [...m2.querySelectorAll("label")].find((l) => /Correct the purchase price entry in the ledger from \$145,000 to \$140,428\.46/.test(l.textContent));
+  assert(fix && fix.querySelector("input").checked, "offers to correct the $145,000 entry to $140,428.46 (on by default)");
   await t2.click(t2.btn(/Apply \d+ line/, m2));
   await t2.sleep(30); await t2.settle(8);
   await t2.click(t2.btn("Save deal"));
   await t2.sleep(40); await t2.settle(8);
   const A2 = JSON.parse(drive2.files[fid2].content).actuals;
-  assert(acq(A2) === 144373.61 && !A2.some((a) => /Joint Venture|Assignment Fee/.test(a.label)), `old double counting removed: ledger $144,373.61 (got ${acq(A2)})`);
+  assert(acq(A2) === 144373.61 && !A2.some((a) => /Joint Venture|Assignment Fee/.test(a.label)) && A2.every((a) => a.amount > 0), `old double counting removed: ledger $144,373.61, all entries positive (got ${acq(A2)})`);
 
   console.log("5. A statement saved before this change reopens right, without a new upload");
   const oldResult = { ...HUD, totals: undefined, lines: HUD.lines.map((l) => (l.category === "assignment" ? { ...l, category: "misc" } : l)) };
@@ -174,7 +179,8 @@ const acq = (actuals) => Math.round(actuals.reduce((t, a) => t + (["Acquisition"
   const row3 = (re) => [...m3.querySelectorAll("tr")].find((r) => re.test(r.textContent));
   assert(calls === 0, "no new Claude call");
   assert(row3(/Ashley White/).querySelector("select").value === "price" && row3(/Deposit held by/).querySelector("select").value === "deposit", "old mapping replaced: JV → purchase price, deposit → EMD");
-  assert(/Total cost of the purchase\$144,373\.61/.test(m3.textContent) && /totals weren't read/.test(m3.textContent), "same $144,373.61; says the totals check needs a fresh read");
+  assert(/Out of our pocket\$144,373\.61/.test(m3.textContent) && /totals weren't read/.test(m3.textContent), "same $144,373.61; says the totals check needs a fresh read");
+  assert(row3(/Property Tax @/).querySelector("select").value === "credit", "the v41 mapping of the tax line (negative holding) is replaced by the credit");
   assert(t.errors.length === 0 && t2.errors.length === 0 && t3.errors.length === 0, "no errors " + t.errors.concat(t2.errors, t3.errors).join(" | "));
   console.log("\nALL CLOSING TESTS PASSED");
   process.exit(0);

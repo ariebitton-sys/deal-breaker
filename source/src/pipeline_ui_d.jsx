@@ -320,8 +320,8 @@ function ClosingImportModal({ initialSide, apiKey, ctx, existing, onAnalyzed, on
   // Rebuild review lines; when reopening, restore the mapping that was last applied/edited.
   const build = (o, sd, review) => {
     let ls = stmtLinesForSide(o, sd);
-    // mappings saved before v41 knew nothing of assignment fees and EMD: start those afresh
-    if (review && review.side === sd && review.v === 2 && Array.isArray(review.lines)) {
+    // mappings saved before v42 knew nothing of assignment fees, the EMD or credits: start those afresh
+    if (review && review.side === sd && review.v === 3 && Array.isArray(review.lines)) {
       const byId = Object.fromEntries(review.lines.map((r) => [r.id, r]));
       ls = ls.map((l) => (byId[l.id] ? { ...l, target: byId[l.id].target, include: byId[l.id].include, amount: byId[l.id].amount } : l));
     }
@@ -378,20 +378,33 @@ function ClosingImportModal({ initialSide, apiKey, ctx, existing, onAnalyzed, on
   const shown = showSkipped ? relevant : relevant.filter((l) => l.target !== "ignore" || l.include);
   const skippedCount = relevant.filter((l) => l.target === "ignore" && !l.include).length;
   const included = relevant.filter((l) => l.include && l.target !== "ignore");
-  const isCost = (l) => l.target !== "price" && l.target !== "deposit";
+  const isCost = (l) => l.target !== "price" && l.target !== "deposit" && l.target !== "credit";
   const totalsBy = {};
   included.filter(isCost).forEach((l) => (totalsBy[l.target] = (totalsBy[l.target] || 0) + l.amount));
   const buyS = isBuy && out ? stmtBuySummary(lines, out) : null;
   const sellS = !isBuy && out ? stmtSellSummary(lines, out) : null;
   const effPrice = buyS ? buyS.price : price;
   // the ledger's purchase entry: the price, less any EMD already logged on its own
-  const purchaseAmt = buyS ? r2(buyS.price - emdLogged) : 0;
+  // what was paid for the house at closing: the price, less the EMD logged on its own and less the
+  // credits the seller gave us — so every ledger entry is money that actually left our pocket
+  const purchaseAmt = buyS ? r2(buyS.price - emdLogged + buyS.credits) : 0;
+  const purchaseLess = buyS
+    ? [
+        emdLogged > 0 ? `the ${fmt2(emdLogged)} EMD already in the ledger` : "",
+        buyS.credits < 0 ? `the ${fmt2(-buyS.credits)} credit from the seller` : "",
+      ].filter(Boolean)
+    : [];
+  const purchaseWhy = buyS && purchaseLess.length ? ` (${fmt2(buyS.price)} less ${purchaseLess.join(" and ")})` : "";
   const purchaseLabel = buyS
-    ? emdLogged > 0
-      ? `Purchase price ${fmt(buyS.price)}, paid at closing (EMD ${fmt(emdLogged)} logged separately)`
-      : buyS.assignment > 0
-        ? `Purchase price (${fmt(buyS.sellerPrice)} to the seller + ${fmt(buyS.assignment)} assignment / JV)`
-        : "Purchase price"
+    ? (() => {
+        const less = [
+          emdLogged > 0 ? `the ${fmt2(emdLogged)} EMD paid earlier` : "",
+          buyS.credits < 0 ? `a ${fmt2(-buyS.credits)} credit from the seller${buyS.taxCredit ? " (property tax)" : ""}` : "",
+        ].filter(Boolean);
+        const head = `Purchase price ${fmt(buyS.price)}`;
+        const from = buyS.assignment > 0 ? ` (${fmt(buyS.sellerPrice)} to the seller + ${fmt(buyS.assignment)} assignment / JV)` : "";
+        return less.length ? `${head}${from} paid at closing, less ${less.join(" and ")}` : `${head}${from}`;
+      })()
     : "";
   const oldPurchase = r2(purchaseEntries.reduce((t, a) => t + num(a.amount), 0));
   const costLines = included.filter(isCost);
@@ -409,7 +422,7 @@ function ClosingImportModal({ initialSide, apiKey, ctx, existing, onAnalyzed, on
       analysisId: rec && rec.id,
       side,
       lines: costLines,
-      review: { v: 2, side, price: effPrice, closingDate, lines: lines.map((l) => ({ id: l.id, target: l.target, include: l.include, amount: l.amount })) },
+      review: { v: 3, side, price: effPrice, closingDate, lines: lines.map((l) => ({ id: l.id, target: l.target, include: l.include, amount: l.amount })) },
       price: effPrice,
       purchaseEntry: buyS && buyS.price > 0 ? { amount: purchaseAmt, label: purchaseLabel } : null,
       closingDate,
@@ -596,8 +609,9 @@ function ClosingImportModal({ initialSide, apiKey, ctx, existing, onAnalyzed, on
             <div className="stmt-sum">
               <MiniRow label="Purchase price" value={fmt2(buyS.price)} />
               <MiniRow label="Closing costs (title, recording and fees)" value={fmt2(buyS.closing)} />
-              {buyS.other !== 0 && <MiniRow label={buyS.other < 0 ? "Prorations and credits" : "Prorations and interest"} value={fmt2(buyS.other)} />}
-              <MiniRow label="Total cost of the purchase" value={fmt2(buyS.total)} strong color={T.violet} />
+              {buyS.other !== 0 && <MiniRow label="Prorations and interest we paid" value={fmt2(buyS.other)} />}
+              {buyS.credits !== 0 && <MiniRow label={`Credit to us from the seller${buyS.taxCredit ? " (property tax)" : ""}`} value={fmt2(buyS.credits)} />}
+              <MiniRow label="Out of our pocket" value={fmt2(buyS.total)} strong color={T.violet} />
               <div className="stmt-paid">
                 Paid: {buyS.deposit > 0 ? `${fmt2(buyS.deposit)} EMD before closing + ` : ""}
                 {fmt2(buyS.cashAtClosing)} at closing{buyS.loans > 0 ? ` + ${fmt2(buyS.loans)} loan` : ""}
@@ -611,6 +625,12 @@ function ClosingImportModal({ initialSide, apiKey, ctx, existing, onAnalyzed, on
                 </div>
               )}
               {buyS.check === "none" && <div className="stmt-check">The statement's totals weren't read, so the lines can't be checked against them. Read the statement again to check.</div>}
+              {buyS.credits !== 0 && (
+                <div className="stmt-paid">
+                  The credit lowered what we wired at closing, so it comes off the purchase entry instead of showing as a negative cost.
+                  {buyS.taxCredit ? " When the property tax bill comes, log the full bill in the ledger." : ""}
+                </div>
+              )}
             </div>
           ) : (
           <div style={{ background: T.inputBg, borderRadius: 4, padding: "8px 14px", marginBottom: 10 }}>
@@ -629,7 +649,7 @@ function ClosingImportModal({ initialSide, apiKey, ctx, existing, onAnalyzed, on
           )}
           <div style={subHead(T.violet)}>Apply to this deal</div>
           <CheckRow checked={opts.addLedger} onChange={o("addLedger")}>
-            Add the {isBuy ? "closing costs and credits" : "selling costs"} to the Actuals Ledger, dated {closingDate ? fmtDate(closingDate) : "today"}
+            Add the {isBuy ? "closing costs" : "selling costs"} to the Actuals Ledger, dated {closingDate ? fmtDate(closingDate) : "today"}
           </CheckRow>
           {opts.addLedger && costLines.length > 1 && (
             <div style={{ paddingLeft: 22 }}>
@@ -647,14 +667,14 @@ function ClosingImportModal({ initialSide, apiKey, ctx, existing, onAnalyzed, on
           )}
           {buyS && buyS.price > 0 && !hasPurchaseEntry && (
             <CheckRow checked={opts.addPurchase} onChange={o("addPurchase")}>
-              Log the purchase price in the ledger: {fmt2(purchaseAmt)}
-              {emdLogged > 0 ? ` (${fmt2(buyS.price)} less the ${fmt2(emdLogged)} EMD already in the ledger)` : ""}
+              Log the purchase price paid at closing in the ledger: {fmt2(purchaseAmt)}
+              {purchaseWhy}
             </CheckRow>
           )}
           {buyS && buyS.price > 0 && hasPurchaseEntry && Math.abs(oldPurchase - purchaseAmt) >= 0.01 && (
             <CheckRow checked={opts.replacePurchase} onChange={o("replacePurchase")}>
               Correct the purchase price entry in the ledger from {fmt2(oldPurchase)} to {fmt2(purchaseAmt)}
-              {emdLogged > 0 ? ` (${fmt2(buyS.price)} less the ${fmt2(emdLogged)} EMD already logged)` : ""}
+              {purchaseWhy}
             </CheckRow>
           )}
           {buyS && buyS.price > 0 && hasPurchaseEntry && Math.abs(oldPurchase - purchaseAmt) < 0.01 && <div className="stmt-note">Purchase price already logged: {fmt2(oldPurchase)}.</div>}
@@ -667,7 +687,7 @@ function ClosingImportModal({ initialSide, apiKey, ctx, existing, onAnalyzed, on
           {buyS && opts.addLedger && (opts.addPurchase || opts.replacePurchase || (hasPurchaseEntry && Math.abs(oldPurchase - purchaseAmt) < 0.01)) && (
             <div className={"stmt-check" + (Math.abs(ledgerAfter - buyS.total) < 1 ? " ok" : "")}>
               Acquisition in the ledger after this: {fmt2(ledgerAfter)}
-              {Math.abs(ledgerAfter - buyS.total) < 1 ? ", the same as the total cost of the purchase." : `; the purchase cost on the statement is ${fmt2(buyS.total)}.`}
+              {Math.abs(ledgerAfter - buyS.total) < 1 ? ", the same as what left our pocket." : `; out of our pocket on the statement: ${fmt2(buyS.total)}.`}
             </div>
           )}
           <SaveDocOption source={source} existing={rec} opts={opts} o={o} connected={ctx.connected} dealDocs={ctx.dealDocs} />

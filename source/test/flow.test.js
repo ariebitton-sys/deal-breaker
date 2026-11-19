@@ -279,9 +279,9 @@ const STMT = {
   assert(t.anthropicCalls[0].opts.headers["anthropic-dangerous-direct-browser-access"] === "true", "browser-access header sent");
   assert(t.anthropicCalls[0].body.model === "claude-sonnet-5-5", "model id");
   assert(md.textContent.includes("Settlement fee to Ohio Title") && !md.textContent.includes("County conveyance fee"), "seller-only lines hidden on purchase side");
-  assert(md.textContent.includes("Apply 9 lines"), "9 buyer-side cost lines selected");
+  assert(md.textContent.includes("Apply 8 lines"), "8 buyer-side cost lines selected (the tax proration is a credit, not a cost)");
   const optRow = (re) => [...md.querySelectorAll("label")].find((l) => re.test(l.textContent));
-  assert(optRow(/Add the closing costs and credits to the Actuals Ledger/).querySelector("input").checked, "ledger option on by default");
+  assert(optRow(/Add the closing costs to the Actuals Ledger/).querySelector("input").checked, "ledger option on by default");
   assert(!optRow(/Also replace the estimated Buying costs in Flip analysis/).querySelector("input").checked, "replacing the estimate is off by default");
   await click(btn(/Apply \d+ line/, md));
   await sleep(40);
@@ -290,7 +290,8 @@ const STMT = {
   const vals0 = [...group("Buying costs").querySelectorAll('input[type="number"]')].map((i) => i.value);
   assert(JSON.stringify(vals0) === JSON.stringify(estBefore) && field("Points / Lender Fees").value === pointsBefore, "estimated Buying costs and points unchanged");
   await click(nav(/^Expenses/));
-  assert(text().includes("Closing costs from the purchase statement (6 items)") && text().includes("Lender fees and interest from the statement (2 items)") && text().includes("County taxes"), "statement in the ledger, one entry per category");
+  assert(text().includes("Closing costs from the purchase statement (6 items)") && text().includes("Lender fees and interest from the statement (2 items)") && !text().includes("County taxes"), "statement in the ledger, one entry per category; no negative tax entry");
+  assert(/credit from the seller \(property tax\)/.test(text()), "the tax credit comes off the purchase entry");
   assert(text().includes("Purchase price"), "purchase price logged");
   const ledgerCount = () => [...doc.querySelectorAll("section")].find((x) => /Expense ledger/i.test(x.textContent)).textContent.match(/(\d+) entries/)[1];
   const before = ledgerCount();
@@ -307,14 +308,14 @@ const STMT = {
   assert(t.anthropicCalls.length === callsBefore, "no new Claude call");
   // change one mapping and re-apply: ledger entries replaced, not duplicated
   const wireRow = [...md.querySelectorAll("tr")].find((r) => r.textContent.includes("Wire fee"));
-  await setVal(wireRow.querySelector("select"), "holding");
+  await setVal(wireRow.querySelector("select"), "txn:escrow");
   // this time also overwrite the estimate (the option is still there when wanted)
   await click([...md.querySelectorAll("label")].find((l) => /Also replace the estimated Buying costs/.test(l.textContent)).querySelector("input"));
   await click(btn(/Apply \d+ line/, md));
   await settle(6);
   await click(nav(/^Flip analysis$/));
   const vals = [...group("Buying costs").querySelectorAll('input[type="number"]')].map((i) => i.value);
-  assert(vals[0] === "1357" && vals[1] === "166", `with the option ticked: escrow=1357 recording=166 (got ${vals.slice(0, 2)})`);
+  assert(vals[0] === "1392" && vals[1] === "166", `with the option ticked: escrow=1392 (incl. the $35 wire fee moved there) recording=166 (got ${vals.slice(0, 2)})`);
   assert(field("Points / Lender Fees").value === "2563", "with the option ticked: points = lender fees 2563");
   await click(nav(/^Expenses/));
   assert(ledgerCount() === before, `re-apply replaced the imported entries (${before} → ${ledgerCount()})`);
@@ -322,7 +323,7 @@ const STMT = {
   await openAnalysisRow("Purchase closing statement");
   md = modal();
   const wireSel = [...md.querySelectorAll("tr")].find((r) => r.textContent.includes("Wire fee")).querySelector("select");
-  assert(wireSel.value === "holding", "reopened review remembers the last applied mapping");
+  assert(wireSel.value === "txn:escrow", "reopened review remembers the last applied mapping");
   await click(btn("Close", md));
 
   console.log("9c. SOW → milestones (from Flip Management → Rehab)");
