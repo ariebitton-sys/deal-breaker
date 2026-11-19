@@ -1085,13 +1085,21 @@ async function driveUploadFile(token, folderId, file) {
   }
   return r.json();
 }
-function SettingsModal({ settings, onSave, onClose }) {
+function SettingsModal({ settings, connected, team, onSave, onClose }) {
   const [cid, setCid] = useState(settings.clientId || "");
   const [fid, setFid] = useState(settings.folderId || "");
   const [mapsKey, setMapsKey] = useState(settings.mapsApiKey || "");
   const [aiKey, setAiKey] = useState(settings.anthropicKey || "");
   const [keyTest, setKeyTest] = useState(null);
+  const [share, setShare] = useState(true);
   const cleanKey = cleanApiKey(aiKey);
+  const formKeys = { anthropicKey: cleanKey, mapsApiKey: mapsKey.trim() };
+  const teamKeys = settings.teamKeys || {};
+  const hasKeys = !!(formKeys.anthropicKey || formKeys.mapsApiKey);
+  const differs = TEAM_KEYS.some((k) => formKeys[k] && formKeys[k] !== (teamKeys[k] || ""));
+  const canShare = connected && !!fid.trim() && fid.trim() === (settings.folderId || "") && hasKeys && (!team || differs);
+  const teamDate = team && team.modifiedTime ? new Date(team.modifiedTime).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "";
+  const builtIn = cid.trim() === KAPPA_CLIENT_ID;
   return (
     <div
       style={{
@@ -1124,6 +1132,11 @@ function SettingsModal({ settings, onSave, onClose }) {
         >
           Settings
         </h2>
+        <details className="set-conn" open={!builtIn}>
+          <summary>
+            <span>Google connection</span>
+            <small>{builtIn ? "Kappa's sign-in is built in. " : ""}{fid ? "Deals folder set." : "The deals folder is found when you connect Google."}</small>
+          </summary>
         <label
           style={{
             display: "block",
@@ -1192,6 +1205,7 @@ function SettingsModal({ settings, onSave, onClose }) {
             From Drive URL: drive.google.com/drive/folders/<strong>THIS_PART</strong>
           </span>
         </label>
+        </details>
         <label
           style={{
             display: "block",
@@ -1310,9 +1324,44 @@ function SettingsModal({ settings, onSave, onClose }) {
               lineHeight: 1.5,
             }}
           >
-            Create one at console.anthropic.com → API Keys. Stored only in this browser — never saved to Drive. Each statement costs a few cents to read.
+            Create one at console.anthropic.com → API Keys. Kept in this browser, and in the deals folder if you share it with the team below. Each statement costs a few cents to read.
           </span>
         </label>
+        <div className="set-team">
+          <div className="set-team-h">Kappa team</div>
+          {!connected ? (
+            <p>Connect Google to share these keys with the team. Team members then only connect Google: no codes to type.</p>
+          ) : !team ? (
+            <React.Fragment>
+              <label className="set-check">
+                <input type="checkbox" checked={share && hasKeys} disabled={!hasKeys} onChange={(e) => setShare(e.target.checked)} />
+                <span>Share the Maps and Anthropic keys with the team</span>
+              </label>
+              <p>
+                Saved as “{TEAM_FILE.replace(/\.json$/, "")}” in the deals folder. Anyone you share that folder with gets the keys and the
+                folder when they connect Google, with nothing to type. Anyone with access to the folder can read the keys.
+              </p>
+            </React.Fragment>
+          ) : (
+            <React.Fragment>
+              <p>
+                Shared with the team{teamDate ? `, last updated ${teamDate}` : ""}
+                {team.by ? ` by ${team.by}` : ""}. Members who connect Google get the keys and the deals folder automatically.
+              </p>
+              {differs ? (
+                <label className="set-check">
+                  <input type="checkbox" checked={share} onChange={(e) => setShare(e.target.checked)} />
+                  <span>Update the team's keys with these (everyone gets them on their next visit)</span>
+                </label>
+              ) : (
+                <p className="set-ok">The team uses these keys.</p>
+              )}
+            </React.Fragment>
+          )}
+          {!builtIn && cid.trim() && (
+            <p className="set-warn">New team members sign in with the app's built-in Client ID, which isn't the one above, so they can't connect yet. Ask Claude to update the built-in one.</p>
+          )}
+        </div>
         <div
           style={{
             display: "flex",
@@ -1325,12 +1374,15 @@ function SettingsModal({ settings, onSave, onClose }) {
           </button>
           <button
             onClick={() =>
-              onSave({
-                clientId: cid.trim(),
-                folderId: fid.trim(),
-                mapsApiKey: mapsKey.trim(),
-                anthropicKey: cleanKey,
-              })
+              onSave(
+                {
+                  clientId: cid.trim(),
+                  folderId: fid.trim(),
+                  mapsApiKey: mapsKey.trim(),
+                  anthropicKey: cleanKey,
+                },
+                { share: canShare && share },
+              )
             }
             style={bs(T.teal, "#FFFFFF")}
           >
@@ -1995,6 +2047,31 @@ function compsIntoDocs(mg, cma) {
   const add = list.filter((f) => !docs.some((x) => same(x, f))).map((f) => ({ ...f, id: uid(), kind: "Comps", date: f.date || "" }));
   return { ...mg, docs: [...labeled, ...add] };
 }
+// ---- Kappa team setup ----
+// Kappa's Google sign-in app. Not a secret: it's in every Google sign-in page, and Google lets only
+// kappainv.com accounts through (Internal app). Built in so a team member doesn't type it.
+const KAPPA_CLIENT_ID = "297783038765-bhfkd9b5ik3phs5pi1r4kdv8mqcpqj3o.apps.googleusercontent.com";
+// The Maps and Anthropic keys are shared through a small file in the deals folder; whoever the folder is
+// shared with finds it when they connect Google, and with it the folder itself. Never in this public code.
+const TEAM_FILE = "Deal Breaker team settings.json";
+const TEAM_KEYS = ["anthropicKey", "mapsApiKey"];
+const withBuiltIns = (s) => ({ ...s, clientId: (s && s.clientId) || KAPPA_CLIENT_ID });
+async function driveFindTeamFile(token) {
+  const q = encodeURIComponent(`name='${TEAM_FILE}' and trashed=false`);
+  const fields = encodeURIComponent("files(id,name,parents,modifiedTime,appProperties,lastModifyingUser(displayName,emailAddress))");
+  const r = await fetch(
+    `https://www.googleapis.com/drive/v3/files?q=${q}&fields=${fields}&orderBy=${encodeURIComponent("modifiedTime desc")}&pageSize=10&supportsAllDrives=true&includeItemsFromAllDrives=true`,
+    { headers: { Authorization: `Bearer ${token}` } },
+  );
+  if (!r.ok) {
+    const e = new Error(`Drive search: ${r.status}`);
+    e.status = r.status;
+    throw e;
+  }
+  const j = await r.json();
+  const list = (j.files || []).filter((f) => f.parents && f.parents.length);
+  return list.find((f) => f.appProperties && f.appProperties.dbTeam === "1") || list[0] || null;
+}
 const TOKEN_KEY = "kappa_google_token";
 function readStoredToken(clientId) {
   try {
@@ -2121,11 +2198,22 @@ function App() {
   });
   const [settings, setSettings] = useState(() => {
     try {
-      return JSON.parse(localStorage.getItem("kappa_settings") || "{}");
+      return withBuiltIns(JSON.parse(localStorage.getItem("kappa_settings") || "{}") || {});
     } catch {
-      return {};
+      return withBuiltIns({});
     }
   });
+  const settingsRef = useRef(settings);
+  settingsRef.current = settings;
+  const persistSettings = (s) => {
+    try {
+      localStorage.setItem("kappa_settings", JSON.stringify(s));
+    } catch (e) {}
+    settingsRef.current = s;
+    setSettings(s);
+  };
+  const [teamFile, setTeamFile] = useState(null); // the team settings file in the deals folder: {id, modifiedTime, by}
+  const [teamSetup, setTeamSetup] = useState(null); // signed in without a deals folder: {status: "searching"|"notfound"|"error"}
   const [showSettings, setShowSettings] = useState(false);
   // Google access token: valid for about an hour. Kept in localStorage with its expiry so a refresh,
   // an app update or a second tab doesn't disconnect; renewed on the user's next click near expiry.
@@ -2166,11 +2254,12 @@ function App() {
   const [autoSave, setAutoSave] = useState({ status: "idle" }); // idle | saving | saved | error | conflict | exists
   const fileIdMap = useRef({});
   const pendingSave = useRef(false);
-  const saveSettings = (s) => {
+  const saveSettings = (form, opts = {}) => {
+    const s = withBuiltIns({ ...settings, ...form });
     const authChanged = s.clientId !== settings.clientId || s.folderId !== settings.folderId;
-    localStorage.setItem("kappa_settings", JSON.stringify(s));
-    setSettings(s);
+    persistSettings(s);
     setShowSettings(false);
+    if (opts.share && accessToken && s.folderId && !authChanged) shareTeamKeys(s);
     if (!authChanged) return; // e.g. only the Maps or Anthropic key changed — stay connected
     clearStoredToken();
     setAccessToken(null);
@@ -2249,10 +2338,50 @@ function App() {
       throw err;
     }
   };
+  // Take the team's keys from the team file. A key this browser got from the team (or doesn't have)
+  // follows the team's; a key someone typed in themselves stays theirs. Returns true if a key changed.
+  const applyTeam = (content, meta) => {
+    const s = { ...settingsRef.current };
+    const last = s.teamKeys || {};
+    let changed = false;
+    TEAM_KEYS.forEach((k) => {
+      const tv = String((content && content[k]) || "").trim();
+      if (!tv) return;
+      if (!s[k] || s[k] === last[k]) {
+        if (s[k] !== tv) changed = true;
+        s[k] = tv;
+      }
+    });
+    s.teamKeys = { anthropicKey: String(content.anthropicKey || "").trim(), mapsApiKey: String(content.mapsApiKey || "").trim() };
+    s.teamSync = meta.modifiedTime;
+    if (!s.folderId) {
+      s.folderId = String(content.folderId || "").trim() || (meta.parents || [])[0];
+      changed = true;
+    }
+    persistSettings(withBuiltIns(s));
+    setTeamFile({ id: meta.id, modifiedTime: meta.modifiedTime, by: meta.lastModifyingUser ? meta.lastModifyingUser.displayName || meta.lastModifyingUser.emailAddress : "" });
+    return changed;
+  };
   const refreshFiles = async (token) => {
-    if (!settings.folderId) return;
+    if (!settingsRef.current.folderId) return;
     try {
-      const files = await withAuthRetry((tok) => driveList(token || tok, settings.folderId));
+      const all = await withAuthRetry((tok) => driveList(token || tok, settingsRef.current.folderId));
+      const team = all.find((f) => f.name === TEAM_FILE);
+      const files = all.filter((f) => f.name !== TEAM_FILE);
+      if (!team) setTeamFile(null);
+      else if (team.modifiedTime === settingsRef.current.teamSync)
+        setTeamFile({ id: team.id, modifiedTime: team.modifiedTime, by: team.lastModifyingUser ? team.lastModifyingUser.displayName || team.lastModifyingUser.emailAddress : "" });
+      else {
+        try {
+          const content = await withAuthRetry((tok) => driveRead(token || tok, team.id));
+          if (applyTeam(content, team)) {
+            setDriveMsg("✓ Team keys updated");
+            setTimeout(() => setDriveMsg(""), 2500);
+          }
+        } catch (e) {
+          console.error(e);
+        }
+      }
       setDriveFiles(files);
       const m = {};
       files.forEach((f) => {
@@ -2275,9 +2404,12 @@ function App() {
       try {
         localStorage.setItem("kappa_user_email", info.email || "");
       } catch {}
-      await refreshFiles(token);
-      setDriveMsg("✓ Connected");
-      setTimeout(() => setDriveMsg(""), 2000);
+      if (!settingsRef.current.folderId) await findTeamFolder(token); // says what it found
+      else {
+        await refreshFiles(token);
+        setDriveMsg("✓ Connected");
+        setTimeout(() => setDriveMsg(""), 2000);
+      }
     } catch (e) {
       setDriveMsg("❌ " + e.message);
     }
@@ -2320,9 +2452,60 @@ function App() {
       afterSaveRef.current = null;
     });
   };
+  // A team member's first sign-in: the team settings file shared with them points to the deals folder
+  // and carries the keys, so there's nothing to type.
+  const findTeamFolder = async (token) => {
+    setTeamSetup({ status: "searching" });
+    try {
+      const meta = await withAuthRetry((tok) => driveFindTeamFile(token || tok));
+      if (!meta) return setTeamSetup({ status: "notfound" });
+      const content = await withAuthRetry((tok) => driveRead(token || tok, meta.id));
+      applyTeam(content, meta);
+      setTeamSetup(null);
+      await refreshFiles(token);
+      setDriveMsg("✓ Kappa team settings loaded");
+      setTimeout(() => setDriveMsg(""), 3000);
+    } catch (e) {
+      console.error(e);
+      setTeamSetup({ status: "error", msg: e.message });
+    }
+  };
+  // Share this browser's Maps and Anthropic keys with the team: written to the team file in the deals folder.
+  const shareTeamKeys = async (s) => {
+    const data = {
+      kind: "deal-breaker-team-settings",
+      v: 1,
+      note: "Read by Deal Breaker: team members get these keys when they connect Google. Anyone with access to this folder can read them.",
+      folderId: s.folderId,
+      anthropicKey: s.anthropicKey || "",
+      mapsApiKey: s.mapsApiKey || "",
+      updatedBy: userEmailRef.current || "",
+      updatedAt: new Date().toISOString(),
+    };
+    try {
+      const res = await withAuthRetry(async (tok) => {
+        if (teamFile && teamFile.id) {
+          try {
+            return await driveUpdateFull(tok, teamFile.id, data, { name: TEAM_FILE });
+          } catch (e) {
+            if (e.status !== 404) throw e;
+          }
+        }
+        return driveCreate(tok, s.folderId, TEAM_FILE, data, { dbTeam: "1" });
+      });
+      persistSettings({ ...settingsRef.current, teamKeys: { anthropicKey: data.anthropicKey, mapsApiKey: data.mapsApiKey }, teamSync: res.modifiedTime });
+      setTeamFile({ id: res.id, modifiedTime: res.modifiedTime, by: userEmailRef.current || "" });
+      setDriveMsg("✓ Keys shared with the Kappa team");
+      setTimeout(() => setDriveMsg(""), 3000);
+    } catch (e) {
+      setDriveMsg("❌ Couldn't share the keys with the team: " + e.message);
+    }
+  };
   // A token saved by an earlier page load: load the deal list straight away.
   useEffect(() => {
-    if (accessToken && settings.folderId) refreshFiles(accessToken);
+    if (!accessToken) return;
+    if (settings.folderId) refreshFiles(accessToken);
+    else findTeamFolder(accessToken);
   }, []);
   // Renew on the user's click: when the hour is nearly up, or after it ran out for someone who was
   // connected before. A click is the only moment the browser lets Google open its window.
@@ -3857,7 +4040,15 @@ function App() {
           </div>
         </div>
       )}
-      {showSettings && <SettingsModal settings={settings} onSave={saveSettings} onClose={() => setShowSettings(false)} />}
+      {showSettings && (
+        <SettingsModal
+          settings={settings}
+          connected={!!accessToken}
+          team={teamFile}
+          onSave={saveSettings}
+          onClose={() => setShowSettings(false)}
+        />
+      )}
       {transition && (
         <TransitionModal
           kind={transition}
@@ -4011,6 +4202,9 @@ function App() {
             busy={summaryBusy}
             connected={!!accessToken}
             hasClientId={!!settings.clientId}
+            teamSetup={accessToken && !settings.folderId ? teamSetup || { status: "searching" } : null}
+            userEmail={userEmail}
+            onRetrySetup={() => findTeamFolder()}
             onConnect={signIn}
             onOpenSettings={() => setShowSettings(true)}
             onOpen={openFromPortfolio}

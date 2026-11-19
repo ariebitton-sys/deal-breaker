@@ -274,7 +274,7 @@ function ProjectHeader({ address, setAddress, stage, health, context, dirty, sav
 
 // ---------- dashboards ----------
 const DASH_LAYOUT_KEY = "kappa_dash_layout";
-function Dashboard({ filter: rawFilter, files, summaries, busy, connected, hasClientId, onConnect, onOpenSettings, onOpen, onNew, onRefresh }) {
+function Dashboard({ filter: rawFilter, files, summaries, busy, connected, hasClientId, teamSetup, userEmail, onRetrySetup, onConnect, onOpenSettings, onOpen, onNew, onRefresh }) {
   const filter = normDash(rawFilter);
   const meta = DASH_META[filter];
   const [q, setQ] = useState("");
@@ -336,6 +336,39 @@ function Dashboard({ filter: rawFilter, files, summaries, busy, connected, hasCl
               New deal
             </button>
           </div>
+        </div>
+      </React.Fragment>
+    );
+
+  // Signed in, but this browser doesn't know the deals folder yet: it's found through the team settings file
+  if (teamSetup)
+    return (
+      <React.Fragment>
+        <DashHead title={meta.title} sub={userEmail ? "Signed in as " + userEmail : "Signed in"} />
+        <div className="pf-empty pf-setup">
+          {teamSetup.status === "searching" ? (
+            <React.Fragment>
+              <h2>Setting up your access</h2>
+              <p>Looking for Kappa's deals folder in your Google Drive…</p>
+            </React.Fragment>
+          ) : (
+            <React.Fragment>
+              <h2>Kappa's deals folder wasn't found</h2>
+              <p>
+                {teamSetup.status === "error"
+                  ? "Google Drive didn't answer (" + (teamSetup.msg || "error") + "). Try again in a moment."
+                  : `Ask Arie to share the deals folder with ${userEmail || "this Google account"} (as Editor) and to share the team keys from Settings. Then try again.`}
+              </p>
+              <div style={{ display: "flex", gap: 10, justifyContent: "center", flexWrap: "wrap" }}>
+                <button onClick={onRetrySetup} style={btnPrimary()}>
+                  Try again
+                </button>
+                <button onClick={onOpenSettings} style={btnGhost()} data-no-autoconnect>
+                  Enter settings by hand
+                </button>
+              </div>
+            </React.Fragment>
+          )}
         </div>
       </React.Fragment>
     );

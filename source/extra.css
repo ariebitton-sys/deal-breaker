@@ -564,3 +564,20 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
 .ledger-items-btn{width:100%}
 /* v43: more room for the description (date and category need less) */
 @media (min-width:901px){.ledger-row{grid-template-columns:48px 92px minmax(0,1fr) 96px 26px 26px 26px}}
+
+/* ---- v46: Settings — Google connection fold + Kappa team box ---- */
+.set-conn{margin:0 0 18px;border:1px solid var(--line);border-radius:6px;padding:10px 14px}
+.set-conn > summary{cursor:pointer;list-style:none;display:flex;flex-direction:column;gap:2px}
+.set-conn > summary::-webkit-details-marker{display:none}
+.set-conn > summary > span{font-size:12.5px;font-weight:700;color:var(--ink)}
+.set-conn > summary > span::before{content:"▸";display:inline-block;width:14px;color:var(--faint);transition:transform .15s}
+.set-conn[open] > summary > span::before{transform:rotate(90deg)}
+.set-conn > summary > small{font-size:11.5px;color:var(--faint);padding-left:14px}
+.set-conn[open] > summary{margin-bottom:12px}
+.set-team{border:1px solid var(--line);background:#F5F8FB;border-radius:6px;padding:12px 14px;margin:0 0 20px}
+.set-team-h{font-size:12.5px;font-weight:700;color:var(--ink);margin-bottom:6px}
+.set-team p{font-size:12px;line-height:1.5;color:var(--mut);margin:6px 0 0}
+.set-team .set-ok{color:#1F7A55;font-weight:600}
+.set-team .set-warn{color:#A4520B;font-weight:600}
+.set-check{display:flex;gap:8px;align-items:flex-start;font-size:12.5px;font-weight:600;color:var(--ink);cursor:pointer}
+.set-check input{margin-top:2px;accent-color:var(--blue)}

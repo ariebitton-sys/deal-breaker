@@ -25,7 +25,7 @@ function makeDrive() {
     bins[id] = { id, name, mimeType, bytes: Buffer.from(text), modifiedTime: tick(), size: String(Buffer.byteLength(text)) };
     return id;
   };
-  const meta = (f) => ({ id: f.id, name: f.name, modifiedTime: f.modifiedTime, appProperties: f.appProperties, lastModifyingUser: f.lastModifyingUser });
+  const meta = (f) => ({ id: f.id, name: f.name, modifiedTime: f.modifiedTime, appProperties: f.appProperties, lastModifyingUser: f.lastModifyingUser, parents: f.parents });
   const parseMultipart = (body) => {
     const text = typeof body === "string" ? body : Buffer.from(body).toString("utf8");
     const parts = text.split(/--[^\r\n]+\r\n/).filter((p) => p.includes("\r\n\r\n"));
@@ -58,7 +58,14 @@ function makeDrive() {
     }
     if (u.hostname === "www.googleapis.com" && u.pathname === "/oauth2/v3/userinfo") return json({ email: "arie@kappainv.com" });
     if (u.pathname === "/drive/v3/files" && method === "GET") {
-      const list = Object.values(files).sort((a, b) => b.modifiedTime.localeCompare(a.modifiedTime)).map(meta);
+      // files without parents count as being in whatever folder is asked for (older tests)
+      const q = u.searchParams.get("q") || "";
+      const nm = (q.match(/name='([^']*)'/) || [])[1];
+      const par = (q.match(/'([^']+)' in parents/) || [])[1];
+      const list = Object.values(files)
+        .filter((f) => (!nm || f.name === nm) && (!par || !f.parents || f.parents.includes(par)) && (!nm || f.parents))
+        .sort((a, b) => b.modifiedTime.localeCompare(a.modifiedTime))
+        .map(meta);
       return json({ files: list });
     }
     let m = u.pathname.match(/^\/drive\/v3\/files\/([^/]+)$/);
@@ -75,7 +82,7 @@ function makeDrive() {
     if (u.pathname === "/upload/drive/v3/files" && method === "POST") {
       const { meta: md, content } = parseMultipart(opts.body);
       const id = "f" + seq++;
-      files[id] = { id, name: md.name, content, modifiedTime: tick(), appProperties: {}, lastModifyingUser: { displayName: "Arie", emailAddress: "arie@kappainv.com" }, mimeType: md.mimeType };
+      files[id] = { id, name: md.name, content, modifiedTime: tick(), appProperties: {}, lastModifyingUser: { displayName: "Arie", emailAddress: "arie@kappainv.com" }, mimeType: md.mimeType, parents: md.parents };
       applyProps(files[id], md.appProperties);
       return json({ id, name: md.name, modifiedTime: files[id].modifiedTime, mimeType: md.mimeType, size: content.length });
     }
