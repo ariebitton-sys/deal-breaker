@@ -20,8 +20,8 @@ const mk = (address, stage, extra) => ({
 });
 (async () => {
   const drive = makeDrive();
-  drive.add("100 Alpha St, Cleveland, OH 44102.json", mk("100 Alpha St, Cleveland, OH 44102", "contract"));
-  drive.add("200 Beta Ave, Cleveland, OH 44103.json", mk("200 Beta Ave, Cleveland, OH 44103", "contract"));
+  const aid = drive.add("100 Alpha St, Cleveland, OH 44102.json", mk("100 Alpha St, Cleveland, OH 44102", "contract"));
+  const bid = drive.add("200 Beta Ave, Cleveland, OH 44103.json", mk("200 Beta Ave, Cleveland, OH 44103", "contract"));
   const gid = drive.add(
     "300 Gamma Rd, Cleveland, OH 44104.json",
     mk("300 Gamma Rd, Cleveland, OH 44104", "contract", {
@@ -71,15 +71,80 @@ const mk = (address, stage, extra) => ({
   await t.sleep(40); await t.settle(10);
   assert(addr() === "100 Alpha St, Cleveland, OH 44102", "Back again → first deal reloaded from Drive");
 
-  console.log("4. Unsaved changes: going forward to another deal asks first");
-  await t.setVal(t.doc.querySelector(".dh-addr"), "100 Alpha St, Cleveland, OH 44102 (edited)");
+  console.log("4. Changes save themselves: going forward to another deal doesn't ask");
+  const status = () => (t.doc.querySelector(".dh-save") ? t.doc.querySelector(".dh-save").textContent : "");
+  const edited = "100 Alpha St, Cleveland, OH 44102 (edited)";
+  await t.setVal(t.doc.querySelector(".dh-addr"), edited);
+  assert(status() === "Saving…", "header says Saving… right after a change");
   await fwd();
   assert(!t.doc.querySelector(".dh-addr"), "Forward → dashboard (the edited deal stays open in the sidebar)");
   await fwd();
-  assert(/Discard and open/.test(t.text()), "Forward → other deal asks to save or discard");
+  await t.sleep(60); await t.settle(10);
+  assert(!/Discard and open|Save the current deal first/.test(t.text()) && addr() === "200 Beta Ave, Cleveland, OH 44103", "Forward → other deal opens without asking");
+  assert(drive.files[aid].name === edited + ".json" && JSON.parse(drive.files[aid].content).address === edited, "the edit was saved to Drive on the way (file renamed)");
+  assert(Object.keys(drive.files).length === 3, "no duplicate file");
+
+  console.log("4b. Autosave: a change reaches Drive by itself a moment later");
+  await t.click(nav(/^Stages and milestones$/));
+  await t.setVal(t.doc.querySelector('textarea[placeholder^="Site visit"]'), "Lockbox code changed");
+  await t.click(t.btn("Add update"));
+  assert(status() === "Saving…", "Saving… while the change waits");
+  const before = drive.calls.length;
+  await t.sleep(900); await t.settle(4);
+  assert(!JSON.parse(drive.files[bid].content).mgmt.log, "nothing written while still editing (short pause)");
+  await t.sleep(1100); await t.settle(10);
+  const beta = JSON.parse(drive.files[bid].content);
+  assert(beta.mgmt.log && beta.mgmt.log.some((l) => /Lockbox code changed/.test(l.text)), "saved to Drive without clicking Save");
+  assert(status() === "All changes saved", "header: All changes saved");
+  assert(!/Saved to Drive/.test(t.text()), "no toast for an autosave");
+  assert(!drive.calls.slice(before).some((c) => /\/files\?q=|files\?.*q=/.test(c.url || c)), "an in-place save doesn't reload the whole deal list");
+
+  console.log("4c. Can't save yet (new deal without a full address): switching still asks");
+  await t.click(t.btn("New deal"));
+  await t.settle(6);
+  await t.setVal(t.doc.querySelector(".dh-addr"), "12 Main");
+  assert(status() === "Not saved yet: add the full address", "header explains why it isn't saved");
+  await t.click(nav(/^Overview\d/));
+  await t.settle(6);
+  await openRow("300 Gamma Rd");
+  assert(/Save the current deal first/.test(t.text()), "opening another deal asks (nothing to save it under)");
   await t.click(t.btn("Discard and open"));
   await t.sleep(40); await t.settle(10);
-  assert(addr() === "200 Beta Ave, Cleveland, OH 44103", "discard → second deal opened");
+  assert(addr() === "300 Gamma Rd, Cleveland, OH 44104" && Object.keys(drive.files).length === 3, "discard → Gamma opened, nothing created");
+
+  console.log("4d. A partner saved this deal meanwhile: autosave asks once, then waits");
+  const gBefore = drive.files[gid].content;
+  drive.touch(gid, "Partner");
+  await t.click(nav(/^Stages and milestones$/));
+  await t.setVal(t.doc.querySelector('textarea[placeholder^="Site visit"]'), "Roof bid in");
+  await t.click(t.btn("Add update"));
+  await t.sleep(1800); await t.settle(10);
+  let md = t.modal();
+  assert(md && /changed since you opened it/.test(md.textContent) && /Partner/.test(md.textContent), "conflict window names the partner");
+  assert(drive.files[gid].content === gBefore, "partner's version not overwritten");
+  await t.click(t.btn("Cancel", md));
+  await t.sleep(1900); await t.settle(8);
+  assert(!t.modal() && /changed elsewhere/.test(status()), "after Cancel: no repeated pop-ups, header says why it isn't saved");
+  await t.click(t.btn("Save deal"));
+  await t.sleep(40); await t.settle(8);
+  md = t.modal();
+  await t.click(t.btn("Overwrite with mine", md));
+  await t.sleep(40); await t.settle(8);
+  assert(JSON.parse(drive.files[gid].content).mgmt.log.some((l) => /Roof bid in/.test(l.text)) && status() === "All changes saved", "Save deal → Overwrite with mine → saved");
+
+  console.log("4e. New deal at an address that already has a deal: no pop-up, just a note");
+  await t.click(t.btn("New deal"));
+  await t.settle(6);
+  await t.setVal(t.doc.querySelector(".dh-addr"), "200 Beta Ave, Cleveland, OH 44103");
+  await t.sleep(4400); await t.settle(10);
+  assert(!t.modal() && status() === "Not saved: another deal already has this address", "header note instead of a pop-up");
+  assert(Object.keys(drive.files).length === 3 && JSON.parse(drive.files[bid].content).mgmt.log.length === 1, "existing deal untouched");
+  await t.setVal(t.doc.querySelector(".dh-addr"), "210 Beta Ave, Cleveland, OH 44103");
+  await t.sleep(4400); await t.settle(10);
+  assert(Object.keys(drive.files).length === 4 && status() === "All changes saved", "a new address → the new deal is saved");
+  await t.click(nav(/^Overview\d/));
+  await t.settle(6);
+  await openRow("300 Gamma Rd");
 
   console.log("5. Empty Portfolio explains how deals get there; past stages keep forms folded");
   await t.click(nav(/^\s*Portfolio/));

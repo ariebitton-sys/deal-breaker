@@ -2163,6 +2163,7 @@ function App() {
   const [ledgerFilter, setLedgerFilter] = useState("All");
   const [gradeHover, setGradeHover] = useState(false);
   const [driveLoading, setDriveLoading] = useState(false);
+  const [autoSave, setAutoSave] = useState({ status: "idle" }); // idle | saving | saved | error | conflict | exists
   const fileIdMap = useRef({});
   const pendingSave = useRef(false);
   const saveSettings = (s) => {
@@ -2347,13 +2348,18 @@ function App() {
   // the Drive file instead of leaving a duplicate behind.
   const doSave = async (token, opts = {}) => {
     const cb = typeof opts.cb === "function" ? opts.cb : null;
+    const auto = !!opts.auto; // autosave: quiet, no toast, no full list reload
     if (!address.trim()) {
-      setDriveMsg("⚠ Enter address first");
-      setTimeout(() => setDriveMsg(""), 3000);
+      if (!auto) {
+        setDriveMsg("⚠ Enter address first");
+        setTimeout(() => setDriveMsg(""), 3000);
+      }
       return false;
     }
     const savedKey = dealKey;
-    setDriveLoading(true);
+    const before = loadedRef.current ? { ...loadedRef.current } : null;
+    if (auto) setAutoSave({ status: "saving" });
+    else setDriveLoading(true);
     try {
       const name = fileNameFor(address);
       const data = getState();
@@ -2381,7 +2387,14 @@ function App() {
         return { res, tok };
       }, token);
       if (result.conflict) {
+        // autosave: another deal already has this address → just say so (no popup on every pause in typing);
+        // someone else saved this deal meanwhile → ask, as a manual save does
+        if (auto && result.conflict.type === "exists") {
+          setAutoSave({ status: "exists", key: savedKey, name });
+          return false;
+        }
         setConflict({ ...result.conflict, cb });
+        if (auto) setAutoSave({ status: "conflict", key: savedKey });
         return false;
       }
       const res = result.res;
@@ -2392,17 +2405,24 @@ function App() {
       summaryCacheRef.current[res.id] = { modifiedTime: res.modifiedTime, sum };
       saveSummaryCache(summaryCacheRef.current);
       setSummaries((s) => ({ ...s, [res.id]: sum }));
-      await refreshFiles(result.tok);
+      // a new or renamed file changes the deal list; a plain update only changes this deal's entry
+      if (!auto || !before || before.id !== res.id || before.name !== name) await refreshFiles(result.tok);
+      else setDriveFiles((fs) => fs.map((f) => (f.id === res.id ? { ...f, name, modifiedTime: res.modifiedTime } : f)));
       setBaseline(savedKey);
-      setDriveMsg("✓ Saved to Drive");
-      setTimeout(() => setDriveMsg(""), 2500);
+      if (auto) setAutoSave({ status: "saved", at: Date.now() });
+      else {
+        setAutoSave({ status: "saved", at: Date.now() });
+        setDriveMsg("✓ Saved to Drive");
+        setTimeout(() => setDriveMsg(""), 2500);
+      }
       if (cb) cb(result.tok);
       return true;
     } catch (e) {
-      setDriveMsg(e.message.includes("expired") ? "❌ " + e.message : "❌ " + e.message + " — your data is safe, try Save again");
+      if (auto) setAutoSave({ status: "error", msg: e.message });
+      else setDriveMsg(e.message.includes("expired") ? "❌ " + e.message : "❌ " + e.message + " — your data is safe, try Save again");
       return false;
     } finally {
-      setDriveLoading(false);
+      if (!auto) setDriveLoading(false);
     }
   };
   const resetFields = () => {
@@ -2495,12 +2515,12 @@ function App() {
     if (action.kind === "load") openDeal(action.file, token);
     else resetDeal();
   };
-  const requestNewDeal = () => {
-    if (dirty)
-      setPendingAction({
-        kind: "new",
-      });
-    else resetDeal();
+  const requestNewDeal = async () => {
+    if (dirty && !(await flushSave())) {
+      if (!conflictRef.current) setPendingAction({ kind: "new" });
+      return;
+    }
+    resetDeal();
   };
   const saveThenProceed = async () => {
     const action = pendingAction;
@@ -2531,7 +2551,20 @@ function App() {
       signIn();
       return;
     }
-    await doSave(accessToken, { cb });
+    // let an autosave that's already running finish first, so the two never write at once
+    while (savingRef.current) await new Promise((r) => setTimeout(r, 80));
+    if (!dirtyRef.current && loadedRef.current) {
+      setDriveMsg("✓ Saved to Drive");
+      setTimeout(() => setDriveMsg(""), 2500);
+      if (cb) cb(accessTokenRef.current || accessToken);
+      return;
+    }
+    savingRef.current = true;
+    try {
+      await doSaveRef.current(accessTokenRef.current || accessToken, { cb });
+    } finally {
+      savingRef.current = false;
+    }
   };
   const getState = () => ({
     address,
@@ -2641,6 +2674,50 @@ function App() {
     } else setBaseline(dealKey);
   }, [cleanTick]);
   const dirty = baseline !== null && dealKey !== baseline;
+  // ---- Autosave: every change goes to Drive shortly after it's made ----
+  const dirtyRef = useRef(dirty);
+  dirtyRef.current = dirty;
+  const doSaveRef = useRef(null);
+  doSaveRef.current = doSave;
+  const conflictRef = useRef(null);
+  conflictRef.current = conflict;
+  const savingRef = useRef(false);
+  const [retryTick, setRetryTick] = useState(0);
+  // a new deal is created in Drive once its address looks complete (a number and a street), not mid-typing
+  const addressReady = loadedRef.current ? !!address.trim() : /\d/.test(address) && /\s/.test(address.trim()) && address.trim().length >= 8;
+  const canAutosave = !!accessToken && !!settings.folderId && addressReady && !conflict;
+  const runSave = async () => {
+    while (savingRef.current) await new Promise((r) => setTimeout(r, 80));
+    if (!dirtyRef.current) return true;
+    savingRef.current = true;
+    try {
+      return await doSaveRef.current(accessTokenRef.current, { auto: true });
+    } finally {
+      savingRef.current = false;
+    }
+  };
+  // before switching to another deal: save what's pending; false when it can't be saved
+  const flushSave = async () => {
+    if (!dirtyRef.current) return true;
+    if (!accessTokenRef.current || !settings.folderId || !addressReady || conflictRef.current || autoHeld) return false;
+    return runSave();
+  };
+  // autosave holds off after a conflict until the next change, and after "address already used" until the address changes
+  const autoHeld = (autoSave.status === "conflict" && autoSave.key === dealKey) || (autoSave.status === "exists" && autoSave.name === fileNameFor(address));
+  useEffect(() => {
+    if (!dirty || !canAutosave || autoHeld) return;
+    // a new deal, or an address being edited (it renames the file), waits for a longer pause in typing
+    const renaming = !loadedRef.current || fileNameFor(address) !== loadedRef.current.name;
+    const id = setTimeout(runSave, renaming ? 4000 : 1500);
+    return () => clearTimeout(id);
+  }, [dealKey, baseline, canAutosave, retryTick]);
+  // a failed autosave tries again after a while (and on the next change)
+  useEffect(() => {
+    if (autoSave.status !== "error") return;
+    const id = setTimeout(() => setRetryTick((t) => t + 1), 20000);
+    return () => clearTimeout(id);
+  }, [autoSave]);
+
   useEffect(() => {
     let draft = null;
     try {
@@ -2694,14 +2771,13 @@ function App() {
     window.addEventListener("keydown", h);
     return () => window.removeEventListener("keydown", h);
   }, []);
-  const loadDeal = (file) => {
+  const loadDeal = async (file) => {
     setLoadOpen(false);
-    if (dirty)
-      setPendingAction({
-        kind: "load",
-        file,
-      });
-    else openDeal(file);
+    if (dirty && !(await flushSave())) {
+      if (!conflictRef.current) setPendingAction({ kind: "load", file });
+      return;
+    }
+    openDeal(file);
   };
   const openDeal = async (file, token) => {
     if (!(token || accessToken)) return;
@@ -3272,19 +3348,23 @@ function App() {
       setView("portfolio");
       return;
     }
-    if (dirty) {
-      // stay on this deal until the user decides; put its entry back
+    const go = () => {
+      n.target = s.key;
+      openDeal(file).then(() => {
+        if (loadedRef.current && loadedRef.current.id === s.f && s.m !== "overview") setMode(s.m);
+        settle();
+      });
+    };
+    if (!dirty) return go();
+    const here = { ...screen, key: screenKey, i: (s.i || 0) + 1, y: Math.round(window.scrollY) };
+    flushSave().then((ok) => {
+      if (ok) return go();
+      // can't save: stay on this deal until the user decides; put its entry back
       try {
-        window.history.pushState({ ...screen, key: screenKey, i: (s.i || 0) + 1, y: Math.round(window.scrollY) }, "");
-        setNavIndex((s.i || 0) + 1);
+        window.history.pushState(here, "");
+        setNavIndex(here.i);
       } catch (err) {}
-      setPendingAction({ kind: "load", file });
-      return;
-    }
-    n.target = s.key;
-    openDeal(file).then(() => {
-      if (loadedRef.current && loadedRef.current.id === s.f && s.m !== "overview") setMode(s.m);
-      settle();
+      if (!conflictRef.current) setPendingAction({ kind: "load", file });
     });
   };
   useEffect(() => {
@@ -3948,6 +4028,22 @@ function App() {
           context={dealContext}
           dirty={dirty}
           saving={driveLoading}
+          autoSave={dirty && canAutosave && !autoHeld ? (autoSave.status === "error" ? autoSave : { status: "saving" }) : autoSave}
+          autoBlocked={
+            !dirty
+              ? null
+              : !accessToken
+                ? "connect"
+                : !addressReady
+                  ? "address"
+                  : !settings.folderId
+                    ? "folder"
+                    : conflict || autoSave.status === "conflict"
+                      ? "conflict"
+                      : autoHeld && autoSave.status === "exists"
+                        ? "exists"
+                        : null
+          }
           onSave={saveDeal}
           onExportCsv={exportCSV}
           onPrint={() => window.print()}

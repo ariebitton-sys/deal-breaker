@@ -211,10 +211,29 @@ function ProjectTabs({ mode, go }) {
     </div>
   );
 }
-function ProjectHeader({ address, setAddress, stage, health, context, dirty, saving, saveMsg, onSave, onExportCsv, onPrint, actions }) {
+// Save status: changes save themselves; the header says where they stand.
+const AUTO_BLOCKED = {
+  connect: "Not saved: connect Google to save",
+  address: "Not saved yet: add the full address",
+  conflict: "Not saved: this deal was changed elsewhere. Click Save deal to choose",
+  exists: "Not saved: another deal already has this address",
+  folder: "Not saved: set the Drive folder in Settings",
+};
+function ProjectHeader({ address, setAddress, stage, health, context, dirty, saving, saveMsg, autoSave, autoBlocked, onSave, onExportCsv, onPrint, actions }) {
   const [menu, setMenu] = useState(false);
-  const msgTone = saveMsg ? (saveMsg.startsWith("✓") ? T.green : saveMsg.startsWith("⚠") ? T.amber : T.red) : dirty ? T.amber : T.txtMute;
-  const msg = saveMsg ? saveMsg.replace(/^[✓⚠❌]\s*/, "") : dirty ? "Unsaved changes" : "All changes saved";
+  const st = autoSave || {};
+  const auto =
+    autoBlocked && dirty
+      ? [AUTO_BLOCKED[autoBlocked], T.amber]
+      : st.status === "error"
+        ? ["Not saved, retrying: " + (st.msg || "Drive error"), T.red]
+        : saving || st.status === "saving"
+          ? ["Saving…", T.txtMute]
+          : dirty
+            ? ["Unsaved changes", T.amber]
+            : ["All changes saved", T.txtMute];
+  const msgTone = saveMsg && !saveMsg.startsWith("✓") ? (saveMsg.startsWith("⚠") ? T.amber : T.red) : auto[1];
+  const msg = saveMsg && !saveMsg.startsWith("✓") ? saveMsg.replace(/^[✓⚠❌]\s*/, "") : auto[0];
   return (
     <div className="deal-head">
       <input className="dh-addr" placeholder="Property address" value={address} onChange={(e) => setAddress(e.target.value)} aria-label="Property address" />
@@ -225,8 +244,10 @@ function ProjectHeader({ address, setAddress, stage, health, context, dirty, sav
           {context && <span className="dh-context">{context}</span>}
         </div>
         <div className="dh-actions no-print">
-          <span style={{ fontSize: 12.5, color: msgTone }}>{msg}</span>
-          <button onClick={onSave} disabled={saving} title="Save to Drive (Ctrl+S)" style={dirty ? btnPrimary() : btnGhost()}>
+          <span className="dh-save" role="status" style={{ fontSize: 12.5, color: msgTone }}>
+            {msg}
+          </span>
+          <button onClick={onSave} disabled={saving} title="Changes save themselves; this saves right now (Ctrl+S)" style={dirty && autoBlocked ? btnPrimary() : btnGhost()}>
             <Icon name="save" /> {saving ? "Saving…" : "Save deal"}
           </button>
           <div style={{ position: "relative" }}>
