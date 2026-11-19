@@ -207,6 +207,7 @@ function mergeMgmt(x) {
     log: x.log || [],
     lessons: x.lessons || "",
     analyses: Array.isArray(x.analyses) ? x.analyses : [],
+    credits: Array.isArray(x.credits) ? x.credits : [],
     utilities: x.utilities && Array.isArray(x.utilities.items) ? x.utilities : null,
     dead: x.dead || null,
   };
@@ -994,7 +995,9 @@ function stmtBuySummary(lines, out) {
   const credits = sum((l) => l.target === "credit"); // negative
   const creditLines = inc.filter((l) => l.target === "credit");
   const taxCredit = creditLines.some((l) => l.category === "tax_proration");
-  const total = r2(price + closing + other + credits);
+  // the cost of the purchase: price + closing costs (+ anything else we paid). Credits from the seller
+  // aren't taken off it: a tax credit is kept for the tax bill it belongs to.
+  const total = r2(price + closing + other);
   const allLines = r2(lines.reduce((t, l) => t + l.amount, 0)); // every line, whatever its mapping = cash due at closing
   const loans = -r2(lines.filter((l) => l.category === "loan").reduce((t, l) => t + l.amount, 0));
   const due = out && out.totals ? out.totals.due_from_buyer : 0;

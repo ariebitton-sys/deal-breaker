@@ -314,6 +314,7 @@ function ClosingImportModal({ initialSide, apiKey, ctx, existing, onAnalyzed, on
       addPurchase: sd === "buy" && !hasPurchaseEntry,
       replacePurchase: sd === "buy" && hasPurchaseEntry,
       combine: true,
+      keepCredits: true,
       saveDoc: true,
     });
   };
@@ -385,27 +386,22 @@ function ClosingImportModal({ initialSide, apiKey, ctx, existing, onAnalyzed, on
   const sellS = !isBuy && out ? stmtSellSummary(lines, out) : null;
   const effPrice = buyS ? buyS.price : price;
   // the ledger's purchase entry: the price, less any EMD already logged on its own
-  // what was paid for the house at closing: the price, less the EMD logged on its own and less the
-  // credits the seller gave us — so every ledger entry is money that actually left our pocket
-  const purchaseAmt = buyS ? r2(buyS.price - emdLogged + buyS.credits) : 0;
-  const purchaseLess = buyS
-    ? [
-        emdLogged > 0 ? `the ${fmt2(emdLogged)} EMD already in the ledger` : "",
-        buyS.credits < 0 ? `the ${fmt2(-buyS.credits)} credit from the seller` : "",
-      ].filter(Boolean)
-    : [];
-  const purchaseWhy = buyS && purchaseLess.length ? ` (${fmt2(buyS.price)} less ${purchaseLess.join(" and ")})` : "";
+  // the ledger's purchase entry: the price, less the EMD already logged as its own entry
+  const purchaseAmt = buyS ? r2(buyS.price - emdLogged) : 0;
+  const purchaseWhy = buyS && emdLogged > 0 ? ` (${fmt2(buyS.price)} less the ${fmt2(emdLogged)} EMD already in the ledger)` : "";
   const purchaseLabel = buyS
-    ? (() => {
-        const less = [
-          emdLogged > 0 ? `the ${fmt2(emdLogged)} EMD paid earlier` : "",
-          buyS.credits < 0 ? `a ${fmt2(-buyS.credits)} credit from the seller${buyS.taxCredit ? " (property tax)" : ""}` : "",
-        ].filter(Boolean);
-        const head = `Purchase price ${fmt(buyS.price)}`;
-        const from = buyS.assignment > 0 ? ` (${fmt(buyS.sellerPrice)} to the seller + ${fmt(buyS.assignment)} assignment / JV)` : "";
-        return less.length ? `${head}${from} paid at closing, less ${less.join(" and ")}` : `${head}${from}`;
-      })()
+    ? `Purchase price ${fmt(buyS.price)}${buyS.assignment > 0 ? ` (${fmt(buyS.sellerPrice)} to the seller + ${fmt(buyS.assignment)} assignment / JV)` : ""}${
+        emdLogged > 0 ? `, paid at closing, less the ${fmt2(emdLogged)} EMD paid earlier` : ""
+      }`
     : "";
+  // what the purchase entry is made of, for the ledger's breakdown
+  const purchaseItems = buyS
+    ? [
+        ...lines.filter((l) => l.include && l.target === "price").map((l) => ({ label: l.category === "price" ? `Sales price to the seller (${l.description})` : l.description, amount: l.amount })),
+        ...(emdLogged > 0 ? [{ label: "Less the EMD paid before closing (its own entry)", amount: -emdLogged }] : []),
+      ]
+    : [];
+  const credits = buyS ? buyS.creditLines.map((l) => ({ label: l.description, amount: r2(-l.amount), kind: l.category === "tax_proration" ? "tax" : "other" })) : [];
   const oldPurchase = r2(purchaseEntries.reduce((t, a) => t + num(a.amount), 0));
   const costLines = included.filter(isCost);
   const ledgerAfter = buyS ? r2((ctx.actuals || []).filter((a) => a.tag !== "stmt_buy" && a.tag !== "purchase_price").reduce((t, a) => t + (a.cat === "Acquisition" && (a.tag === "emd" || (!a.tag && STMT_DEPOSIT_RE.test(a.label || ""))) ? num(a.amount) : 0), 0) + purchaseAmt + buyS.closing + buyS.other) : 0;
@@ -424,7 +420,8 @@ function ClosingImportModal({ initialSide, apiKey, ctx, existing, onAnalyzed, on
       lines: costLines,
       review: { v: 3, side, price: effPrice, closingDate, lines: lines.map((l) => ({ id: l.id, target: l.target, include: l.include, amount: l.amount })) },
       price: effPrice,
-      purchaseEntry: buyS && buyS.price > 0 ? { amount: purchaseAmt, label: purchaseLabel } : null,
+      purchaseEntry: buyS && buyS.price > 0 ? { amount: purchaseAmt, label: purchaseLabel, items: purchaseItems } : null,
+      credits: opts.keepCredits ? credits : [],
       closingDate,
       opts,
       source,
@@ -610,12 +607,13 @@ function ClosingImportModal({ initialSide, apiKey, ctx, existing, onAnalyzed, on
               <MiniRow label="Purchase price" value={fmt2(buyS.price)} />
               <MiniRow label="Closing costs (title, recording and fees)" value={fmt2(buyS.closing)} />
               {buyS.other !== 0 && <MiniRow label="Prorations and interest we paid" value={fmt2(buyS.other)} />}
-              {buyS.credits !== 0 && <MiniRow label={`Credit to us from the seller${buyS.taxCredit ? " (property tax)" : ""}`} value={fmt2(buyS.credits)} />}
-              <MiniRow label="Out of our pocket" value={fmt2(buyS.total)} strong color={T.violet} />
+              <MiniRow label="Cost of the purchase" value={fmt2(buyS.total)} strong color={T.violet} />
+              {buyS.credits !== 0 && <MiniRow label={`Credit from the seller${buyS.taxCredit ? " (property tax), kept for the tax bill" : ""}`} value={fmt2(-buyS.credits)} />}
               <div className="stmt-paid">
                 Paid: {buyS.deposit > 0 ? `${fmt2(buyS.deposit)} EMD before closing + ` : ""}
                 {fmt2(buyS.cashAtClosing)} at closing{buyS.loans > 0 ? ` + ${fmt2(buyS.loans)} loan` : ""}
-                {Math.abs(buyS.deposit + buyS.cashAtClosing + buyS.loans - buyS.total) < 1 ? ` = ${fmt2(buyS.total)}` : ""}
+                {buyS.credits !== 0 ? `; the other ${fmt2(-buyS.credits)} is the seller's credit` : ""}
+                {Math.abs(buyS.deposit + buyS.cashAtClosing + buyS.loans - buyS.credits - buyS.total) < 1 ? `. Together: ${fmt2(buyS.total)}.` : "."}
               </div>
               {buyS.check === "ok" && <div className="stmt-check ok">Every line is read: they add up to the statement's {fmt2(buyS.cashAtClosing)} due from the buyer.</div>}
               {buyS.check === "off" && (
@@ -627,8 +625,9 @@ function ClosingImportModal({ initialSide, apiKey, ctx, existing, onAnalyzed, on
               {buyS.check === "none" && <div className="stmt-check">The statement's totals weren't read, so the lines can't be checked against them. Read the statement again to check.</div>}
               {buyS.credits !== 0 && (
                 <div className="stmt-paid">
-                  The credit lowered what we wired at closing, so it comes off the purchase entry instead of showing as a negative cost.
-                  {buyS.taxCredit ? " When the property tax bill comes, log the full bill in the ledger." : ""}
+                  {buyS.taxCredit
+                    ? "The tax credit isn't taken off the purchase: it's the seller's share of the tax bill we'll pay, so it comes off that bill when you log it in the ledger."
+                    : "The credit isn't taken off the purchase; the ledger keeps it until you decide where it goes."}
                 </div>
               )}
             </div>
@@ -654,7 +653,7 @@ function ClosingImportModal({ initialSide, apiKey, ctx, existing, onAnalyzed, on
           {opts.addLedger && costLines.length > 1 && (
             <div style={{ paddingLeft: 22 }}>
               <CheckRow checked={opts.combine} onChange={o("combine")}>
-                One entry per ledger category instead of {costLines.length} separate lines (the lines stay in the saved analysis)
+                One entry per ledger category instead of {costLines.length} separate lines (click the entry to see them)
               </CheckRow>
             </div>
           )}
@@ -671,13 +670,24 @@ function ClosingImportModal({ initialSide, apiKey, ctx, existing, onAnalyzed, on
               {purchaseWhy}
             </CheckRow>
           )}
-          {buyS && buyS.price > 0 && hasPurchaseEntry && Math.abs(oldPurchase - purchaseAmt) >= 0.01 && (
+          {buyS && buyS.price > 0 && hasPurchaseEntry && (
             <CheckRow checked={opts.replacePurchase} onChange={o("replacePurchase")}>
-              Correct the purchase price entry in the ledger from {fmt2(oldPurchase)} to {fmt2(purchaseAmt)}
-              {purchaseWhy}
+              {Math.abs(oldPurchase - purchaseAmt) >= 0.01 ? (
+                <>
+                  Correct the purchase price entry in the ledger from {fmt2(oldPurchase)} to {fmt2(purchaseAmt)}
+                  {purchaseWhy}
+                </>
+              ) : (
+                <>Add the breakdown to the purchase price entry in the ledger ({fmt2(oldPurchase)})</>
+              )}
             </CheckRow>
           )}
-          {buyS && buyS.price > 0 && hasPurchaseEntry && Math.abs(oldPurchase - purchaseAmt) < 0.01 && <div className="stmt-note">Purchase price already logged: {fmt2(oldPurchase)}.</div>}
+          {buyS && credits.length > 0 && (
+            <CheckRow checked={opts.keepCredits} onChange={o("keepCredits")}>
+              Keep the seller's {fmt2(credits.reduce((t, c) => t + c.amount, 0))} credit with the deal
+              {credits.some((c) => c.kind === "tax") ? ", to take off the property tax bill when you log it" : ""}
+            </CheckRow>
+          )}
           {effPrice > 0 && (
             <CheckRow checked={opts.setPrice} onChange={o("setPrice")}>
               {isBuy ? `Use ${fmt(effPrice)} as the purchase price (current forecast)` : `Record ${fmt(effPrice)} as the final sale price`}
@@ -687,7 +697,7 @@ function ClosingImportModal({ initialSide, apiKey, ctx, existing, onAnalyzed, on
           {buyS && opts.addLedger && (opts.addPurchase || opts.replacePurchase || (hasPurchaseEntry && Math.abs(oldPurchase - purchaseAmt) < 0.01)) && (
             <div className={"stmt-check" + (Math.abs(ledgerAfter - buyS.total) < 1 ? " ok" : "")}>
               Acquisition in the ledger after this: {fmt2(ledgerAfter)}
-              {Math.abs(ledgerAfter - buyS.total) < 1 ? ", the same as what left our pocket." : `; out of our pocket on the statement: ${fmt2(buyS.total)}.`}
+              {Math.abs(ledgerAfter - buyS.total) < 1 ? ", the same as the cost of the purchase." : `; the cost of the purchase on the statement is ${fmt2(buyS.total)}.`}
             </div>
           )}
           <SaveDocOption source={source} existing={rec} opts={opts} o={o} connected={ctx.connected} dealDocs={ctx.dealDocs} />

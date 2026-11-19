@@ -22,7 +22,7 @@ open(jsx_path, 'w', encoding='utf-8').write(full)
 
 r = subprocess.run(['node', '-e', '''
 const babel=require("@babel/core"),fs=require("fs");
-const out=babel.transformSync(fs.readFileSync(process.argv[1],"utf8"),{babelrc:false,configFile:false,sourceType:"script",presets:[["@babel/preset-react",{runtime:"classic"}]]});
+const out=babel.transformSync(fs.readFileSync(process.argv[1],"utf8"),{babelrc:false,configFile:false,compact:false,sourceType:"script",presets:[["@babel/preset-react",{runtime:"classic"}]]});
 fs.writeFileSync(process.argv[2],out.code);
 ''', jsx_path, js_path], cwd=HERE, capture_output=True, text=True)
 if r.returncode:
