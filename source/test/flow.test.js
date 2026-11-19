@@ -282,7 +282,7 @@ const STMT = {
   assert(md.textContent.includes("Apply 8 lines"), "8 buyer-side cost lines selected (the tax proration is a credit, not a cost)");
   const optRow = (re) => [...md.querySelectorAll("label")].find((l) => re.test(l.textContent));
   assert(optRow(/Add the closing costs to the Actuals Ledger/).querySelector("input").checked, "ledger option on by default");
-  assert(!optRow(/Also replace the estimated Buying costs in Flip analysis/).querySelector("input").checked, "replacing the estimate is off by default");
+  assert(!optRow(/Also replace the estimated/) && !optRow(/as the purchase price \(current forecast\)/) && /Flip analysis isn't changed/.test(md.textContent), "no option touches Flip analysis");
   await click(btn(/Apply \d+ line/, md));
   await sleep(40);
   await settle(8);
@@ -309,14 +309,11 @@ const STMT = {
   // change one mapping and re-apply: ledger entries replaced, not duplicated
   const wireRow = [...md.querySelectorAll("tr")].find((r) => r.textContent.includes("Wire fee"));
   await setVal(wireRow.querySelector("select"), "txn:escrow");
-  // this time also overwrite the estimate (the option is still there when wanted)
-  await click([...md.querySelectorAll("label")].find((l) => /Also replace the estimated Buying costs/.test(l.textContent)).querySelector("input"));
   await click(btn(/Apply \d+ line/, md));
   await settle(6);
   await click(nav(/^Flip analysis$/));
   const vals = [...group("Buying costs").querySelectorAll('input[type="number"]')].map((i) => i.value);
-  assert(vals[0] === "1392" && vals[1] === "166", `with the option ticked: escrow=1392 (incl. the $35 wire fee moved there) recording=166 (got ${vals.slice(0, 2)})`);
-  assert(field("Points / Lender Fees").value === "2563", "with the option ticked: points = lender fees 2563");
+  assert(JSON.stringify(vals) === JSON.stringify(estBefore) && field("Points / Lender Fees").value === pointsBefore, "re-applying still leaves Flip analysis untouched");
   await click(nav(/^Expenses/));
   assert(ledgerCount() === before, `re-apply replaced the imported entries (${before} → ${ledgerCount()})`);
   await click(nav(/^Documents$/));

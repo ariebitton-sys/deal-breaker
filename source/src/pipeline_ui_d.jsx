@@ -303,14 +303,12 @@ function ClosingImportModal({ initialSide, apiKey, ctx, existing, onAnalyzed, on
   const emdLogged = ledgerEmd(ctx.actuals);
   const resetOpts = (sd) => {
     const advanced = sd === "buy" ? sIdx >= 1 || ctx.stage === "dead" : sIdx >= 3;
-    // A closing statement records what was actually paid: it goes to the ledger. The Buying / Selling
-    // cost rows in Flip analysis are the estimate and change only if asked.
+    // A closing statement records what actually happened: it goes to the actuals (ledger, final sale
+    // price) only. Flip analysis keeps the original underwriting untouched, to compare against.
     setOpts({
-      updateRows: false,
-      turnOffMissing: false,
       addLedger: true,
       replacePrev: true,
-      setPrice: sd === "sell" ? true : advanced,
+      setPrice: sd === "sell",
       addPurchase: sd === "buy" && !hasPurchaseEntry,
       replacePurchase: sd === "buy" && hasPurchaseEntry,
       combine: true,
@@ -688,10 +686,9 @@ function ClosingImportModal({ initialSide, apiKey, ctx, existing, onAnalyzed, on
               {credits.some((c) => c.kind === "tax") ? ", to take off the property tax bill when you log it" : ""}
             </CheckRow>
           )}
-          {effPrice > 0 && (
+          {!isBuy && effPrice > 0 && (
             <CheckRow checked={opts.setPrice} onChange={o("setPrice")}>
-              {isBuy ? `Use ${fmt(effPrice)} as the purchase price (current forecast)` : `Record ${fmt(effPrice)} as the final sale price`}
-              {isBuy && ctx.purchase && Math.abs(ctx.purchase - effPrice) >= 1 ? ` — now ${fmt(ctx.purchase)}` : ""}
+              Record {fmt(effPrice)} as the final sale price
             </CheckRow>
           )}
           {buyS && opts.addLedger && (opts.addPurchase || opts.replacePurchase || (hasPurchaseEntry && Math.abs(oldPurchase - purchaseAmt) < 0.01)) && (
@@ -701,22 +698,12 @@ function ClosingImportModal({ initialSide, apiKey, ctx, existing, onAnalyzed, on
             </div>
           )}
           <SaveDocOption source={source} existing={rec} opts={opts} o={o} connected={ctx.connected} dealDocs={ctx.dealDocs} />
-          <CheckRow checked={opts.updateRows} onChange={o("updateRows")}>
-            Also replace the estimated {side === "buy" ? "Buying" : "Selling"} costs in Flip analysis with these amounts{side === "buy" ? " (and Points / Lender Fees)" : ""}
-          </CheckRow>
-          {opts.updateRows && (
-            <div style={{ paddingLeft: 22 }}>
-              <CheckRow checked={opts.turnOffMissing} onChange={o("turnOffMissing")}>
-                Turn off cost rows that aren't on the statement
-              </CheckRow>
-            </div>
-          )}
-          {opts.updateRows && ctx.hasBaseline && <Note>The original underwriting stays frozen; this changes the current forecast only.</Note>}
+          <div className="stmt-note">Flip analysis isn't changed: it keeps your original numbers to compare with these actuals.</div>
           <div style={{ display: "flex", gap: 9, justifyContent: "flex-end", marginTop: 6 }}>
             <button onClick={onClose} style={bs(T.glass, T.txtDim)}>
               Close
             </button>
-            <button onClick={apply} disabled={!costLines.length && !opts.setPrice && !opts.addPurchase && !opts.replacePurchase} style={{ ...bs(T.violet, "#fff"), border: "none" }}>
+            <button onClick={apply} disabled={!costLines.length && !(opts.setPrice && !isBuy) && !opts.addPurchase && !opts.replacePurchase} style={{ ...bs(T.violet, "#fff"), border: "none" }}>
               Apply {costLines.length} line{costLines.length === 1 ? "" : "s"}
             </button>
           </div>

@@ -205,7 +205,27 @@ const acq = (actuals) => Math.round(actuals.reduce((t, a) => t + (["Acquisition"
   assert(row3(/Ashley White/).querySelector("select").value === "price" && row3(/Deposit held by/).querySelector("select").value === "deposit", "old mapping replaced: JV → purchase price, deposit → EMD");
   assert(/Cost of the purchase\$146,445\.15/.test(m3.textContent) && /totals weren't read/.test(m3.textContent), "same $146,445.15; says the totals check needs a fresh read");
   assert(row3(/Property Tax @/).querySelector("select").value === "credit", "the v41 mapping of the tax line (negative holding) is replaced by the credit");
-  assert(t.errors.length === 0 && t2.errors.length === 0 && t3.errors.length === 0, "no errors " + t.errors.concat(t2.errors, t3.errors).join(" | "));
+
+  console.log("6. Closing at a different price leaves Flip analysis as underwritten");
+  const drive4 = makeDrive();
+  const fid4 = drive4.add("4623 Carrollton Ave, Indianapolis, IN 46205.json", deal);
+  const t4 = await boot({ drive: drive4, anthropic, settings: { clientId: "c", folderId: "f", anthropicKey: "sk-ant-test" } });
+  await t4.click(t4.btn("Connect Google", t4.doc.querySelector(".pf-empty")));
+  await t4.sleep(30); await t4.settle(10);
+  await t4.click([...t4.doc.querySelectorAll("tr.dt-row")].find((r) => r.textContent.includes("4623 Carrollton")));
+  await t4.sleep(20); await t4.settle(10);
+  await t4.click(t4.btn("Mark closed, start rehab"));
+  let m4 = t4.modal();
+  await t4.setVal(t4.field("Final purchase price", m4), "150000");
+  await t4.click([...m4.querySelectorAll("label")].find((l) => /Next, read the purchase closing statement/.test(l.textContent)).querySelector("input"));
+  await t4.click(t4.btn("Move to rehab", m4));
+  await t4.settle(8);
+  await t4.click(t4.btn("Save deal"));
+  await t4.sleep(40); await t4.settle(8);
+  const s4 = JSON.parse(drive4.files[fid4].content);
+  assert(s4.purchase === 145000 && s4.mgmt.closing.price === 150000, "Flip analysis keeps $145,000; the actual $150,000 is the closing record");
+  assert(s4.actuals.find((a) => a.tag === "purchase_price").amount === 147500, "ledger: $150,000 less the $2,500 EMD");
+  assert(t.errors.length === 0 && t2.errors.length === 0 && t3.errors.length === 0 && t4.errors.length === 0, "no errors " + t.errors.concat(t2.errors, t3.errors, t4.errors).join(" | "));
   console.log("\nALL CLOSING TESTS PASSED");
   process.exit(0);
 })().catch((e) => { console.log("FAILED:", e); process.exit(1); });

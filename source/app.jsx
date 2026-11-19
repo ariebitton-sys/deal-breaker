@@ -2949,7 +2949,7 @@ function App() {
       hist("contract", f.date);
       addLogEntry(`Under contract at ${fmt(f.price)} — closing expected ${fmtDate(f.expectedClosing)}`);
     } else if (kind === "rehab") {
-      if (f.price !== purchase) setPurchase(f.price);
+      // the final price is an actual: it goes to the closing record and the ledger, not to Flip analysis
       setMgmt((mm) => ({
         ...mm,
         closing: { date: f.closingDate, price: f.price },
@@ -3106,26 +3106,7 @@ function App() {
   };
   const applyImport = ({ analysisId, side, lines, review, price, purchaseEntry, credits, closingDate, opts, source, docType }) => {
     const date = closingDate || todayISO();
-    if (opts.updateRows) {
-      const sums = {};
-      let lenderFees = null;
-      lines.forEach((l) => {
-        if (l.target.startsWith("txn:")) {
-          const k = l.target.slice(4);
-          sums[k] = (sums[k] || 0) + l.amount;
-        } else if (l.target === "points") lenderFees = (lenderFees || 0) + l.amount;
-      });
-      const setter = side === "buy" ? setBuyTxn : setSellTxn;
-      setter((prev) => {
-        const next = { ...prev };
-        Object.keys(next).forEach((k) => {
-          if (sums[k] !== undefined) next[k] = { ...next[k], on: true, val: Math.round(sums[k] * 100) / 100, type: "flat" };
-          else if (opts.turnOffMissing) next[k] = { ...next[k], on: false };
-        });
-        return next;
-      });
-      if (side === "buy" && lenderFees !== null) setPoints(Math.round(lenderFees * 100) / 100);
-    }
+    // Flip analysis (the estimate) is never changed by a statement: only the actuals are.
     const fixPurchase = side === "buy" && purchaseEntry && (opts.addPurchase || opts.replacePurchase);
     if (opts.addLedger || fixPurchase) {
       const tag = `stmt_${side}`;
@@ -3177,14 +3158,9 @@ function App() {
         ],
       }));
     }
-    if (opts.setPrice && price > 0) {
-      if (side === "buy") {
-        setPurchase(price);
-        setMgmt((mm) => ({ ...mm, closing: { ...mm.closing, price, date: mm.closing.date || closingDate || "" } }));
-      } else {
-        setActualSale(price);
-        setMgmt((mm) => ({ ...mm, sale: { ...mm.sale, date: mm.sale.date || closingDate || "" } }));
-      }
+    if (side === "sell" && opts.setPrice && price > 0) {
+      setActualSale(price);
+      setMgmt((mm) => ({ ...mm, sale: { ...mm.sale, date: mm.sale.date || closingDate || "" } }));
     }
     const costs = lines.reduce((s, l) => s + l.amount, 0);
     addLogEntry(`Imported ${side === "buy" ? "purchase" : "sale"} closing statement — ${lines.length} lines, ${fmt(costs)} in costs`);
