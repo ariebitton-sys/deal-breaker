@@ -804,7 +804,58 @@ const utilSourceLabel = (it) =>
         ? "County default"
         : "City default";
 // ---------- card ----------
+// Open or folded: one choice for all deals, kept in this browser.
+const UTIL_OPEN_KEY = "kappa_util_open";
+const readUtilOpen = () => {
+  try {
+    return localStorage.getItem(UTIL_OPEN_KEY) !== "0";
+  } catch (e) {
+    return true;
+  }
+};
+// Folded view: each provider once, with what it supplies, and where the tasks stand.
+function UtilitySummary({ u, mgmt }) {
+  const groups = utilGroups(u);
+  const missing = u.items.filter((it) => !it.name).map((it) => UTIL_LABEL[it.type].toLowerCase());
+  const counts = { todo: 0, done: 0 };
+  groups.forEach((g) => {
+    const st = utilStatus(mgmt, g.key);
+    if (st.tone === "todo") counts.todo++;
+    else if (st.tone === "done") counts.done++;
+  });
+  const unconfirmed = u.items.filter((it) => it.name && !it.confirmed).length;
+  const status = [
+    counts.todo ? `${counts.todo} to do` : "",
+    counts.done ? `${counts.done} set up` : "",
+    unconfirmed ? `${unconfirmed} to verify` : "",
+    missing.length ? `${missing.length} not found` : "",
+  ].filter(Boolean);
+  return (
+    <div className="util-sum">
+      <ul className="util-sum-list">
+        {groups.map((g) => (
+          <li key={g.key}>
+            <b>{g.it.name}</b> <span>{joinTypes(g.types)}</span>
+          </li>
+        ))}
+        {missing.length > 0 && (
+          <li className="miss">
+            <b>Not found</b> <span>{missing.join(", ")}</span>
+          </li>
+        )}
+      </ul>
+      {status.length > 0 && <div className="util-sum-st">{status.join(", ")}</div>}
+    </div>
+  );
+}
 function UtilitiesCard({ address, stage, mgmt, setMgmt }) {
+  const [open, setOpenState] = useState(readUtilOpen);
+  const setOpen = (v) => {
+    setOpenState(v);
+    try {
+      localStorage.setItem(UTIL_OPEN_KEY, v ? "1" : "0");
+    } catch (e) {}
+  };
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState("");
   const [edit, setEdit] = useState(null);
@@ -856,13 +907,26 @@ function UtilitiesCard({ address, stage, mgmt, setMgmt }) {
     <section className="dcard util">
       <div className="dcard-h">
         <Icon name="plug" /> Utilities
-        {u && !busy && (
+        {u && !busy && open && (
           <button className="dcard-link" onClick={run} title="Look the address up again and refresh the open tasks">
             <Icon name="refresh" size={14} /> Check again
           </button>
         )}
+        {u && (
+          <button
+            className={"util-fold" + (open ? "" : " shut")}
+            onClick={() => setOpen(!open)}
+            aria-expanded={open}
+            aria-label={open ? "Fold the utilities" : "Show the utilities"}
+            title={open ? "Fold to one line" : "Show providers and tasks"}
+          >
+            {open ? "Fold" : "Show"} <Icon name="down" size={14} />
+          </button>
+        )}
       </div>
-      {!u ? (
+      {u && !open ? (
+        <UtilitySummary u={u} mgmt={mgmt} />
+      ) : !u ? (
         <div className="util-empty">
           <p>Find the electric, gas, water, sewer and trash providers for this address, then add the transfer tasks to the stage checklists.</p>
           <button onClick={run} disabled={busy || !address.trim()} style={btnPrimary()}>

@@ -189,6 +189,17 @@ async function openDeal(t) {
   assert(s3.market.some((i) => i.ut === "cpp:sell" && /Stop-Service/.test(i.url)) && s3.market.some((i) => i.ut === "cleveland-water:sell" && /buyer's deed records/.test(i.label)), "market: stop and close tasks");
   assert(t3.errors.length === 0, "no errors " + t3.errors.join(" | "));
 
+  console.log("7b. Fold the card to one line and open it again");
+  await t3.click(t3.btn(/^\s*Fold/, utilCard(t3)));
+  const sum = utilCard(t3).querySelector(".util-sum");
+  assert(sum && !utilCard(t3).querySelector("table.util-table"), "folded: table hidden, summary shown");
+  assert(/Cleveland Public Power\s*electric/.test(sum.textContent) && /Enbridge Gas Ohio\s*gas/.test(sum.textContent) && /NEORSD \(Sewer District\)\s*sewer/.test(sum.textContent), "summary lists each provider with what it supplies");
+  assert(/\d+ to do/.test(sum.textContent) && !/Check again/.test(utilCard(t3).textContent), "summary shows where the tasks stand; Check again hidden while folded");
+  assert(t3.win.localStorage.getItem("kappa_util_open") === "0", "the choice is remembered");
+  await t3.click(t3.btn(/^\s*Show/, utilCard(t3)));
+  assert(utilCard(t3).querySelector("table.util-table") && t3.win.localStorage.getItem("kappa_util_open") === "1", "Show brings the table back");
+
+
   console.log("8. Cuyahoga suburbs from the typed address (services down)");
   const t4 = await boot({ drive: makeDrive(), settings: {}, geo: { census: new Error("down"), layers: {} } });
   const find = (a) => t4.win.findUtilities(a);

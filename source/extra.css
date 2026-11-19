@@ -513,3 +513,20 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
 .ov-link-btn.quiet{color:var(--mut);font-weight:500;font-size:13px}
 .ov-photo-edit{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
 .ov-photo-edit input{flex:1 1 260px;min-width:0;border:1px solid var(--line2);border-radius:3px;padding:7px 9px;font-size:13px}
+/* v39: fold the utilities card */
+.util-fold{display:inline-flex;align-items:center;gap:4px;background:none;border:1px solid var(--line2);border-radius:4px;padding:3px 8px 3px 10px;font-size:12.5px;font-weight:600;color:var(--ink);cursor:pointer}
+.dcard-h .dcard-link+.util-fold{margin-left:14px}
+.dcard-h .util-fold:first-of-type{margin-left:auto}
+.util-fold svg{transition:transform .15s ease;transform:rotate(180deg)}
+.util-fold.shut svg{transform:none}
+.util-fold:hover{background:#F6F8FB;border-color:#9AA8BC}
+.util-fold:focus-visible{outline:2px solid var(--blue);outline-offset:2px}
+.util-sum{display:flex;align-items:baseline;gap:8px 24px;flex-wrap:wrap;padding:12px 18px}
+.util-sum-list{list-style:none;margin:0;padding:0;display:flex;flex-wrap:wrap;gap:6px 22px;flex:1 1 auto}
+.util-sum-list li{font-size:13.5px;white-space:nowrap}
+.util-sum-list b{font-weight:600;color:var(--ink)}
+.util-sum-list span{color:var(--mut);margin-left:4px}
+.util-sum-list li.miss b{color:#9A5B05}
+.util-sum-st{font-size:12.5px;color:var(--mut);white-space:nowrap}
+@media (max-width:640px){.util-sum-list li{white-space:normal}}
+@media (prefers-reduced-motion:reduce){.util-fold svg{transition:none}}
