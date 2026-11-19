@@ -290,8 +290,8 @@ const STMT = {
   const vals0 = [...group("Buying costs").querySelectorAll('input[type="number"]')].map((i) => i.value);
   assert(JSON.stringify(vals0) === JSON.stringify(estBefore) && field("Points / Lender Fees").value === pointsBefore, "estimated Buying costs and points unchanged");
   await click(nav(/^Expenses/));
-  assert(text().includes("Closing costs from the purchase statement (6 items)") && text().includes("Lender fees and interest from the statement (2 items)") && ![...doc.querySelectorAll(".ledger-row")].some((r) => /County taxes/.test(r.textContent)), "statement in the ledger, one entry per category; no negative tax entry");
-  assert(/Seller's property tax credit from closing: \$1,450/.test(text()), "the tax credit waits in the ledger for the tax bill");
+  assert(text().includes("Closing costs from the purchase statement (6 items)") && text().includes("Lender fees and interest from the statement (2 items)"), "statement in the ledger, one entry per category");
+  assert([...doc.querySelectorAll(".ledger-row")].some((r) => /Property tax credit from the seller at closing \(County taxes/.test(r.textContent) && /−\$1,450 credit/.test(r.textContent)), "the seller's tax credit is counted: −$1,450 under Holding");
   assert(text().includes("Purchase price"), "purchase price logged");
   const ledgerCount = () => [...doc.querySelectorAll("section")].find((x) => /Expense ledger/i.test(x.textContent)).textContent.match(/(\d+) entries/)[1];
   const before = ledgerCount();

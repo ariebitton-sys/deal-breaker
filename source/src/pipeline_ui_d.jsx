@@ -312,7 +312,7 @@ function ClosingImportModal({ initialSide, apiKey, ctx, existing, onAnalyzed, on
       addPurchase: sd === "buy" && !hasPurchaseEntry,
       replacePurchase: sd === "buy" && hasPurchaseEntry,
       combine: true,
-      keepCredits: true,
+      countCredits: true,
       saveDoc: true,
     });
   };
@@ -401,6 +401,7 @@ function ClosingImportModal({ initialSide, apiKey, ctx, existing, onAnalyzed, on
     : [];
   const credits = buyS ? buyS.creditLines.map((l) => ({ label: l.description, amount: r2(-l.amount), kind: l.category === "tax_proration" ? "tax" : "other" })) : [];
   const oldPurchase = r2(purchaseEntries.reduce((t, a) => t + num(a.amount), 0));
+  const prevCredits = (ctx.actuals || []).filter((a) => a.tag === STMT_CREDIT_TAG).length;
   const costLines = included.filter(isCost);
   const ledgerAfter = buyS ? r2((ctx.actuals || []).filter((a) => a.tag !== "stmt_buy" && a.tag !== "purchase_price").reduce((t, a) => t + (a.cat === "Acquisition" && (a.tag === "emd" || (!a.tag && STMT_DEPOSIT_RE.test(a.label || ""))) ? num(a.amount) : 0), 0) + purchaseAmt + buyS.closing + buyS.other) : 0;
   const closingCosts = costLines.filter((l) => l.target.startsWith("txn:") || l.target === "points").reduce((s, l) => s + l.amount, 0);
@@ -419,7 +420,7 @@ function ClosingImportModal({ initialSide, apiKey, ctx, existing, onAnalyzed, on
       review: { v: 3, side, price: effPrice, closingDate, lines: lines.map((l) => ({ id: l.id, target: l.target, include: l.include, amount: l.amount })) },
       price: effPrice,
       purchaseEntry: buyS && buyS.price > 0 ? { amount: purchaseAmt, label: purchaseLabel, items: purchaseItems } : null,
-      credits: opts.keepCredits ? credits : [],
+      credits: opts.countCredits ? credits : [],
       closingDate,
       opts,
       source,
@@ -606,7 +607,9 @@ function ClosingImportModal({ initialSide, apiKey, ctx, existing, onAnalyzed, on
               <MiniRow label="Closing costs (title, recording and fees)" value={fmt2(buyS.closing)} />
               {buyS.other !== 0 && <MiniRow label="Prorations and interest we paid" value={fmt2(buyS.other)} />}
               <MiniRow label="Cost of the purchase" value={fmt2(buyS.total)} strong color={T.violet} />
-              {buyS.credits !== 0 && <MiniRow label={`Credit from the seller${buyS.taxCredit ? " (property tax), kept for the tax bill" : ""}`} value={fmt2(-buyS.credits)} />}
+              {buyS.taxCredits !== 0 && <MiniRow label="Property tax credit from the seller (counted under Holding)" value={"−" + fmt2(-buyS.taxCredits)} color={T.green} />}
+              {buyS.otherCredits !== 0 && <MiniRow label="Other credits from the seller" value={"−" + fmt2(-buyS.otherCredits)} color={T.green} />}
+              {buyS.credits !== 0 && <MiniRow label="Net cost after the seller's credits" value={fmt2(buyS.net)} strong />}
               <div className="stmt-paid">
                 Paid: {buyS.deposit > 0 ? `${fmt2(buyS.deposit)} EMD before closing + ` : ""}
                 {fmt2(buyS.cashAtClosing)} at closing{buyS.loans > 0 ? ` + ${fmt2(buyS.loans)} loan` : ""}
@@ -621,11 +624,10 @@ function ClosingImportModal({ initialSide, apiKey, ctx, existing, onAnalyzed, on
                 </div>
               )}
               {buyS.check === "none" && <div className="stmt-check">The statement's totals weren't read, so the lines can't be checked against them. Read the statement again to check.</div>}
-              {buyS.credits !== 0 && (
+              {buyS.taxCredit && (
                 <div className="stmt-paid">
-                  {buyS.taxCredit
-                    ? "The tax credit isn't taken off the purchase: it's the seller's share of the tax bill we'll pay, so it comes off that bill when you log it in the ledger."
-                    : "The credit isn't taken off the purchase; the ledger keeps it until you decide where it goes."}
+                  The tax credit is the seller's share of the property taxes up to closing. We pay those taxes later (with the tax bill, or through the
+                  sale's tax proration), so the credit counts under Holding, next to them.
                 </div>
               )}
             </div>
@@ -636,6 +638,13 @@ function ClosingImportModal({ initialSide, apiKey, ctx, existing, onAnalyzed, on
             ))}
             <MiniRow label="Closing costs (cost rows)" value={fmt(closingCosts)} strong color={T.violet} />
             {otherCosts !== 0 && <MiniRow label="Prorations & interest (ledger only)" value={fmt(otherCosts)} />}
+            {sellS && sellS.taxes !== 0 && (
+              <div className="stmt-paid">
+                {sellS.taxes > 0
+                  ? `Property taxes up to the sale, which we pay at closing: ${fmt2(sellS.taxes)}. Counted under Holding, next to the tax credit we got when we bought.`
+                  : `Property tax credit to us at the sale: ${fmt2(-sellS.taxes)}. Counted under Holding.`}
+              </div>
+            )}
             {sellS && sellS.check === "ok" && <div className="stmt-check ok">Every line is read: they add up to the statement's {fmt2(sellS.proceeds)} to the seller.</div>}
             {sellS && sellS.check === "off" && (
               <div className="stmt-check off">
@@ -681,9 +690,10 @@ function ClosingImportModal({ initialSide, apiKey, ctx, existing, onAnalyzed, on
             </CheckRow>
           )}
           {buyS && credits.length > 0 && (
-            <CheckRow checked={opts.keepCredits} onChange={o("keepCredits")}>
-              Keep the seller's {fmt2(credits.reduce((t, c) => t + c.amount, 0))} credit with the deal
-              {credits.some((c) => c.kind === "tax") ? ", to take off the property tax bill when you log it" : ""}
+            <CheckRow checked={opts.countCredits} onChange={o("countCredits")}>
+              Count the seller's {fmt2(credits.reduce((t, c) => t + c.amount, 0))} credit in the ledger, as a credit
+              {credits.every((c) => c.kind === "tax") ? " under Holding (property taxes)" : ""}
+              {prevCredits > 0 ? " (replaces the credit from the previous import)" : ""}
             </CheckRow>
           )}
           {!isBuy && effPrice > 0 && (

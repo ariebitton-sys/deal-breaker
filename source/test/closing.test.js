@@ -87,8 +87,9 @@ const acq = (actuals) => Math.round(actuals.reduce((t, a) => t + (["Acquisition"
   const sum = md.querySelector(".stmt-sum").textContent;
   assert(/Closing costs \(title, recording and fees\)\$1,445\.15/.test(sum), "closing costs $1,445.15 (title company fees only)");
   assert(/Cost of the purchase\$146,445\.15/.test(sum), "cost of the purchase $146,445.15: price + closing costs, no tax taken off");
-  assert(/Credit from the seller \(property tax\), kept for the tax bill\$2,071\.54/.test(sum), "the tax credit is shown apart, kept for the tax bill");
-  assert(/comes off that bill when you log it/.test(sum), "explains where the credit goes");
+  assert(/Property tax credit from the seller \(counted under Holding\)−\$2,071\.54/.test(sum), "the tax credit is shown as a credit, under Holding");
+  assert(/Net cost after the seller's credits\$144,373\.61/.test(sum), "net cost after the credit: $144,373.61");
+  assert(/counts under Holding, next to them/.test(sum), "explains why the credit sits under Holding");
   assert(/Paid: \$2,500 EMD before closing \+ \$141,873\.61 at closing; the other \$2,071\.54 is the seller's credit\. Together: \$146,445\.15\./.test(sum), "paid: EMD + cash at closing + the seller's credit");
   assert(/Every line is read: they add up to the statement's \$141,873\.61 due from the buyer/.test(sum), "lines match the statement's total");
   const row = (re) => [...md.querySelectorAll("tr")].find((r) => re.test(r.textContent));
@@ -97,7 +98,8 @@ const acq = (actuals) => Math.round(actuals.reduce((t, a) => t + (["Acquisition"
   assert(row(/Property Tax @/).querySelector("select").value === "credit", "the tax proration is a credit to us, not a negative holding cost");
   assert(!row(/Split Proceeds|Payoff Judgment|Transaction Coordination/), "seller-only lines aren't shown");
   assert(/Add the breakdown to the purchase price entry in the ledger \(\$142,500\)/.test(md.textContent), "the closing's $142,500 entry is right; it gets the breakdown");
-  assert(/Keep the seller's \$2,071\.54 credit with the deal, to take off the property tax bill when you log it/.test(md.textContent), "offers to keep the credit for the tax bill");
+  const cc = [...md.querySelectorAll("label")].find((l) => /Count the seller's \$2,071\.54 credit in the ledger, as a credit under Holding \(property taxes\)/.test(l.textContent));
+  assert(cc && cc.querySelector("input").checked, "offers to count the credit in the ledger (on by default)");
   assert(/Acquisition in the ledger after this: \$146,445\.15, the same as the cost of the purchase/.test(md.textContent), "ledger after applying = $146,445.15");
   await click(btn(/Apply \d+ line/, md));
   await sleep(30); await settle(8);
@@ -107,37 +109,29 @@ const acq = (actuals) => Math.round(actuals.reduce((t, a) => t + (["Acquisition"
   await sleep(40); await settle(8);
   const saved = JSON.parse(drive.files[fid].content);
   const A = saved.actuals;
-  assert(acq(A) === 146445.15, `ledger total $146,445.15 (got ${acq(A)})`);
+  assert(acq(A) === 144373.61, `ledger total $144,373.61: $146,445.15 less the $2,071.54 credit (got ${acq(A)})`);
+  const cre = A.filter((a) => a.tag === "stmt_buy_credit");
+  assert(cre.length === 1 && cre[0].cat === "Holding" && cre[0].amount === -2071.54 && /Property tax credit from the seller at closing/.test(cre[0].label) && cre[0].date === "2026-11-18", "the credit is its own Holding entry, −$2,071.54, dated at closing");
   const pe = A.find((a) => a.tag === "purchase_price");
   assert(A.filter((a) => a.tag === "purchase_price").length === 1 && pe.amount === 142500, "one purchase entry: $142,500 paid at closing");
   assert(pe.label === "Purchase price $145,000 ($130,000 to the seller + $15,000 assignment / JV), paid at closing, less the $2,500 EMD paid earlier", "its description: " + pe.label);
   assert(pe.items.length === 7 && Math.round(pe.items.reduce((t, i) => t + i.amount, 0) * 100) / 100 === 142500 && pe.items.some((i) => /Joint Venture Agreement: Ashley White/.test(i.label)), "purchase breakdown: seller price, 5 assignment / JV payments, less the EMD");
-  assert(saved.mgmt.credits.length === 1 && saved.mgmt.credits[0].amount === 2071.54 && saved.mgmt.credits[0].kind === "tax" && !saved.mgmt.credits[0].used, "the $2,071.54 tax credit is kept with the deal");
+  assert(!(saved.mgmt.credits || []).length, "nothing kept aside: the credit is in the ledger");
   assert(A.some((a) => a.label === "EMD" && a.amount === 2500), "the EMD entry is kept");
   const st = A.filter((a) => a.tag === "stmt_buy");
   assert(st.length === 1 && st[0].label === "Closing costs from the purchase statement (10 items)" && st[0].amount === 1445.15 && st[0].items.length === 10, "one statement entry: the title company's closing costs $1,445.15, with its 10 items");
 
-  console.log("3b. Open a breakdown; log the tax bill against the credit");
+  console.log("3b. Open a breakdown; the credit shows as a credit");
   await click(btn(/^Expenses/, t.doc.querySelector(".sidebar")));
   const ccBtn = [...t.doc.querySelectorAll(".ledger-items-btn")].find((b) => /Closing costs from the purchase statement/.test(b.textContent));
   assert(ccBtn && ccBtn.getAttribute("aria-expanded") === "false", "closing costs entry can be opened");
   await click(ccBtn);
   const list = ccBtn.closest("div").parentElement.querySelector(".ledger-items");
   assert(list && list.querySelectorAll(".ledger-item:not(.sum)").length === 10 && /Owner's Premium for 130,000\.00: Eagle Land Title, LLC\$475/.test(list.textContent) && /10 items\$1,445\.15/.test(list.textContent), "it lists the 10 closing costs and their total");
-  const cr = t.doc.querySelector(".ledger-credit");
-  assert(cr && /Seller's property tax credit from closing: \$2,071\.54/.test(cr.textContent), "the ledger shows the credit waiting for the tax bill");
-  await click(btn("Log the tax bill", cr));
-  await t.setVal(cr.querySelector('input[type="number"]'), "2355.50");
-  assert(/Log \$283\.96/.test(cr.textContent), "bill $2,355.50 less the $2,071.54 credit = $283.96");
-  await click(btn(/^Log \$/, cr));
-  await settle(6);
-  assert(!t.doc.querySelector(".ledger-credit"), "credit used: the note is gone");
-  await click(btn("Save deal"));
-  await sleep(40); await settle(8);
-  const saved2 = JSON.parse(drive.files[fid].content);
-  const tax = saved2.actuals.find((a) => /Property tax bill/.test(a.label));
-  assert(tax && tax.cat === "Holding" && tax.amount === 283.96 && tax.items.length === 2 && saved2.mgmt.credits[0].used === tax.id, "tax bill logged under Holding, net of the credit, with its breakdown");
-  assert(A.every((a) => a.amount > 0) && !A.some((a) => a.cat === "Holding"), "every ledger entry is money out of our pocket: nothing negative, no negative tax under Holding");
+  const crRow = [...t.doc.querySelectorAll(".ledger-row")].find((r) => /Property tax credit from the seller/.test(r.textContent));
+  assert(crRow && crRow.querySelector(".ledger-neg") && /−\$2,072 credit/.test(crRow.textContent), "ledger row reads −$2,072 credit");
+  assert(!t.doc.querySelector(".ledger-credit"), "no 'waiting for the tax bill' note any more");
+  assert(A.filter((a) => a.amount < 0).length === 1, "the credit is the only negative entry");
   assert(!A.some((a) => /Joint Venture|Assignment Fee/.test(a.label)), "no assignment / JV lines as extra costs");
   assert(saved.buyTxn.escrow.val === 1500, "the estimated Buying costs are untouched");
   assert(saved.purchase === 145000, "purchase price stays $145,000");
@@ -177,7 +171,7 @@ const acq = (actuals) => Math.round(actuals.reduce((t, a) => t + (["Acquisition"
   await t2.click(t2.btn("Save deal"));
   await t2.sleep(40); await t2.settle(8);
   const A2 = JSON.parse(drive2.files[fid2].content).actuals;
-  assert(acq(A2) === 146445.15 && !A2.some((a) => /Joint Venture|Assignment Fee/.test(a.label)) && A2.every((a) => a.amount > 0), `old double counting removed: ledger $146,445.15, all entries positive (got ${acq(A2)})`);
+  assert(acq(A2) === 144373.61 && !A2.some((a) => /Joint Venture|Assignment Fee/.test(a.label)) && A2.filter((a) => a.amount < 0).length === 1, `old double counting removed: ledger $144,373.61 with the credit (got ${acq(A2)})`);
 
   console.log("5. A statement saved before this change reopens right, without a new upload");
   const oldResult = { ...HUD, totals: undefined, lines: HUD.lines.map((l) => (l.category === "assignment" ? { ...l, category: "misc" } : l)) };
@@ -225,7 +219,66 @@ const acq = (actuals) => Math.round(actuals.reduce((t, a) => t + (["Acquisition"
   const s4 = JSON.parse(drive4.files[fid4].content);
   assert(s4.purchase === 145000 && s4.mgmt.closing.price === 150000, "Flip analysis keeps $145,000; the actual $150,000 is the closing record");
   assert(s4.actuals.find((a) => a.tag === "purchase_price").amount === 147500, "ledger: $150,000 less the $2,500 EMD");
-  assert(t.errors.length === 0 && t2.errors.length === 0 && t3.errors.length === 0 && t4.errors.length === 0, "no errors " + t.errors.concat(t2.errors, t3.errors, t4.errors).join(" | "));
+
+  console.log("7. A credit kept aside by v43-v47 counts in the ledger now (once)");
+  const kept = { ...saved, actuals: saved.actuals.filter((a) => a.tag !== "stmt_buy_credit"), mgmt: { ...saved.mgmt, credits: [{ id: "c1", label: "Property Tax @ 1,550.04/yr", amount: 2071.54, kind: "tax", from: "stmt_buy", date: "2026-11-18", used: null }] } };
+  const drive5 = makeDrive();
+  const fid5 = drive5.add("4623 Carrollton Ave, Indianapolis, IN 46205.json", kept);
+  let t5 = await boot({ drive: drive5, anthropic, settings: { clientId: "c", folderId: "f", anthropicKey: "sk-ant-test" } });
+  await t5.click(t5.btn("Connect Google", t5.doc.querySelector(".pf-empty")));
+  await t5.sleep(30); await t5.settle(10);
+  await t5.click([...t5.doc.querySelectorAll("tr.dt-row")].find((r) => r.textContent.includes("4623 Carrollton")));
+  await t5.sleep(1900); await t5.settle(10);
+  let s5 = JSON.parse(drive5.files[fid5].content);
+  assert(acq(s5.actuals) === 144373.61 && s5.actuals.filter((a) => a.tag === "stmt_buy_credit").length === 1 && s5.mgmt.credits[0].counted, "on opening: the kept credit becomes a ledger credit, saved by itself");
+  await t5.click(t5.btn(/^Expenses/, t5.doc.querySelector(".sidebar")));
+  const delRow = [...t5.doc.querySelectorAll(".ledger-row")].find((r) => /Property tax credit from the seller/.test(r.textContent));
+  await t5.click([...delRow.querySelectorAll("button")].find((b) => /Delete|Remove/i.test(b.getAttribute("title") || b.getAttribute("aria-label") || "")));
+  await t5.sleep(1900); await t5.settle(10);
+  t5.win.close();
+  t5 = await boot({ drive: drive5, anthropic, settings: { clientId: "c", folderId: "f", anthropicKey: "sk-ant-test" } });
+  await t5.click(t5.btn("Connect Google", t5.doc.querySelector(".pf-empty")));
+  await t5.sleep(30); await t5.settle(10);
+  await t5.click([...t5.doc.querySelectorAll("tr.dt-row")].find((r) => r.textContent.includes("4623 Carrollton")));
+  await t5.sleep(1900); await t5.settle(10);
+  s5 = JSON.parse(drive5.files[fid5].content);
+  assert(!s5.actuals.some((a) => a.tag === "stmt_buy_credit"), "deleted by hand → it doesn't come back");
+
+  console.log("8. Sale statement: the property taxes we pay at the sale count under Holding");
+  const SALE = {
+    document_type: "Settlement statement (seller)", property_address: "4623 Carrollton Ave, Indianapolis, IN 46205", settlement_date: "2027-04-20", price: 225000,
+    totals: { buyer_debits: 0, buyer_credits: 0, due_from_buyer: 0, seller_debits: 15218.4, seller_credits: 225000, due_to_seller: 209781.6 },
+    lines: [
+      { description: "Sales price", category: "price", buyer_debit: 0, buyer_credit: 0, seller_debit: 0, seller_credit: 225000 },
+      { description: "Commission to Keller Williams", category: "commission", buyer_debit: 0, buyer_credit: 0, seller_debit: 13500, seller_credit: 0 },
+      { description: "Settlement fee", category: "title_settlement", buyer_debit: 0, buyer_credit: 0, seller_debit: 350, seller_credit: 0 },
+      { description: "County taxes 01/01/27 to 04/20/27", category: "tax_proration", buyer_debit: 0, buyer_credit: 0, seller_debit: 1368.4, seller_credit: 0 },
+    ],
+  };
+  const drive6 = makeDrive();
+  const fid6 = drive6.add("4623 Carrollton Ave, Indianapolis, IN 46205.json", { ...saved, stage: "market" });
+  const t6 = await boot({ drive: drive6, anthropic: async () => ({ ok: true, status: 200, json: async () => ({ content: [{ type: "text", text: JSON.stringify(SALE) }], stop_reason: "end_turn" }) }), settings: { clientId: "c", folderId: "f", anthropicKey: "sk-ant-test" } });
+  await t6.click(t6.btn("Connect Google", t6.doc.querySelector(".pf-empty")));
+  await t6.sleep(30); await t6.settle(10);
+  await t6.click([...t6.doc.querySelectorAll("tr.dt-row")].find((r) => r.textContent.includes("4623 Carrollton")));
+  await t6.sleep(20); await t6.settle(10);
+  await t6.click(t6.btn(/^Expenses/, t6.doc.querySelector(".sidebar")));
+  await t6.click(t6.btn("Sale closing docs"));
+  let m6 = t6.modal();
+  const f6 = m6.querySelector('input[type="file"]');
+  Object.defineProperty(f6, "files", { value: [new t6.win.File(["%PDF-1.4 sale"], "sale.pdf", { type: "application/pdf" })], configurable: true });
+  f6.dispatchEvent(new t6.win.Event("change", { bubbles: true }));
+  await t6.settle(4);
+  await t6.click(t6.btn("Read statement", m6));
+  await t6.sleep(60); await t6.settle(10);
+  m6 = t6.modal();
+  assert(/Property taxes up to the sale, which we pay at closing: \$1,368\.40\. Counted under Holding/.test(m6.textContent), "sale summary names the taxes we pay and where they go");
+  await t6.click(t6.btn(/Apply \d+ line/, m6));
+  await t6.sleep(1900); await t6.settle(10);
+  const A6 = JSON.parse(drive6.files[fid6].content).actuals;
+  const hold = A6.filter((a) => a.cat === "Holding").reduce((t, a) => t + a.amount, 0);
+  assert(A6.some((a) => a.cat === "Holding" && a.amount === 1368.4 && /County taxes/.test(a.label)) && Math.round(hold * 100) / 100 === Math.round((1368.4 - 2071.54) * 100) / 100, "Holding: the sale's $1,368.40 taxes next to the purchase's −$2,071.54 credit");
+  assert(t.errors.length === 0 && t2.errors.length === 0 && t3.errors.length === 0 && t4.errors.length === 0 && t5.errors.length === 0 && t6.errors.length === 0, "no errors " + t.errors.concat(t2.errors, t3.errors, t4.errors, t5.errors, t6.errors).join(" | "));
   console.log("\nALL CLOSING TESTS PASSED");
   process.exit(0);
 })().catch((e) => { console.log("FAILED:", e); process.exit(1); });

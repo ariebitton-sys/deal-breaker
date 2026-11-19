@@ -995,21 +995,36 @@ function stmtBuySummary(lines, out) {
   const credits = sum((l) => l.target === "credit"); // negative
   const creditLines = inc.filter((l) => l.target === "credit");
   const taxCredit = creditLines.some((l) => l.category === "tax_proration");
-  // the cost of the purchase: price + closing costs (+ anything else we paid). Credits from the seller
-  // aren't taken off it: a tax credit is kept for the tax bill it belongs to.
+  const taxCredits = r2(creditLines.filter((l) => l.category === "tax_proration").reduce((t, l) => t + l.amount, 0)); // negative
+  const otherCredits = r2(credits - taxCredits); // negative
+  // the cost of the purchase: price + closing costs (+ anything else we paid). The seller's credits count
+  // too, as their own ledger entries: a property-tax credit under Holding (it's the seller's share of the
+  // taxes we pay later, at the tax bill or at the sale), any other credit under Acquisition.
   const total = r2(price + closing + other);
+  const net = r2(total + credits);
   const allLines = r2(lines.reduce((t, l) => t + l.amount, 0)); // every line, whatever its mapping = cash due at closing
   const loans = -r2(lines.filter((l) => l.category === "loan").reduce((t, l) => t + l.amount, 0));
   const due = out && out.totals ? out.totals.due_from_buyer : 0;
   const check = due > 0 ? (Math.abs(allLines - due) < 1 ? "ok" : "off") : "none";
-  return { price, sellerPrice, assignment, deposit, closing, other, credits, creditLines, taxCredit, total, cashAtClosing: due > 0 ? due : allLines, linesCash: allLines, loans, check };
+  return { price, sellerPrice, assignment, deposit, closing, other, credits, creditLines, taxCredit, taxCredits, otherCredits, total, net, cashAtClosing: due > 0 ? due : allLines, linesCash: allLines, loans, check };
 }
 function stmtSellSummary(lines, out) {
   const allLines = r2(lines.reduce((t, l) => t + l.amount, 0)); // seller debits − credits = −(cash to seller)
   const due = out && out.totals ? out.totals.due_to_seller : 0;
   const check = due > 0 ? (Math.abs(-allLines - due) < 1 ? "ok" : "off") : "none";
-  return { proceeds: due > 0 ? due : -allLines, linesProceeds: -allLines, check };
+  // property taxes we owe up to the sale (a seller debit; a credit if we'd paid ahead), counted under Holding
+  const taxes = r2(lines.filter((l) => l.include && l.category === "tax_proration" && l.target !== "ignore").reduce((t, l) => t + l.amount, 0));
+  return { proceeds: due > 0 ? due : -allLines, linesProceeds: -allLines, check, taxes };
 }
+// The seller's credits on a purchase statement, as ledger entries (amounts negative: they lower the cost).
+const STMT_CREDIT_TAG = "stmt_buy_credit";
+const creditEntryFor = (c, date) => ({
+  cat: c.kind === "tax" ? "Holding" : "Acquisition",
+  label: c.kind === "tax" ? `Property tax credit from the seller at closing (${c.label})` : `Credit from the seller at closing (${c.label})`,
+  amount: -Math.abs(r2(c.amount)),
+  date,
+  tag: STMT_CREDIT_TAG,
+});
 // EMD the user already logged in the ledger (by hand or from an earlier import).
 const ledgerEmd = (actuals) =>
   r2(

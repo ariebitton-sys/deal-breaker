@@ -584,3 +584,5 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
 .set-invite{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:10px;padding-top:10px;border-top:1px solid var(--line)}
 .set-invite span{flex:1 1 200px;font-size:11.5px;line-height:1.45;color:var(--mut)}
 .set-invite input{flex:1 1 100%;font-size:11.5px;padding:6px 8px;border:1px solid var(--line2);border-radius:4px;color:var(--ink);font-family:ui-monospace,Menlo,monospace}
+/* v48: credits in the ledger */
+.ledger-neg{color:#1F7A55;white-space:nowrap}

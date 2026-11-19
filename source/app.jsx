@@ -3490,16 +3490,10 @@ function App() {
         ...entries.map((e) => ({ files: [], ...e, id: numId() })),
       ]);
     }
-    // credits from the seller wait for the bill they belong to (a re-import replaces the unused ones)
-    if (side === "buy" && opts.keepCredits !== undefined) {
-      const tag = `stmt_${side}`;
-      setMgmt((mm) => ({
-        ...mm,
-        credits: [
-          ...(mm.credits || []).filter((c) => c.from !== tag || c.used),
-          ...(credits || []).map((c) => ({ id: uid(), ...c, from: tag, date, used: null })),
-        ],
-      }));
+    // the seller's credits count in the ledger as credits (a re-import replaces the previous ones)
+    if (side === "buy" && opts.countCredits) {
+      const add = (credits || []).filter((c) => c.amount > 0).map((c) => ({ files: [], ...creditEntryFor(c, date), id: numId() }));
+      setActuals((p) => [...p.filter((a) => a.tag !== STMT_CREDIT_TAG), ...add]);
     }
     if (side === "sell" && opts.setPrice && price > 0) {
       setActualSale(price);
@@ -3725,7 +3719,15 @@ function App() {
   }, [stickyCollapsed]);
   const [expandedEntry, setExpandedEntry] = useState(null);
   const [openItems, setOpenItems] = useState({}); // ledger entries showing their breakdown
-  const [creditUse, setCreditUse] = useState(null); // { id, date, bill }
+  // Deals from v43-v47 kept the seller's credit aside for the tax bill. It counts in the ledger now:
+  // an unused one becomes a credit entry (once), a used one is already inside its tax bill entry.
+  useEffect(() => {
+    const open = (mgmt.credits || []).filter((c) => !c.counted && (!c.used || !actuals.some((x) => x.id === c.used)));
+    if (!open.length) return;
+    const add = open.map((c) => ({ files: [], ...creditEntryFor(c, c.date || todayISO()), id: numId() }));
+    setActuals((p) => [...p, ...add]);
+    setMgmt((mm) => ({ ...mm, credits: (mm.credits || []).map((x) => { const i = open.findIndex((c) => c.id === x.id); return i < 0 ? x : { ...x, used: add[i].id, counted: true }; }) }));
+  }, [mgmt.credits]);
   const [fileUploading, setFileUploading] = useState(null);
   const fileInputRef = useRef(null);
   const pendingEntryId = useRef(null);
@@ -5011,69 +5013,6 @@ function App() {
                   }}
                   onChange={handleFileSelect}
                 />
-                {(mgmt.credits || [])
-                  .filter((c) => !c.used || !actuals.some((x) => x.id === c.used))
-                  .map((c) => {
-                    const open = creditUse && creditUse.id === c.id;
-                    const bill = open ? num(creditUse.bill) : 0;
-                    const logIt = () => {
-                      const id = numId();
-                      const isTax = c.kind === "tax";
-                      const amount = Math.round((bill - c.amount) * 100) / 100;
-                      setActuals((p) => [
-                        ...p,
-                        {
-                          id,
-                          files: [],
-                          cat: isTax ? "Holding" : "Acquisition",
-                          date: creditUse.date || todayISO(),
-                          label: isTax ? `Property tax bill, less the seller's ${fmt2(c.amount)} credit from closing` : `${creditUse.what || "Bill"}, less the seller's ${fmt2(c.amount)} credit from closing`,
-                          amount,
-                          items: [
-                            { label: isTax ? "Property tax bill" : creditUse.what || "Bill", amount: bill },
-                            { label: `Seller's credit at closing: ${c.label}`, amount: -c.amount },
-                          ],
-                        },
-                      ]);
-                      setMgmt((mm) => ({ ...mm, credits: (mm.credits || []).map((x) => (x.id === c.id ? { ...x, used: id } : x)) }));
-                      addLogEntry(`Logged ${isTax ? "the property tax bill" : creditUse.what || "a bill"} of ${fmt2(bill)} less the seller's ${fmt2(c.amount)} credit`);
-                      setCreditUse(null);
-                    };
-                    return (
-                      <div key={c.id} className="ledger-credit">
-                        <div className="lc-text">
-                          <b>
-                            {c.kind === "tax" ? "Seller's property tax credit from closing" : "Seller's credit from closing"}: {fmt2(c.amount)}
-                          </b>
-                          <span>
-                            {c.kind === "tax"
-                              ? "Not taken off the purchase. When the tax bill comes, log it here and the credit comes off it."
-                              : "Not taken off the purchase. Log the bill it belongs to here and the credit comes off it."}{" "}
-                            ({c.label})
-                          </span>
-                        </div>
-                        {open ? (
-                          <div className="lc-form">
-                            {c.kind !== "tax" && (
-                              <input value={creditUse.what || ""} onChange={(e) => setCreditUse({ ...creditUse, what: e.target.value })} placeholder="What the bill is for" aria-label="What the bill is for" />
-                            )}
-                            <input type="date" value={creditUse.date} onChange={(e) => setCreditUse({ ...creditUse, date: e.target.value })} aria-label="Bill date" />
-                            <input type="number" value={creditUse.bill} onChange={(e) => setCreditUse({ ...creditUse, bill: e.target.value })} placeholder="Full bill amount" aria-label="Full bill amount" />
-                            <button onClick={logIt} disabled={!(bill > 0)} style={btnPrimary()}>
-                              {bill > 0 ? `Log ${fmt2(Math.round((bill - c.amount) * 100) / 100)}` : "Log"}
-                            </button>
-                            <button onClick={() => setCreditUse(null)} style={btnGhost()}>
-                              Cancel
-                            </button>
-                          </div>
-                        ) : (
-                          <button onClick={() => setCreditUse({ id: c.id, date: todayISO(), bill: "" })} style={btnGhost()}>
-                            {c.kind === "tax" ? "Log the tax bill" : "Log the bill"}
-                          </button>
-                        )}
-                      </div>
-                    );
-                  })}
                 <div
                   className="ledger-add-row"
                   style={{
@@ -5428,7 +5367,7 @@ function App() {
                                   textAlign: "right",
                                 }}
                               >
-                                {fmt(parseFloat(a.amount) || 0)}
+                                {(parseFloat(a.amount) || 0) < 0 ? <span className="ledger-neg">−{fmt(-(parseFloat(a.amount) || 0))} credit</span> : fmt(parseFloat(a.amount) || 0)}
                               </span>
                               <button
                                 onClick={() => startEdit(a)}
@@ -5485,6 +5424,8 @@ function App() {
                               </button>
                               <button
                                 onClick={() => setActuals((p) => p.filter((x) => x.id !== a.id))}
+                                title="Delete entry"
+                                aria-label="Delete entry"
                                 style={{
                                   background: "transparent",
                                   border: "none",
