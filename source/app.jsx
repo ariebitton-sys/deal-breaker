@@ -1100,6 +1100,16 @@ function SettingsModal({ settings, connected, team, onSave, onClose }) {
   const canShare = connected && !!fid.trim() && fid.trim() === (settings.folderId || "") && hasKeys && (!team || differs);
   const teamDate = team && team.modifiedTime ? new Date(team.modifiedTime).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "";
   const builtIn = cid.trim() === KAPPA_CLIENT_ID;
+  const [copied, setCopied] = useState(null); // null | "ok" | link text when the clipboard isn't available
+  const link = settings.folderId ? inviteLink(settings.folderId) : "";
+  const copyInvite = async () => {
+    try {
+      await navigator.clipboard.writeText(link);
+      setCopied("ok");
+    } catch (e) {
+      setCopied(link);
+    }
+  };
   return (
     <div
       style={{
@@ -1357,6 +1367,15 @@ function SettingsModal({ settings, connected, team, onSave, onClose }) {
                 <p className="set-ok">The team uses these keys.</p>
               )}
             </React.Fragment>
+          )}
+          {link && (
+            <div className="set-invite">
+              <button type="button" onClick={copyInvite} style={{ ...bs(T.glass, T.teal), fontSize: 12, padding: "6px 12px" }}>
+                {copied === "ok" ? "Invite link copied" : "Copy invite link"}
+              </button>
+              <span>For a new member: share the deals folder with their Kappa Google account, then send them this link.</span>
+              {copied && copied !== "ok" && <input readOnly value={copied} onFocus={(e) => e.target.select()} />}
+            </div>
           )}
           {!builtIn && cid.trim() && (
             <p className="set-warn">New team members sign in with the app's built-in Client ID, which isn't the one above, so they can't connect yet. Ask Claude to update the built-in one.</p>
@@ -2072,6 +2091,42 @@ async function driveFindTeamFile(token) {
   const list = (j.files || []).filter((f) => f.parents && f.parents.length);
   return list.find((f) => f.appProperties && f.appProperties.dbTeam === "1") || list[0] || null;
 }
+// Invite link: …/deal-breaker/#join=<deals folder ID>. The folder ID isn't a secret (Drive only opens it
+// for people it's shared with); with it the app opens the folder directly instead of searching Drive.
+const INVITE_KEY = "kappa_invite_folder";
+const inviteLink = (folderId) => window.location.origin + window.location.pathname + "#join=" + encodeURIComponent(folderId);
+(function readInvite() {
+  try {
+    const m = String(window.location.hash || "").match(/^#join=([\w-]{4,})$/);
+    if (!m) return;
+    const cur = JSON.parse(localStorage.getItem("kappa_settings") || "{}") || {};
+    if (!cur.folderId) localStorage.setItem(INVITE_KEY, m[1]); // someone already set up keeps their folder
+    window.history.replaceState(window.history.state, "", window.location.pathname + window.location.search);
+  } catch (e) {}
+})();
+const pendingInvite = () => {
+  try {
+    return localStorage.getItem(INVITE_KEY) || null;
+  } catch (e) {
+    return null;
+  }
+};
+// No team file yet: the deals themselves show where the folder is (saved deals carry summary properties).
+async function driveFindDealsFolder(token) {
+  const q = encodeURIComponent("appProperties has { key='sv' and value='2' } and trashed=false");
+  const r = await fetch(`https://www.googleapis.com/drive/v3/files?q=${q}&fields=${encodeURIComponent("files(id,parents)")}&pageSize=100`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!r.ok) {
+    const e = new Error(`Drive search: ${r.status}`);
+    e.status = r.status;
+    throw e;
+  }
+  const n = {};
+  ((await r.json()).files || []).forEach((f) => (f.parents || []).slice(0, 1).forEach((p) => (n[p] = (n[p] || 0) + 1)));
+  const best = Object.keys(n).sort((a, b) => n[b] - n[a])[0];
+  return best || null;
+}
 const TOKEN_KEY = "kappa_google_token";
 function readStoredToken(clientId) {
   try {
@@ -2456,15 +2511,44 @@ function App() {
   // and carries the keys, so there's nothing to type.
   const findTeamFolder = async (token) => {
     setTeamSetup({ status: "searching" });
-    try {
-      const meta = await withAuthRetry((tok) => driveFindTeamFile(token || tok));
-      if (!meta) return setTeamSetup({ status: "notfound" });
-      const content = await withAuthRetry((tok) => driveRead(token || tok, meta.id));
-      applyTeam(content, meta);
+    const useFolder = async (folderId) => {
+      persistSettings(withBuiltIns({ ...settingsRef.current, folderId }));
       setTeamSetup(null);
-      await refreshFiles(token);
-      setDriveMsg("✓ Kappa team settings loaded");
-      setTimeout(() => setDriveMsg(""), 3000);
+      await refreshFiles(token); // the folder's listing brings the team file, and with it the keys
+      const ok = !!settingsRef.current.teamSync;
+      setDriveMsg(ok ? "✓ Kappa team settings loaded" : "✓ Deals folder found. The team keys aren't shared yet: Arie shares them from Settings");
+      setTimeout(() => setDriveMsg(""), ok ? 3000 : 8000);
+    };
+    try {
+      // 1. an invite link: open that folder directly
+      const invite = pendingInvite();
+      if (invite) {
+        try {
+          await withAuthRetry((tok) => driveGetMeta(token || tok, invite));
+        } catch (e) {
+          if (e.status === 404 || e.status === 403) return setTeamSetup({ status: "noaccess" });
+          throw e;
+        }
+        try {
+          localStorage.removeItem(INVITE_KEY);
+        } catch (e) {}
+        return await useFolder(invite);
+      }
+      // 2. the team settings file shared with this account
+      const meta = await withAuthRetry((tok) => driveFindTeamFile(token || tok));
+      if (meta) {
+        const content = await withAuthRetry((tok) => driveRead(token || tok, meta.id));
+        applyTeam(content, meta);
+        setTeamSetup(null);
+        await refreshFiles(token);
+        setDriveMsg("✓ Kappa team settings loaded");
+        setTimeout(() => setDriveMsg(""), 3000);
+        return;
+      }
+      // 3. Kappa deals shared with this account
+      const folder = await withAuthRetry((tok) => driveFindDealsFolder(token || tok));
+      if (folder) return await useFolder(folder);
+      setTeamSetup({ status: "notfound" });
     } catch (e) {
       console.error(e);
       setTeamSetup({ status: "error", msg: e.message });
@@ -4205,6 +4289,7 @@ function App() {
             teamSetup={accessToken && !settings.folderId ? teamSetup || { status: "searching" } : null}
             userEmail={userEmail}
             onRetrySetup={() => findTeamFolder()}
+            invited={!!pendingInvite()}
             onConnect={signIn}
             onOpenSettings={() => setShowSettings(true)}
             onOpen={openFromPortfolio}

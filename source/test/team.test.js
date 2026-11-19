@@ -102,6 +102,58 @@ const deal = (address) => ({ address, stage: "analyzing", purchase: 100000, arv:
   assert(t.errors.length === 0, "no errors " + t.errors.join(" | "));
   t.win.close();
 
+  console.log("5. Invite link: Settings gives it; the new member's app opens the folder directly");
+  t = await boot({ drive, settings: { folderId: "kappa", anthropicKey: AI2, mapsApiKey: "AIzaMAPS1" } });
+  await t.click(t.btn("Connect Google", t.doc.querySelector(".pf-empty")));
+  await t.sleep(40); await t.settle(10);
+  await openSettings(t);
+  await t.click(t.btn("Copy invite link"));
+  await t.sleep(20); await t.settle(4);
+  const linkEl = t.doc.querySelector(".set-invite input");
+  const link = linkEl ? linkEl.value : "";
+  assert(/#join=kappa$/.test(link), "invite link carries the deals folder: " + link);
+  t.win.close();
+  drive.folders.add("kappa");
+  const callsBefore = drive.calls.length;
+  t = await boot({ drive, settings: {}, url: link });
+  assert(!/#join/.test(t.win.location.href), "the link's folder part is cleared from the address bar");
+  assert(/You're invited to Kappa's deals/.test(t.text()), "first screen: invited, connect with the Kappa account");
+  await t.click(t.btn("Connect Google", t.doc.querySelector(".pf-empty")));
+  await t.sleep(80); await t.settle(12);
+  s = ls(t);
+  assert(s.folderId === "kappa" && s.anthropicKey === AI2 && rows(t).length === 2, "folder opened, keys loaded, deals listed");
+  assert(!drive.calls.slice(callsBefore).some((c) => /name%3D'Deal|appProperties%20has/.test(c.url)), "no Drive-wide search needed");
+  assert(!t.win.localStorage.getItem("kappa_invite_folder"), "invite used up");
+  t.win.close();
+
+  console.log("6. Invite link, folder not shared with the member yet");
+  const d3 = makeDrive();
+  d3.folders.add("other");
+  t = await boot({ drive: d3, settings: {}, url: "https://ariebitton-sys.github.io/deal-breaker/#join=kappa" });
+  await t.click(t.btn("Connect Google", t.doc.querySelector(".pf-empty")));
+  await t.sleep(60); await t.settle(10);
+  assert(/This account can't open Kappa's deals folder yet/.test(t.text()) && /arie@kappainv\.com/.test(t.text()), "says the folder isn't shared with this account");
+  d3.folders.add("kappa");
+  d3.add("400 Delta Dr, Cleveland, OH 44105.json", deal("400 Delta Dr, Cleveland, OH 44105"), { parents: ["kappa"] });
+  d3.add(TEAM, { kind: "deal-breaker-team-settings", v: 1, folderId: "kappa", anthropicKey: AI1, mapsApiKey: "AIzaMAPS1" }, { parents: ["kappa"], appProperties: { dbTeam: "1" } });
+  await t.click(t.btn("Try again"));
+  await t.sleep(60); await t.settle(12);
+  assert(rows(t).length === 1 && ls(t).anthropicKey === AI1, "shared → Try again → deals and keys");
+  assert(t.errors.length === 0, "no errors " + t.errors.join(" | "));
+  t.win.close();
+
+  console.log("7. No team file yet, but deals are shared: the folder is found from the deals");
+  const d4 = makeDrive();
+  d4.add("500 Echo Ln, Cleveland, OH 44106.json", deal("500 Echo Ln, Cleveland, OH 44106"), { parents: ["kfolder"], appProperties: { sv: "2", sn: "1" } });
+  d4.add("510 Echo Ln, Cleveland, OH 44106.json", deal("510 Echo Ln, Cleveland, OH 44106"), { parents: ["kfolder"], appProperties: { sv: "2", sn: "1" } });
+  t = await boot({ drive: d4, settings: {} });
+  await t.click(t.btn("Connect Google", t.doc.querySelector(".pf-empty")));
+  await t.sleep(60); await t.settle(12);
+  assert(ls(t).folderId === "kfolder" && rows(t).length === 2, "deals folder found and listed");
+  assert(/team keys aren't shared yet/.test(t.text()), "says the keys aren't shared yet");
+  assert(t.errors.length === 0, "no errors " + t.errors.join(" | "));
+  t.win.close();
+
   console.log("\nALL TEAM TESTS PASSED");
   process.exit(0);
 })().catch((e) => {

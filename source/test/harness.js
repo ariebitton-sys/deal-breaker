@@ -9,6 +9,7 @@ const REACTDOM = fs.readFileSync(path.join(__dirname,"../node_modules/react-dom/
 
 function makeDrive() {
   const rejected = new Set();
+  const folders = new Set(); // folders this account can open (when any are registered)
   const files = {};
   let seq = 1,
     clock = Date.parse("2026-11-10T10:00:00Z");
@@ -62,13 +63,17 @@ function makeDrive() {
       const q = u.searchParams.get("q") || "";
       const nm = (q.match(/name='([^']*)'/) || [])[1];
       const par = (q.match(/'([^']+)' in parents/) || [])[1];
+      const ap = q.match(/appProperties has \{ key='([^']+)' and value='([^']+)' \}/);
+      if (par && folders.size && !folders.has(par)) return json({ files: [] }); // a folder this account can't see
       const list = Object.values(files)
-        .filter((f) => (!nm || f.name === nm) && (!par || !f.parents || f.parents.includes(par)) && (!nm || f.parents))
+        .filter((f) => (!nm || f.name === nm) && (!par || !f.parents || f.parents.includes(par)) && ((!nm && !ap) || (f.parents && (!f.hidden))))
+        .filter((f) => !ap || (f.appProperties && f.appProperties[ap[1]] === ap[2]))
         .sort((a, b) => b.modifiedTime.localeCompare(a.modifiedTime))
         .map(meta);
       return json({ files: list });
     }
     let m = u.pathname.match(/^\/drive\/v3\/files\/([^/]+)$/);
+    if (m && method === "GET" && folders.has(m[1])) return json({ id: m[1], name: "Kappa Deals", mimeType: "application/vnd.google-apps.folder", modifiedTime: tick() });
     if (m && method === "GET") {
       const f = files[m[1]];
       if (!f) return json({ error: "nf" }, 404);
@@ -102,7 +107,7 @@ function makeDrive() {
     }
     throw new Error("Unhandled fetch " + method + " " + url);
   };
-  return { files, bins, addBinary, add, handle, calls, rejected, touch: (id, by) => ((files[id].modifiedTime = tick()), (files[id].lastModifyingUser = { displayName: by || "Partner", emailAddress: "partner@kappainv.com" })) };
+  return { files, bins, folders, addBinary, add, handle, calls, rejected, touch: (id, by) => ((files[id].modifiedTime = tick()), (files[id].lastModifyingUser = { displayName: by || "Partner", emailAddress: "partner@kappainv.com" })) };
 }
 
 // Default answers from the free map services, for a property at 4623 Carrollton Ave, Indianapolis.
@@ -126,7 +131,7 @@ const GEO_FIXTURE = {
     "gis.indy.gov/SolidWaste": [{ HAULER: "LRS", DISTRICT: 7, DAY_: "TUESDAY" }],
   },
 };
-async function boot({ drive, settings, anthropic, localStorageInit, geo, gisInit } = {}) {
+async function boot({ drive, settings, anthropic, localStorageInit, geo, gisInit, url } = {}) {
   const gis = { requests: 0, hints: [], fail: null, expiresIn: 3599, ...(gisInit || {}) };
   const G = geo || GEO_FIXTURE;
   const geoCalls = [];
@@ -138,7 +143,7 @@ async function boot({ drive, settings, anthropic, localStorageInit, geo, gisInit
   const errors = [];
   const anthropicCalls = [];
   const dom = new JSDOM(html, {
-    url: "https://cheerful-fairy-529475.netlify.app/",
+    url: url || "https://cheerful-fairy-529475.netlify.app/",
     runScripts: "dangerously",
     pretendToBeVisual: true,
     beforeParse(win) {

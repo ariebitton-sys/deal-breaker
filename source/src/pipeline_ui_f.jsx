@@ -274,7 +274,7 @@ function ProjectHeader({ address, setAddress, stage, health, context, dirty, sav
 
 // ---------- dashboards ----------
 const DASH_LAYOUT_KEY = "kappa_dash_layout";
-function Dashboard({ filter: rawFilter, files, summaries, busy, connected, hasClientId, teamSetup, userEmail, onRetrySetup, onConnect, onOpenSettings, onOpen, onNew, onRefresh }) {
+function Dashboard({ filter: rawFilter, files, summaries, busy, connected, hasClientId, teamSetup, userEmail, onRetrySetup, invited, onConnect, onOpenSettings, onOpen, onNew, onRefresh }) {
   const filter = normDash(rawFilter);
   const meta = DASH_META[filter];
   const [q, setQ] = useState("");
@@ -320,8 +320,12 @@ function Dashboard({ filter: rawFilter, files, summaries, busy, connected, hasCl
       <React.Fragment>
         <DashHead title={meta.title} sub="Not connected to Google Drive" />
         <div className="pf-empty">
-          <h2>Your flip portfolio</h2>
-          <p>Connect Google Drive to see every deal, from analysis through rehab to sale, in one place.</p>
+          <h2>{invited ? "You're invited to Kappa's deals" : "Your flip portfolio"}</h2>
+          <p>
+            {invited
+              ? "Connect Google with your Kappa account (kappainv.com) to open the team's deals."
+              : "Connect Google Drive to see every deal, from analysis through rehab to sale, in one place."}
+          </p>
           <div style={{ display: "flex", gap: 10, justifyContent: "center", flexWrap: "wrap" }}>
             {hasClientId ? (
               <button onClick={onConnect} style={btnPrimary()}>
@@ -353,11 +357,13 @@ function Dashboard({ filter: rawFilter, files, summaries, busy, connected, hasCl
             </React.Fragment>
           ) : (
             <React.Fragment>
-              <h2>Kappa's deals folder wasn't found</h2>
+              <h2>{teamSetup.status === "noaccess" ? "This account can't open Kappa's deals folder yet" : "Kappa's deals folder wasn't found"}</h2>
               <p>
                 {teamSetup.status === "error"
                   ? "Google Drive didn't answer (" + (teamSetup.msg || "error") + "). Try again in a moment."
-                  : `Ask Arie to share the deals folder with ${userEmail || "this Google account"} (as Editor) and to share the team keys from Settings. Then try again.`}
+                  : teamSetup.status === "noaccess"
+                    ? `The invite link points to the deals folder, but it isn't shared with ${userEmail || "this Google account"}. Ask Arie to share it (as Editor), then try again.`
+                    : `No Kappa deals are shared with ${userEmail || "this Google account"} yet. Ask Arie to share the deals folder with this account (as Editor), or to send you the invite link from Settings. Then try again.`}
               </p>
               <div style={{ display: "flex", gap: 10, justifyContent: "center", flexWrap: "wrap" }}>
                 <button onClick={onRetrySetup} style={btnPrimary()}>
