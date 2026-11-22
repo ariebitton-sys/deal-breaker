@@ -520,8 +520,19 @@ function ConflictModal({ conflict, onOverwrite, onOpenTheirs, onClose }) {
 }
 
 // ---------- Original-underwriting banner (Underwrite tab) ----------
-function BaselineBanner({ uwBaseline, current, grade, stage, onRefreeze }) {
-  if (!uwBaseline) return null;
+function BaselineBanner({ uwBaseline, current, grade, stage, onRefreeze, onFreeze }) {
+  // a deal past analysis that never froze a plan (it skipped "under contract", or predates v40)
+  if (!uwBaseline)
+    return stage && stage !== "analyzing" && stage !== "dead" && onFreeze ? (
+      <div className="no-print baseline">
+        <div style={{ flex: "1 1 300px", fontSize: 13.5, color: T.txtDim, lineHeight: 1.5 }}>
+          <b style={{ color: T.txt, fontWeight: 600 }}>No original plan is saved for this deal.</b> Save the current numbers ({fmt(current)}, {grade}) as the plan first, then update the forecast; the overview and dashboards will show the change against it.
+        </div>
+        <button onClick={onFreeze} title="Freeze the current underwriting as this deal's original plan" style={btnGhost()}>
+          <Icon name="save" size={14} /> Save as original plan
+        </button>
+      </div>
+    ) : null;
   const diff = current - uwBaseline.m.netProfit;
   const changed = Math.abs(diff) >= 1;
   return (

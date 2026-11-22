@@ -3341,6 +3341,13 @@ function App() {
     setUwBaseline({ ...snap, date: (uwBaseline && uwBaseline.date) || todayISO() });
     addLogEntry(`Original underwriting re-frozen: ${fmt(snap.m.netProfit)}, ${snap.grade}`);
   };
+  // deals that reached a later stage without a frozen plan can freeze the current numbers as it
+  const freezeBaseline = () => {
+    if (uwBaseline) return;
+    const snap = snapshotFor();
+    setUwBaseline(snap);
+    addLogEntry(`Original plan saved from the current numbers: ${fmt(snap.m.netProfit)}, ${snap.grade}`);
+  };
   const applyTransition = (kind, f) => {
     const now = new Date().toISOString();
     const by = userEmail || "";
@@ -3583,6 +3590,8 @@ function App() {
     if (side === "buy" && opts.countCredits) {
       const add = (credits || []).filter((c) => c.amount > 0).map((c) => ({ files: [], ...creditEntryFor(c, date), id: numId() }));
       setActuals((p) => [...p.filter((a) => a.tag !== STMT_CREDIT_TAG), ...add]);
+      // credits kept aside by v43-v47 are now covered by these entries: the migration must not add them again
+      setMgmt((mm) => (mm.credits && mm.credits.length ? { ...mm, credits: mm.credits.map((c) => ({ ...c, used: null, counted: true })) } : mm));
     }
     if (side === "sell" && opts.setPrice && price > 0) {
       setActualSale(price);
@@ -3788,12 +3797,32 @@ function App() {
   }, [stickyCollapsed]);
   // Deals from v43-v47 kept the seller's credit aside for the tax bill. It counts in the ledger now:
   // an unused one becomes a credit entry (once), a used one is already inside its tax bill entry.
+  // A credit already in the ledger (a later statement import re-adds them) is never added twice; and a credit
+  // entry the migration added beside an identical imported one (v48-v52 could do that) is removed once.
   useEffect(() => {
-    const open = (mgmt.credits || []).filter((c) => !c.counted && (!c.used || !actuals.some((x) => x.id === c.used)));
-    if (!open.length) return;
-    const add = open.map((c) => ({ files: [], ...creditEntryFor(c, c.date || todayISO()), id: numId() }));
-    setActuals((p) => [...p, ...add]);
-    setMgmt((mm) => ({ ...mm, credits: (mm.credits || []).map((x) => { const i = open.findIndex((c) => c.id === x.id); return i < 0 ? x : { ...x, used: add[i].id, counted: true }; }) }));
+    const credits = mgmt.credits || [];
+    if (!credits.length) return;
+    const same = (e, c) => e.tag === STMT_CREDIT_TAG && Math.abs(num(e.amount) + Math.abs(num(c.amount))) < 0.005 && e.label === creditEntryFor(c, "").label;
+    const twin = (e, c) => actuals.find((x) => x.id !== e.id && same(x, c));
+    const dupes = credits.map((c) => { const e = c.used && actuals.find((x) => x.id === c.used && same(x, c)); return e && twin(e, c) ? { c, e, keep: twin(e, c) } : null; }).filter(Boolean);
+    const open = credits.filter((c) => !c.counted && (!c.used || !actuals.some((x) => x.id === c.used)));
+    const found = open.map((c) => actuals.find((x) => same(x, c)) || null);
+    if (!dupes.length && !open.length) return;
+    const add = open.map((c, i) => (found[i] ? null : { files: [], ...creditEntryFor(c, c.date || todayISO()), id: numId() }));
+    const drop = new Set(dupes.map((x) => x.e.id));
+    // the kept entry takes over any files attached to the one removed
+    const moveFiles = (x) => { const d = dupes.find((y) => y.keep.id === x.id && (y.e.files || []).length); return d ? { ...x, files: [...(x.files || []), ...d.e.files] } : x; };
+    setActuals((p) => [...p.filter((x) => !drop.has(x.id)).map(moveFiles), ...add.filter(Boolean)]);
+    setMgmt((mm) => ({
+      ...mm,
+      credits: (mm.credits || []).map((x) => {
+        const d = dupes.find((y) => y.c.id === x.id);
+        if (d) return { ...x, used: d.keep.id, counted: true };
+        const i = open.findIndex((c) => c.id === x.id);
+        return i < 0 ? x : { ...x, used: (found[i] || add[i]).id, counted: true };
+      }),
+    }));
+    dupes.forEach((d) => addLogEntry(`Removed a duplicate ledger entry: ${d.e.label} (${fmt2(d.e.amount)})`));
   }, [mgmt.credits]);
   const [fileUploading, setFileUploading] = useState(null);
   // attach files to a ledger entry (from the document viewer)
@@ -4399,7 +4428,7 @@ function App() {
           />
         ) : mode === "underwrite" ? (
           <React.Fragment>
-            <BaselineBanner uwBaseline={uwBaseline} current={m.netProfit} grade={deal.grade} stage={stage} onRefreeze={refreezeBaseline} />
+            <BaselineBanner uwBaseline={uwBaseline} current={m.netProfit} grade={deal.grade} stage={stage} onRefreeze={refreezeBaseline} onFreeze={freezeBaseline} />
             <div className="uw-layout">
               <div className="uw-main">
                 <section className="uw-basics">
