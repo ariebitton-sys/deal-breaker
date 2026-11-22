@@ -73,6 +73,7 @@ const DASH_META = {
   active: { title: "Active projects", sub: "Under contract, in rehab and on the market", stages: ["contract", "rehab", "market"] },
   portfolio: { title: "Portfolio", sub: "Sold flips and how they did against the plan", stages: ["sold"] },
   dead: { title: "Dead deals", sub: "Deals that didn't go ahead", stages: ["dead"] },
+  costs: { title: "Expense search", sub: "Every ledger line across the projects", stages: [] },
 };
 // What an empty dashboard says: where its deals come from.
 const DASH_EMPTY = {
@@ -133,6 +134,11 @@ function Sidebar({ logo, view, filter, onFilter, counts, project, onNew, onSetti
           <Icon name="x" size={15} />
           <span className="sb-label">Dead deals</span>
           <em>{counts.dead || 0}</em>
+        </button>
+        <div className="sb-sep" />
+        <button onClick={() => onFilter("costs")} className={"sb-item" + (view === "portfolio" && filter === "costs" ? " on" : "")} title={collapsed ? "Expense search" : "Search expenses across every project"} aria-current={view === "portfolio" && filter === "costs" ? "page" : undefined}>
+          <Icon name="search" size={17} />
+          <span className="sb-label">Expense search</span>
         </button>
       </nav>
       {project && (

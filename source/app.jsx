@@ -3039,15 +3039,15 @@ function App() {
     window.addEventListener("keydown", h);
     return () => window.removeEventListener("keydown", h);
   }, []);
-  const loadDeal = async (file) => {
+  const loadDeal = async (file, opts) => {
     setLoadOpen(false);
     if (dirty && !(await flushSave())) {
       if (!conflictRef.current) setPendingAction({ kind: "load", file });
-      return;
+      return false;
     }
-    openDeal(file);
+    return openDeal(file, null, opts);
   };
-  const openDeal = async (file, token) => {
+  const openDeal = async (file, token, opts) => {
     if (!(token || accessToken)) return;
     setDriveLoading(true);
     try {
@@ -3055,8 +3055,9 @@ function App() {
       resetFields();
       applyState(data);
       loadedRef.current = { id: file.id, name: meta.name || file.name, modifiedTime: meta.modifiedTime };
+      ledgerIndexPut(file, data, meta.modifiedTime);
       const st = inferStage(data);
-      setMode("overview");
+      setMode((opts && opts.mode) || "overview");
       setView("deal");
       window.scrollTo({ top: 0 });
       markClean();
@@ -3222,6 +3223,62 @@ function App() {
     } catch {}
   }, [view]);
   // Portfolio summaries: Drive appProperties first, then the local cache, then read the file.
+  // ---- cross-project expense index (Expense search): one compact ledger per deal, per file version ----
+  const [ledgerIndex, setLedgerIndex] = useState(readLedgerIndex);
+  const [indexBusy, setIndexBusy] = useState(null); // { done, total } while reading
+  const [costQuery, setCostQuery] = useState("");
+  const [ledgerFocus, setLedgerFocus] = useState(null); // { id, n }: open this expense on Expenses & Documents
+  const ledgerIndexPut = (f, d, mt) => setLedgerIndex((ix) => ({ ...ix, [f.id]: ledgerIndexEntry(d, mt || f.modifiedTime, f.name) }));
+  useEffect(() => {
+    const t = setTimeout(() => writeLedgerIndex(ledgerIndex), 600);
+    return () => clearTimeout(t);
+  }, [ledgerIndex]);
+  const costsOpen = view === "portfolio" && normDash(pfFilter) === "costs";
+  useEffect(() => {
+    if (!costsOpen || !accessToken || !driveFiles.length) return;
+    const ids = new Set(driveFiles.map((f) => f.id));
+    if (Object.keys(ledgerIndex).some((id) => !ids.has(id)))
+      setLedgerIndex((ix) => Object.fromEntries(Object.entries(ix).filter(([id]) => ids.has(id)))); // deleted deals
+    const toRead = driveFiles.filter((f) => !ledgerIndex[f.id] || ledgerIndex[f.id].mt !== f.modifiedTime);
+    if (!toRead.length) return;
+    let cancelled = false;
+    const queue = [...toRead];
+    let done = 0;
+    setIndexBusy({ done: 0, total: toRead.length });
+    (async () => {
+      const worker = async () => {
+        while (queue.length && !cancelled) {
+          const f = queue.shift();
+          try {
+            const d = await withAuthRetry((tok) => driveRead(tok, f.id));
+            if (!cancelled) ledgerIndexPut(f, d);
+          } catch (e) {}
+          done++;
+          if (!cancelled) setIndexBusy({ done, total: toRead.length });
+        }
+      };
+      await Promise.all([worker(), worker(), worker(), worker()]);
+      if (!cancelled) setIndexBusy(null);
+    })();
+    return () => {
+      cancelled = true;
+      setIndexBusy(null);
+    };
+  }, [costsOpen, accessToken, driveFiles]);
+  const openCostResult = async (fid, entryId, item) => {
+    const f = driveFiles.find((x) => x.id === fid);
+    if (!f) return;
+    if (!(loadedRef.current && loadedRef.current.id === fid)) await loadDeal(f, { mode: "expenses" });
+    if (loadedRef.current && loadedRef.current.id === fid) {
+      goProject("expenses");
+      setLedgerFocus({ id: entryId, item: item || null, n: Date.now() });
+    }
+  };
+  const searchAllProjects = (q) => {
+    setCostQuery(q || "");
+    setPfFilter("costs");
+    goPortfolio();
+  };
   const summaryReadsRef = useRef(new Set());
   useEffect(() => {
     if (!accessToken || !driveFiles.length) return;
@@ -3252,6 +3309,7 @@ function App() {
           const f = queue.shift();
           try {
             const d = await withAuthRetry((tok) => driveRead(tok, f.id));
+            ledgerIndexPut(f, d);
             const sum = summarizeDeal(d);
             cache[f.id] = { modifiedTime: f.modifiedTime, sum };
             setSummaries((s) => ({ ...s, [f.id]: sum }));
@@ -4245,7 +4303,21 @@ function App() {
             tabs={view === "deal" ? <ProjectTabs mode={mode} go={goProject} counts={{ expenses: actuals.length }} /> : null}
           />
           <div className="app-main-inner">
-        {view === "portfolio" ? (
+        {view === "portfolio" && normDash(pfFilter) === "costs" ? (
+          <CostSearch
+            files={driveFiles}
+            index={ledgerIndex}
+            live={
+              loadedRef.current && address.trim()
+                ? { ...ledgerIndexEntry({ address, actuals, mgmt, stage }, loadedRef.current.modifiedTime, ""), st: stage, id: loadedRef.current.id }
+                : null
+            }
+            busy={indexBusy}
+            query={costQuery}
+            setQuery={setCostQuery}
+            onOpen={openCostResult}
+          />
+        ) : view === "portfolio" ? (
           <React.Fragment>
           <Dashboard
             filter={pfFilter}
@@ -4948,6 +5020,9 @@ function App() {
             connected={!!accessToken && !!settings.folderId}
             docUploading={docUploading}
             entryTools={{ upload: uploadEntryFiles, addLink: addEntryLink, remove: removeAttachment, uploading: fileUploading, connected: !!accessToken && !!settings.folderId }}
+            focus={ledgerFocus}
+            onFocused={() => setLedgerFocus(null)}
+            onSearchAll={accessToken ? searchAllProjects : null}
             pmPanel={
               (m.pmFee || 0) > 0 || actuals.some((a) => a.tag === "pm_fee") ? (
                 <PmPayments

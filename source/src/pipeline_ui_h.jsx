@@ -83,7 +83,10 @@ function entryTitle(a) {
   if (!raw) return { title: "Untitled expense", detail: "" };
   const p = splitParen(raw);
   if (a.tag === STMT_CREDIT_TAG) return { title: a.cat === "Holding" ? "Seller property tax credit" : "Seller credit at closing", detail: p ? p[1] : "" };
-  if (a.tag === "purchase_price") return { title: "Purchase price", detail: raw.replace(/^Purchase price\s*,?\s*/i, "") };
+  if (a.tag === "purchase_price") {
+    const rest = raw.replace(/^Purchase price\s*,?\s*/i, "");
+    return { title: "Purchase price", detail: /^\$?[\d,]+(\.\d+)?$/.test(rest) ? "" : rest }; // a bare amount repeats the amount column
+  }
   if (isEmdEntry(a)) return { title: "Earnest money deposit", detail: /^(earnest money( deposit)?|emd)$/i.test(raw) ? "" : raw };
   if (p) {
     const head = LEDGER_TITLES[p[0]] || p[0];
@@ -91,6 +94,8 @@ function entryTitle(a) {
   }
   return { title: LEDGER_TITLES[raw] || raw, detail: "" };
 }
+// Inside the purchase group the price entry is the part paid at closing.
+const kidTitle = (a) => (a.tag === "purchase_price" ? "Balance paid at closing" : entryTitle(a).title);
 // The purchase reads as one row: the EMD paid earlier + the balance paid at closing.
 function ledgerRows(list) {
   const pp = list.filter((a) => a.tag === "purchase_price");
@@ -392,102 +397,88 @@ function DocViewer({ view, onClose, onOpenAnalysis, entryTools }) {
   );
 }
 
-// ---------- ledger rows ----------
-function EntryEdit({ a, focus, onSave, onCancel }) {
-  const [d, setD] = useState({ date: a.date || todayISO(), cat: a.cat, label: a.label || "", amount: amtOf(a) });
-  const done = useRef(false);
-  const save = () => {
-    if (done.current) return;
-    done.current = true;
-    onSave({ date: d.date, cat: d.cat, label: d.label, amount: Number.isFinite(parseFloat(d.amount)) ? parseFloat(d.amount) : 0 });
-  };
-  const cancel = () => {
-    done.current = true;
-    onCancel();
-  };
-  return (
-    <div
-      className="ledger-row editing"
-      onKeyDown={(e) => {
-        if (e.key === "Enter") {
-          e.preventDefault();
-          save();
-        } else if (e.key === "Escape") cancel();
-      }}
-      onBlur={(e) => {
-        if (!e.currentTarget.contains(e.relatedTarget)) save();
-      }}
-    >
-      <div className="lg-edit">
-        <input type="date" value={d.date} onChange={(e) => setD({ ...d, date: e.target.value })} aria-label="Date" />
-        <select value={d.cat} onChange={(e) => setD({ ...d, cat: e.target.value })} aria-label="Category">
-          {ACTUAL_CATS.map((c) => (
-            <option key={c} value={c}>
-              {c}
-            </option>
-          ))}
-        </select>
-        <input className="lg-in-label" value={d.label} autoFocus={focus !== "amount"} onChange={(e) => setD({ ...d, label: e.target.value })} aria-label="Description" />
-        <input
-          className="lg-in-amt"
-          type="number"
-          step="0.01"
-          value={d.amount}
-          autoFocus={focus === "amount"}
-          onFocus={(e) => e.target.select()}
-          onChange={(e) => setD({ ...d, amount: e.target.value })}
-          aria-label="Amount"
-        />
-      </div>
-      <div className="lg-edit-foot">
-        <span>Tab to move, Enter to save, Esc to cancel</span>
-        <button onMouseDown={(e) => e.preventDefault()} onClick={save} className="lg-save">
-          Save
-        </button>
-      </div>
-    </div>
-  );
+// ---------- search helpers (this ledger and across projects) ----------
+const searchTokens = (q) =>
+  String(q || "")
+    .toLowerCase()
+    .replace(/[$,]/g, " ")
+    .split(/\s+/)
+    .filter(Boolean);
+const hasAll = (hay, toks) => toks.every((t) => hay.includes(t));
+const entryHay = (label, cat, amount) => `${label} ${cat} ${catShort(cat)} ${Math.round(Math.abs(amount))} ${Math.abs(amount).toFixed(2)}`.toLowerCase().replace(/,/g, "");
+// does an entry match the search, and which of its sub-items do
+function matchEntry(a, toks) {
+  if (!toks.length) return { hit: true, items: [] };
+  const items = Array.isArray(a.items) ? a.items : [];
+  const hay = entryHay(a.label || "", a.cat || "", amtOf(a));
+  const itemHits = items.filter((it) => {
+    const il = String(it.label || "").toLowerCase();
+    return toks.some((t) => il.includes(t)) && hasAll(`${il} ${Math.round(Math.abs(Number(it.amount) || 0))} ${hay}`, toks);
+  });
+  return { hit: hasAll(hay, toks) || itemHits.length > 0, items: itemHits };
 }
-function EntryRow({ a, src, child, editing, itemsOpen, onEdit, onSave, onCancel, onDelete, onToggleItems, onSource }) {
-  const { title, detail } = entryTitle(a);
+// wrap the searched words in <mark>
+function Hl({ text, toks }) {
+  const s = String(text || "");
+  const ws = (toks || []).filter((t) => t.length > 1 || /\d/.test(t));
+  if (!ws.length) return s;
+  const re = new RegExp("(" + ws.map((t) => t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|") + ")", "gi");
+  return s.split(re).map((part, i) => (i % 2 ? <mark key={i}>{part}</mark> : part));
+}
+
+// ---------- ledger rows: the whole row opens the expense window ----------
+function EntryRow({ a, src, child, itemsOpen, toks, onOpen, onDelete, onToggleItems, onSource }) {
+  const { detail } = entryTitle(a);
+  const title = child ? kidTitle(a) : entryTitle(a).title;
   const amt = amtOf(a);
   const items = Array.isArray(a.items) && a.items.length > 1 ? a.items : null;
+  const stop = (fn) => (e) => {
+    e.stopPropagation();
+    fn();
+  };
   return (
     <div className={"lg-entry" + (child ? " child" : "")}>
-      {editing ? (
-        <EntryEdit a={a} focus={editing} onSave={onSave} onCancel={onCancel} />
-      ) : (
-        <div className="ledger-row">
-          <div className="lg-main">
-            <button className="lg-title" onClick={() => onEdit("label")} title={`${a.label || ""}\nClick to edit`}>
-              {title}
-            </button>
-            <span className="lg-meta">
-              <span>{a.date ? fmtDate(a.date) : "No date"}</span>
-              <span>{catShort(a.cat)}</span>
-              {items && (
-                <button className={"ledger-items-btn" + (itemsOpen ? " open" : "")} onClick={onToggleItems} aria-expanded={itemsOpen} title={itemsOpen ? "Hide the breakdown" : `Show the ${items.length} items`}>
-                  <Icon name="down" size={12} />
-                  {items.length} items
-                </button>
-              )}
-              {detail && <span className="lg-detail">{detail}</span>}
-            </span>
-          </div>
-          <SourcePill src={src} onClick={onSource} />
-          <button className={"lg-amt" + (amt < 0 ? " neg" : "")} onClick={() => onEdit("amount")} title="Click to edit">
-            {amt < 0 ? <span className="ledger-neg">−{fmt(-amt)} credit</span> : fmt(amt)}
-          </button>
-          <button className="lg-del" onClick={onDelete} title="Delete entry" aria-label="Delete entry">
-            <Icon name="x" size={14} />
-          </button>
+      <div
+        className="ledger-row"
+        role="button"
+        tabIndex={0}
+        onClick={onOpen}
+        onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && e.target === e.currentTarget && (e.preventDefault(), onOpen())}
+        title="Open this expense"
+      >
+        <div className="lg-main">
+          <span className="lg-title">
+            <Hl text={title} toks={toks} />
+          </span>
+          <span className="lg-meta">
+            <span>{a.date ? fmtDate(a.date) : "No date"}</span>
+            <span>{catShort(a.cat)}</span>
+            {items && (
+              <button className={"ledger-items-btn" + (itemsOpen ? " open" : "")} onClick={stop(onToggleItems)} aria-expanded={itemsOpen} title={itemsOpen ? "Hide the breakdown" : `Show the ${items.length} items`}>
+                <Icon name="down" size={12} />
+                {items.length} items
+              </button>
+            )}
+            {detail && (
+              <span className="lg-detail">
+                <Hl text={detail} toks={toks} />
+              </span>
+            )}
+          </span>
         </div>
-      )}
-      {items && itemsOpen && !editing && (
+        <SourcePill src={src} onClick={stop(onSource)} />
+        <span className={"lg-amt" + (amt < 0 ? " neg" : "")}>{amt < 0 ? <span className="ledger-neg">−{fmt(-amt)} credit</span> : fmt(amt)}</span>
+        <button className="lg-del" onClick={stop(onDelete)} title="Delete entry" aria-label="Delete entry">
+          <Icon name="x" size={14} />
+        </button>
+      </div>
+      {items && itemsOpen && (
         <div className="ledger-items">
           {items.map((it, i) => (
             <div key={i} className="ledger-item">
-              <span>{it.label}</span>
+              <span>
+                <Hl text={it.label} toks={toks} />
+              </span>
               <span className={it.amount < 0 ? "neg" : ""}>{fmt2(it.amount)}</span>
             </div>
           ))}
@@ -497,6 +488,338 @@ function EntryRow({ a, src, child, editing, itemsOpen, onEdit, onSave, onCancel,
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+// ---------- the expense window: one expense, large, with its sub-expenses and files ----------
+function ExpenseWindow({ a, group, src, budgetLines, focusItem, onPatch, onDelete, onClose, onOpenEntry, onBack, onOpenSource, entryTools }) {
+  const [d, setD] = useState(() => (a ? { label: a.label || "", amount: String(amtOf(a)) } : null));
+  const [fi, setFi] = useState(0);
+  const [link, setLink] = useState(null);
+  const [confirmDel, setConfirmDel] = useState(false);
+  const fileRef = useRef(null);
+  const commit = () => {
+    if (!a || !d) return;
+    const patch = {};
+    if (d.label !== (a.label || "")) patch.label = d.label;
+    const amt = parseFloat(d.amount);
+    if (Number.isFinite(amt) && Math.abs(amt - amtOf(a)) > 0.0049) patch.amount = Math.round(amt * 100) / 100;
+    if (Object.keys(patch).length) onPatch(a.id, patch);
+  };
+  const close = () => {
+    commit();
+    onClose();
+  };
+  useEffect(() => {
+    const k = (e) => {
+      if (e.key !== "Escape") return;
+      const t = e.target;
+      if (t && t.dataset && t.dataset.xw === "text") return; // the field handles its own Esc
+      close();
+    };
+    document.addEventListener("keydown", k);
+    return () => document.removeEventListener("keydown", k);
+  });
+  const fieldKeys = (field) => (e) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      commit();
+      e.target.blur();
+    } else if (e.key === "Escape") {
+      e.preventDefault();
+      setD((x) => ({ ...x, [field]: field === "amount" ? String(amtOf(a)) : a.label || "" }));
+      setTimeout(() => e.target.blur(), 0);
+    }
+  };
+  // ---- a group (the purchase: EMD + balance at closing) ----
+  if (group) {
+    return (
+      <div className="xw-back no-print" onClick={onClose}>
+        <div className="xw" role="dialog" aria-label="Purchase price" onClick={(e) => e.stopPropagation()}>
+          <header className="xw-h">
+            <div className="xw-h-txt">
+              <span className="xw-k">Acquisition · {group.kids.length} linked entries</span>
+              <h3>Purchase price</h3>
+            </div>
+            <button className="dv-x" onClick={onClose} aria-label="Close">
+              <Icon name="x" size={18} />
+            </button>
+          </header>
+          <div className="xw-hero">
+            <div>
+              <span>Total</span>
+              <b>{fmt2(group.amount)}</b>
+            </div>
+            <div>
+              <span>Last payment</span>
+              <b>{group.date ? fmtDate(group.date) : "—"}</b>
+            </div>
+            <div>
+              <span>Category</span>
+              <b>Acquisition</b>
+            </div>
+          </div>
+          <div className="xw-body">
+            <section className="xw-sec">
+              <div className="xw-sec-h">
+                Sub-expenses <em>{group.kids.length}</em>
+              </div>
+              <div className="xw-items">
+                {group.kids.map((k) => (
+                  <button key={k.id} className="xw-item link" onClick={() => onOpenEntry(k.id)}>
+                    <span className="xw-item-l">
+                      <b>{kidTitle(k)}</b>
+                      <em>{[k.date ? fmtDate(k.date) : "No date", entryTitle(k).detail].filter(Boolean).join(" · ")}</em>
+                    </span>
+                    <span className="xw-item-a">{fmt2(amtOf(k))}</span>
+                    <Icon name="chevron" size={14} />
+                  </button>
+                ))}
+                <div className="xw-item sum gsum">
+                  <span className="xw-item-l">Purchase price</span>
+                  <span className="xw-item-a">{fmt2(group.amount)}</span>
+                  <span />
+                </div>
+              </div>
+            </section>
+          </div>
+        </div>
+      </div>
+    );
+  }
+  if (!a) return null;
+  const t = onBack ? { ...entryTitle(a), title: kidTitle(a) } : entryTitle(a);
+  const amt = amtOf(a);
+  const items = Array.isArray(a.items) && a.items.length ? a.items : null;
+  const itemsTotal = items ? items.reduce((s2, it) => s2 + (Number(it.amount) || 0), 0) : 0;
+  const files = a.files || [];
+  const f = files[Math.min(fi, Math.max(0, files.length - 1))] || null;
+  const preview = f && f.type === "drive_file" && f.driveFileId ? `https://drive.google.com/file/d/${f.driveFileId}/preview` : null;
+  const openUrl = f ? (f.type === "link" ? f.url : `https://drive.google.com/file/d/${f.driveFileId}/view`) : null;
+  const showLines = a.cat === "Rehab / Construction" && budgetLines && budgetLines.length > 1;
+  return (
+    <div className="xw-back no-print" onClick={close}>
+      <div className="xw" role="dialog" aria-label={t.title} onClick={(e) => e.stopPropagation()}>
+        <header className="xw-h">
+          <div className="xw-h-txt">
+            {onBack && (
+              <button className="xw-backbtn" onClick={() => (commit(), onBack())}>
+                <Icon name="back" size={13} /> Purchase price
+              </button>
+            )}
+            <span className="xw-k">
+              {catShort(a.cat)} · {src.title}
+            </span>
+            <h3>{t.title}</h3>
+            {t.detail && <p className="xw-sub">{t.detail}</p>}
+          </div>
+          <button className="dv-x" onClick={close} aria-label="Close">
+            <Icon name="x" size={18} />
+          </button>
+        </header>
+        <div className="xw-hero">
+          <div>
+            <span>Amount</span>
+            <b className={amt < 0 ? "pos" : ""}>{amt < 0 ? `−${fmt2(-amt)}` : fmt2(amt)}</b>
+            {amt < 0 && <em>credit</em>}
+          </div>
+          <div>
+            <span>Date</span>
+            <b>{a.date ? fmtDate(a.date) : "—"}</b>
+          </div>
+          <div>
+            <span>Category</span>
+            <b>{a.cat}</b>
+          </div>
+          <div>
+            <span>Source</span>
+            {src.kind === "hud" || src.kind === "sow" ? (
+              <button className="link-btn xw-src" onClick={() => (commit(), onOpenSource(src.kind === "hud" ? src.side : "sow"))}>
+                {src.kind === "hud" ? (src.side === "buy" ? "Purchase HUD-1" : "Sale HUD-1") : "Scope of work"} <Icon name="link" size={12} />
+              </button>
+            ) : (
+              <b>{src.label}</b>
+            )}
+          </div>
+        </div>
+        <div className="xw-body">
+          <section className="xw-sec">
+            <div className="xw-sec-h">Details</div>
+            <div className="xw-form">
+              <label>
+                <span>Date</span>
+                <input type="date" value={a.date || ""} onChange={(e) => onPatch(a.id, { date: e.target.value })} />
+              </label>
+              <label>
+                <span>Category</span>
+                <select value={a.cat} onChange={(e) => onPatch(a.id, { cat: e.target.value })}>
+                  {ACTUAL_CATS.map((c) => (
+                    <option key={c} value={c}>
+                      {c}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                <span>Amount</span>
+                <input
+                  className="xw-amt"
+                  type="number"
+                  step="0.01"
+                  data-xw="text"
+                  value={d.amount}
+                  onFocus={(e) => e.target.select()}
+                  onChange={(e) => setD({ ...d, amount: e.target.value })}
+                  onBlur={commit}
+                  onKeyDown={fieldKeys("amount")}
+                />
+              </label>
+              <label className="wide">
+                <span>Description</span>
+                <input className="xw-label" data-xw="text" value={d.label} onChange={(e) => setD({ ...d, label: e.target.value })} onBlur={commit} onKeyDown={fieldKeys("label")} />
+              </label>
+              {showLines && (
+                <label className="wide">
+                  <span>Rehab budget line</span>
+                  <select value={a.bl || ""} onChange={(e) => onPatch(a.id, { bl: e.target.value || undefined })}>
+                    <option value="">Unassigned</option>
+                    {budgetLines.map((l) => (
+                      <option key={l.key} value={l.key}>
+                        {l.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              )}
+            </div>
+            <div className="xw-hint">Changes save as you go. Tab moves between fields, Enter saves, Esc undoes a field.</div>
+          </section>
+          {items && (
+            <section className="xw-sec">
+              <div className="xw-sec-h">
+                Sub-expenses <em>{items.length}</em>
+              </div>
+              <div className="xw-items">
+                {items.map((it, i) => (
+                  <div key={i} className={"xw-item" + (focusItem && it.label === focusItem ? " hit" : "")} ref={focusItem && it.label === focusItem ? (el) => el && el.scrollIntoView && setTimeout(() => el.scrollIntoView({ block: "center" }), 50) : undefined}>
+                    <span className="xw-item-n">{i + 1}</span>
+                    <span className="xw-item-l">{it.label}</span>
+                    <span className={"xw-item-a" + (it.amount < 0 ? " pos" : "")}>{fmt2(it.amount)}</span>
+                  </div>
+                ))}
+                <div className="xw-item sum">
+                  <span className="xw-item-n" />
+                  <span className="xw-item-l">Total of {items.length} items</span>
+                  <span className="xw-item-a">{fmt2(itemsTotal)}</span>
+                </div>
+              </div>
+              <div className={"xw-check" + (Math.abs(itemsTotal - amt) < 0.01 ? " ok" : "")}>
+                {Math.abs(itemsTotal - amt) < 0.01 ? "The items add up to the entry's amount." : `The items add up to ${fmt2(itemsTotal)}, ${fmt2(Math.abs(itemsTotal - amt))} ${itemsTotal > amt ? "more" : "less"} than the entry's ${fmt2(amt)}.`}
+              </div>
+            </section>
+          )}
+          <section className="xw-sec">
+            <div className="xw-sec-h">
+              Files <em>{files.length}</em>
+              {openUrl && (
+                <a className="xw-open" href={openUrl} target="_blank" rel="noopener noreferrer">
+                  Open in new tab <Icon name="link" size={12} />
+                </a>
+              )}
+            </div>
+            {files.length > 0 && (
+              <div className="dv-files xw-files">
+                {files.map((x, i) => (
+                  <span key={i} className={"xw-file" + (i === fi ? " on" : "")}>
+                    <button onClick={() => setFi(i)}>
+                      <Icon name={x.type === "link" ? "link" : "file"} size={13} /> {x.name || "File " + (i + 1)}
+                    </button>
+                    <button className="xw-file-x" onClick={() => entryTools.remove(a.id, x)} title="Remove from this entry" aria-label={`Remove ${x.name || "file"}`}>
+                      <Icon name="x" size={12} />
+                    </button>
+                  </span>
+                ))}
+              </div>
+            )}
+            {preview ? (
+              <div className="xw-preview">
+                <iframe title={f.name || "Attached file"} src={preview} />
+              </div>
+            ) : f ? (
+              <div className="xw-nofile">
+                <Icon name="link" size={18} /> {f.name || f.url}
+              </div>
+            ) : (
+              <div className="xw-nofile">
+                <Icon name="file" size={18} /> No receipt or invoice attached yet.
+              </div>
+            )}
+            <input
+              ref={fileRef}
+              type="file"
+              accept="image/*,.pdf"
+              multiple
+              style={{ display: "none" }}
+              onChange={(e) => {
+                const fl = Array.from(e.target.files || []);
+                if (fl.length) entryTools.upload(a.id, fl);
+                e.target.value = "";
+              }}
+            />
+            {link ? (
+              <div className="dv-link-form">
+                <input autoFocus data-xw="text" placeholder="Google Drive / Docs URL" value={link.url} onChange={(e) => setLink({ ...link, url: e.target.value })} />
+                <input
+                  data-xw="text"
+                  placeholder="Label (optional)"
+                  value={link.name}
+                  onChange={(e) => setLink({ ...link, name: e.target.value })}
+                  onKeyDown={(e) => e.key === "Enter" && link.url.trim() && (entryTools.addLink(a.id, link.url, link.name), setLink(null))}
+                />
+                <div>
+                  <button style={btnPrimary()} disabled={!link.url.trim()} onClick={() => (entryTools.addLink(a.id, link.url, link.name), setLink(null))}>
+                    Add
+                  </button>
+                  <button style={btnGhost()} onClick={() => setLink(null)}>
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="dv-att-actions">
+                <button style={btnGhost()} disabled={!entryTools.connected || entryTools.uploading === a.id} onClick={() => fileRef.current && fileRef.current.click()}>
+                  <Icon name="download" /> {entryTools.uploading === a.id ? "Uploading…" : "Upload file"}
+                </button>
+                <button style={btnGhost()} onClick={() => setLink({ url: "", name: "" })}>
+                  <Icon name="link" /> Add link
+                </button>
+              </div>
+            )}
+            {!entryTools.connected && <div className="dv-note">Connect Google Drive to upload files.</div>}
+          </section>
+        </div>
+        <footer className="xw-f">
+          {confirmDel ? (
+            <span className="xw-del-confirm">
+              Delete this expense?
+              <button className="xw-del-yes" onClick={() => (onDelete(a.id), onClose())}>
+                Delete
+              </button>
+              <button className="link-btn" onClick={() => setConfirmDel(false)}>
+                Keep it
+              </button>
+            </span>
+          ) : (
+            <button className="xw-del" onClick={() => setConfirmDel(true)}>
+              Delete expense
+            </button>
+          )}
+          <button style={btnPrimary()} onClick={close}>
+            Done
+          </button>
+        </footer>
+      </div>
     </div>
   );
 }
@@ -804,10 +1127,11 @@ function RehabLines({ P, actuals, setActuals, mgmt, repairs, useRepairBuilder, r
 function ExpensesDocs(p) {
   const { actuals, setActuals, mgmt, m, uwBaseline, arv, stage, actualSale, setActualSale, actualsTotal } = p;
   const [filter, setFilter] = useState(null);
-  const [edit, setEdit] = useState(null); // { id, focus }
+  const [q, setQ] = useState("");
   const [openItems, setOpenItems] = useState({});
   const [openGroups, setOpenGroups] = useState({});
-  const [viewer, setViewer] = useState(null); // { kind, ref }
+  const [viewer, setViewer] = useState(null); // source document slide-over: { kind: "buy" | "sell" | "sow" }
+  const [win, setWin] = useState(null); // expense window: { id, back } | { group: true }
   const P = uwBaseline ? uwBaseline.m : m;
   const cats = budgetCats(P, actuals);
   const src = docSources(mgmt);
@@ -819,15 +1143,30 @@ function ExpensesDocs(p) {
     return (b.id || 0) - (a.id || 0);
   });
   const eff = filter && actuals.some((a) => a.cat === filter) ? filter : filter && cats.some((c) => c.cat === filter) ? filter : null;
-  const list = eff ? sorted.filter((a) => a.cat === eff) : sorted;
+  const toks = searchTokens(q);
+  const matches = toks.length ? new Map(actuals.map((a) => [a.id, matchEntry(a, toks)])) : null;
+  const byCat = eff ? sorted.filter((a) => a.cat === eff) : sorted;
+  const list = matches ? byCat.filter((a) => matches.get(a.id).hit) : byCat;
+  // the category chips count what the search leaves
+  const chipBase = matches ? sorted.filter((a) => matches.get(a.id).hit) : sorted;
+  const presentCats = ACTUAL_CATS.filter((c) => actuals.some((a) => a.cat === c));
   const rows = ledgerRows(list);
   const listTotal = list.reduce((t, a) => t + amtOf(a), 0);
   const plan = P.netProfit != null ? P.netProfit : 0;
-  const save = (id, patch) => {
-    setActuals((prev) => prev.map((a) => (a.id === id ? { ...a, ...patch } : a)));
-    setEdit(null);
-  };
+  const patchEntry = (id, patch) => setActuals((prev) => prev.map((a) => (a.id === id ? { ...a, ...patch } : a)));
   const del = (a) => setActuals((prev) => prev.filter((x) => x.id !== a.id));
+  const budgetLines = rehabBudgetLines({ milestones: mgmt.rehab.milestones, repairs: p.repairs, useRepairBuilder: p.useRepairBuilder, repairTotal: p.repairTotal }).lines;
+  // opened from somewhere else (a cross-project search result): show that expense
+  useEffect(() => {
+    if (!p.focus) return;
+    const a = actuals.find((x) => x.id === p.focus.id);
+    if (a) {
+      setFilter(null);
+      setQ("");
+      setWin({ id: a.id, item: p.focus.item || null });
+    }
+    p.onFocused && p.onFocused();
+  }, [p.focus && p.focus.n]);
   const add = (e) => p.pushActuals([e]);
   // ---- the slide-over, built from the live data each render ----
   const linesOf = (pred) =>
@@ -865,25 +1204,7 @@ function ExpensesDocs(p) {
         analysis: an,
       };
     }
-    const a = actuals.find((x) => x.id === v.id);
-    if (!a) return null;
-    const s = entrySource(a, src, msById);
-    if (s.kind === "hud") return viewFor({ kind: s.side });
-    if (s.kind === "sow") {
-      const base = viewFor({ kind: "sow" });
-      return { ...base, entry: a, files: [...(a.files || []), ...base.files] };
-    }
-    const t = entryTitle(a);
-    return {
-      kicker: s.label,
-      title: t.title,
-      sub: [a.date ? fmtDate(a.date) : "", a.cat, t.detail].filter(Boolean).join(" · "),
-      files: a.files || [],
-      noDoc: "No receipt or invoice attached yet. Upload one below.",
-      linesTitle: "Ledger entry",
-      lines: [{ label: a.label || t.title, meta: catShort(a.cat), amount: amtOf(a) }],
-      entry: a,
-    };
+    return null;
   };
   const view = viewFor(viewer);
   const read = (k, source) => {
@@ -895,22 +1216,29 @@ function ExpensesDocs(p) {
     const el = document.getElementById("sec-docs");
     if (el && el.scrollIntoView) el.scrollIntoView({ block: "start", behavior: "smooth" });
   };
+  // a source pill opens the document (HUD-1, SOW); for other entries it opens the expense itself
+  const openSource = (a) => {
+    const sv = entrySource(a, src, msById);
+    if (sv.kind === "hud") setViewer({ kind: sv.side });
+    else if (sv.kind === "sow") setViewer({ kind: "sow" });
+    else setWin({ id: a.id });
+  };
   const rowFor = (a, child) => (
     <EntryRow
       key={a.id}
       a={a}
       child={child}
+      toks={toks}
       src={entrySource(a, src, msById)}
-      editing={edit && edit.id === a.id ? edit.focus : null}
-      itemsOpen={!!openItems[a.id]}
-      onEdit={(focus) => setEdit({ id: a.id, focus })}
-      onSave={(patch) => save(a.id, patch)}
-      onCancel={() => setEdit(null)}
+      itemsOpen={!!openItems[a.id] || !!(matches && matches.get(a.id).items.length)}
+      onOpen={() => setWin({ id: a.id, back: child ? "group" : null })}
       onDelete={() => del(a)}
       onToggleItems={() => setOpenItems((o) => ({ ...o, [a.id]: !o[a.id] }))}
-      onSource={() => setViewer({ kind: "entry", id: a.id })}
+      onSource={() => openSource(a)}
     />
   );
+  const winEntry = win && win.id != null ? actuals.find((x) => x.id === win.id) : null;
+  const purchaseGroup = ledgerRows(sorted).find((r) => r.group);
   return (
     <div className="xd">
       <div className="xd-main">
@@ -920,29 +1248,74 @@ function ExpensesDocs(p) {
           <div className="dcard-h">
             <Icon name="receipt" /> Ledger
             <span className="dcard-r">
+              {list.length !== actuals.length ? `${list.length} of ` : ""}
               {actuals.length} {actuals.length === 1 ? "entry" : "entries"}
             </span>
-            {eff && (
-              <button className="xd-filter" onClick={() => setFilter(null)} title="Show every category">
-                {catShort(eff)} <Icon name="x" size={12} />
-              </button>
-            )}
           </div>
+          {actuals.length > 0 && (
+            <div className="lg-tools">
+              <div className="lg-search">
+                <Icon name="search" size={14} />
+                <input value={q} onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => e.key === "Escape" && setQ("")} placeholder="Search this ledger, sub-items too" aria-label="Search this ledger" />
+                {q && (
+                  <button className="lg-search-x" onClick={() => setQ("")} aria-label="Clear the search">
+                    <Icon name="x" size={12} />
+                  </button>
+                )}
+              </div>
+              {p.onSearchAll && (
+                <button className="link-btn lg-all" onClick={() => p.onSearchAll(q)} title="Find this expense in every project">
+                  Search all projects
+                </button>
+              )}
+              <div className="lg-chips" role="group" aria-label="Filter by category">
+                <button className={"lg-chip" + (!eff ? " on" : "")} onClick={() => setFilter(null)} aria-pressed={!eff}>
+                  All <em>{chipBase.length}</em>
+                </button>
+                {presentCats.map((c) => {
+                  const n = chipBase.filter((a) => a.cat === c).length;
+                  return (
+                    <button key={c} className={"lg-chip" + (eff === c ? " on" : "") + (n === 0 ? " zero" : "")} onClick={() => setFilter(eff === c ? null : c)} aria-pressed={eff === c} title={`${c}: ${fmt(sumActuals(actuals, c))}`}>
+                      {catShort(c)} <em>{n}</em>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
           <AddExpenseRow onAdd={add} defaultCat={eff || undefined} />
           {actuals.length === 0 ? (
             <div className="dcard-empty">No expenses logged yet. Drop a closing statement or an invoice above, or add a line.</div>
           ) : list.length === 0 ? (
-            <div className="dcard-empty">No {catShort(eff).toLowerCase()} expenses yet.</div>
+            <div className="dcard-empty">
+              {toks.length ? `Nothing in this ledger matches “${q.trim()}”${eff ? ` under ${catShort(eff)}` : ""}.` : `No ${catShort(eff).toLowerCase()} expenses yet.`}{" "}
+              {toks.length && p.onSearchAll ? (
+                <button className="link-btn" onClick={() => p.onSearchAll(q)}>
+                  Search all projects
+                </button>
+              ) : null}
+            </div>
           ) : (
             <div className="lg-list">
               {rows.map((r) =>
                 r.group ? (
                   <div key={r.id} className={"lg-group" + (openGroups[r.id] ? " open" : "")}>
-                    <div className="ledger-row lg-parent">
+                    <div className="ledger-row lg-parent" role="button" tabIndex={0} onClick={() => setWin({ group: true })} onKeyDown={(e) => e.key === "Enter" && e.target === e.currentTarget && setWin({ group: true })} title="Open the purchase">
                       <div className="lg-main">
-                        <button className="lg-title" onClick={() => setOpenGroups((o) => ({ ...o, [r.id]: !o[r.id] }))} aria-expanded={!!openGroups[r.id]}>
-                          <Icon name="chevron" size={13} style={{ transform: openGroups[r.id] ? "rotate(90deg)" : "none" }} /> Purchase price
-                        </button>
+                        <span className="lg-title">
+                          <button
+                            className="lg-chev"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setOpenGroups((o) => ({ ...o, [r.id]: !o[r.id] }));
+                            }}
+                            aria-expanded={!!openGroups[r.id]}
+                            aria-label={openGroups[r.id] ? "Hide the linked entries" : "Show the linked entries"}
+                          >
+                            <Icon name="chevron" size={13} style={{ transform: openGroups[r.id] ? "rotate(90deg)" : "none" }} />
+                          </button>
+                          Purchase price
+                        </span>
                         <span className="lg-meta">
                           <span>{r.date ? fmtDate(r.date) : ""}</span>
                           <span>Acquisition</span>
@@ -965,8 +1338,8 @@ function ExpensesDocs(p) {
           )}
           {actuals.length > 0 && (
             <div className="lg-total">
-              <span>{eff ? `${catShort(eff)} total` : "Total spent"}</span>
-              <b>{fmt(eff ? listTotal : actualsTotal)}</b>
+              <span>{toks.length ? `${list.length} matching ${list.length === 1 ? "entry" : "entries"}` : eff ? `${catShort(eff)} total` : "Total spent"}</span>
+              <b>{fmt(eff || toks.length ? listTotal : actualsTotal)}</b>
             </div>
           )}
         </section>
@@ -1011,7 +1384,26 @@ function ExpensesDocs(p) {
         setActualSale={setActualSale}
         onReadSale={() => p.onImportClosing("sell")}
       />
-      {view && <DocViewer key={JSON.stringify(viewer)} view={view} onClose={() => setViewer(null)} onOpenAnalysis={(a) => (setViewer(null), p.onOpenAnalysis(a))} entryTools={p.entryTools} />}
+      {view && <DocViewer key={JSON.stringify(viewer)} view={view} onClose={() => setViewer(null)} onOpenAnalysis={(a) => (setViewer(null), p.onOpenAnalysis(a))} />}
+      {win && win.group && purchaseGroup && <ExpenseWindow key="grp" group={purchaseGroup} onClose={() => setWin(null)} onOpenEntry={(id) => setWin({ id, back: "group" })} />}
+      {winEntry && (
+        <ExpenseWindow
+          key={winEntry.id}
+          a={winEntry}
+          src={entrySource(winEntry, src, msById)}
+          budgetLines={budgetLines}
+          focusItem={win.item || null}
+          onPatch={patchEntry}
+          onDelete={(id) => setActuals((prev) => prev.filter((x) => x.id !== id))}
+          onClose={() => setWin(null)}
+          onBack={win.back === "group" && purchaseGroup ? () => setWin({ group: true }) : null}
+          onOpenSource={(k) => {
+            setWin(null);
+            setViewer({ kind: k });
+          }}
+          entryTools={p.entryTools}
+        />
+      )}
     </div>
   );
 }

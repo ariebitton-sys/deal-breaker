@@ -28,6 +28,7 @@ const withDocs = base({
     { id: 12, cat: "Acquisition", label: "Purchase price $145,000, paid at closing, less the $2,500 EMD paid earlier", amount: 142500, date: day(-30), tag: "purchase_price", files: [] },
     { id: 13, cat: "Acquisition", label: "Closing costs from the purchase statement (2 items)", amount: 655, date: day(-30), tag: "stmt_buy", files: [], items: [{ label: "Settlement fee", amount: 300 }, { label: "Title services", amount: 355 }] },
     { id: 14, cat: "Rehab / Construction", label: "Home Depot: lumber", amount: 2316.4, date: day(-6), files: [] },
+    { id: 15, cat: "Rehab / Construction", label: "Water heater, 40 gal (Lowe's)", amount: 1020, date: day(-3), files: [] },
   ],
   mgmt: {
     closing: { date: day(-30), price: 145000 },
@@ -52,13 +53,13 @@ const withDocs = base({
     },
   },
 });
-const noDocs = base({ address: "1188 W 104th St, Cleveland, OH 44102", arv: 189000, purchase: 72000, manualRepair: 38000, stage: "rehab", actuals: [], mgmt: { closing: { date: day(-20), price: 72000 }, rehab: { startDate: day(-18) } } });
+const noDocs = base({ address: "1188 W 104th St, Cleveland, OH 44102", arv: 189000, purchase: 72000, manualRepair: 38000, stage: "rehab", actuals: [{ id: 21, cat: "Rehab / Construction", label: "Water heater 50 gal (Home Depot)", amount: 1150, date: day(-15), files: [] }, { id: 22, cat: "Acquisition", label: "Closing costs from the purchase statement (2 items)", amount: 690, date: day(-20), tag: "stmt_buy", items: [{ label: "Title services", amount: 390 }, { label: "Recording", amount: 300 }] }], mgmt: { closing: { date: day(-20), price: 72000 }, rehab: { startDate: day(-18) } } });
 const INVOICE = { document_type: "Invoice", vendor: "DK Renovations", invoice_number: "1042", date: day(-2), total: 9250, description: "Roof replacement, draw 2 of 3", category: "rehab", property_address: "4623 Carrollton Ave" };
 
 (async () => {
   const drive = makeDrive();
   const fid = drive.add("4623 Carrollton Ave, Indianapolis, IN 46205.json", withDocs);
-  drive.add("1188 W 104th St, Cleveland, OH 44102.json", noDocs);
+  const fid2 = drive.add("1188 W 104th St, Cleveland, OH 44102.json", noDocs);
   const anthropic = async (body) => {
     const prompt = body.messages[0].content[1].text;
     if (!/contractor invoice/.test(prompt)) throw new Error("unexpected prompt");
@@ -90,49 +91,71 @@ const INVOICE = { document_type: "Invoice", vendor: "DK Renovations", invoice_nu
   assert(/HUD-1 Purchase/.test(doc.querySelector(".xd-chips").textContent) && /SOW v1/.test(doc.querySelector(".xd-chips").textContent) && /Add Sale HUD/.test(doc.querySelector(".xd-chips").textContent), "chips: ✓ HUD-1 Purchase, ✓ SOW v1, + Add Sale HUD");
   const grp = doc.querySelector(".lg-group");
   assert(grp && /Purchase price/.test(grp.textContent) && /\$145,000/.test(grp.querySelector(".lg-amt").textContent) && /\$2,500 EMD/.test(grp.textContent), "EMD + closing balance grouped under one $145,000 Purchase price row");
-  await click(grp.querySelector(".lg-title"));
-  assert(doc.querySelectorAll(".lg-group .lg-kids .lg-entry").length === 2, "the group opens to its two entries");
+  await click(grp.querySelector(".lg-chev"));
+  assert(doc.querySelectorAll(".lg-group .lg-kids .lg-entry").length === 2 && !doc.querySelector(".xw"), "the chevron unfolds the group in place to its two entries");
+  await click(grp.querySelector(".lg-chev"));
   const hd = entry(/^Home Depot: lumber$/);
   assert(hd && hd.querySelector(".lg-meta").textContent.includes(mmdd(day(-6))) && /Rehab/.test(hd.querySelector(".lg-meta").textContent), "meta line: MM/DD/YYYY · category");
   assert(hd.querySelector(".src-pill").textContent.includes("Manual"), "hand-entered expense: Manual pill");
   assert(/HUD-1/.test(entry(/^Purchase closing costs$/).querySelector(".src-pill").textContent), "statement entry: HUD-1 pill");
 
-  console.log("3. Click to edit: Enter saves, Esc cancels");
-  await click(hd.querySelector(".lg-amt"));
-  let ed = doc.querySelector(".ledger-row.editing");
-  assert(ed && ed.querySelector(".lg-in-amt"), "clicking the amount opens the row for editing");
-  await setVal(ed.querySelector(".lg-in-amt"), 2450);
-  await setVal(ed.querySelector(".lg-in-label"), "Home Depot: lumber and drywall");
-  ed.querySelector(".lg-in-amt").dispatchEvent(new t.win.KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
-  await settle(4);
-  assert(!doc.querySelector(".ledger-row.editing") && entry(/^Home Depot: lumber and drywall$/) && /\$2,450/.test(entry(/^Home Depot: lumber and drywall$/).textContent), "Enter saves the new label and amount");
-  await click(entry(/^Home Depot: lumber and drywall$/).querySelector(".lg-title"));
-  ed = doc.querySelector(".ledger-row.editing");
-  await setVal(ed.querySelector(".lg-in-amt"), 1);
-  ed.querySelector(".lg-in-label").dispatchEvent(new t.win.KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
-  await settle(4);
-  assert(/\$2,450/.test(entry(/^Home Depot: lumber and drywall$/).textContent), "Esc leaves it unchanged");
+  console.log("3. Category chips and the ledger search");
+  const chip = (re) => [...doc.querySelectorAll(".xd-ledger .lg-chip")].find((b) => re.test(b.textContent));
+  assert(/All5/.test(chip(/^All/).textContent.replace(/\s/g, "")) && /Rehab2/.test(chip(/^Rehab/).textContent.replace(/\s/g, "")), "chips: All 5, Rehab 2");
+  await click(chip(/^Rehab/));
+  assert([...doc.querySelectorAll(".xd-ledger .lg-entry")].every((e) => /Rehab/.test(e.querySelector(".lg-meta").textContent)) && /2 of 5 entries/.test(doc.querySelector(".xd-ledger .dcard-r").textContent), "Rehab chip shows only the rehab lines");
+  assert(doc.querySelector(".xd-bar.on") && /^Rehab/.test(doc.querySelector(".xd-bar.on").textContent), "the rail's Rehab bar follows the chip");
+  await click(chip(/^All/));
+  const ls = doc.querySelector(".lg-search input");
+  await setVal(ls, "title services");
+  const hits = [...doc.querySelectorAll(".xd-ledger .lg-entry")];
+  assert(hits.length === 1 && /Purchase closing costs/.test(hits[0].textContent) && hits[0].querySelector(".ledger-items mark"), "searching a sub-item finds its entry and opens the breakdown, highlighted");
+  await setVal(ls, "");
 
-  console.log("4. Source pill → document viewer; attach a receipt to a manual entry");
-  await click(entry(/^Purchase closing costs$/).querySelector(".src-pill"));
-  let dv = doc.querySelector(".dv");
-  assert(dv && /Purchase closing statement/.test(dv.textContent) && /ALTA final\.pdf/.test(dv.textContent), "HUD-1 pill opens the statement");
-  assert(dv.querySelector("iframe") && /drive\.google\.com\/file\/d\/hud1\/preview/.test(dv.querySelector("iframe").getAttribute("src")), "the Drive preview of the document sits beside the lines");
-  assert(/Purchase price/.test(dv.querySelector(".dv-lines").textContent) && /Purchase closing costs/.test(dv.querySelector(".dv-lines").textContent), "with the ledger lines it produced");
-  doc.dispatchEvent(new t.win.KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+  console.log("4. Clicking a row opens the expense window");
+  const hdRow = () => entry(/^Home Depot: lumber/).querySelector(".ledger-row");
+  await click(hdRow());
+  let xw = doc.querySelector(".xw");
+  assert(xw && /Home Depot: lumber/.test(xw.querySelector("h3").textContent) && /\$2,316\.40/.test(xw.querySelector(".xw-hero").textContent), "window: title and the amount, large");
+  await setVal(xw.querySelector(".xw-amt"), 2450);
+  await setVal(xw.querySelector(".xw-label"), "Home Depot: lumber and drywall");
+  xw.querySelector(".xw-label").dispatchEvent(new t.win.KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
   await settle(4);
-  assert(!doc.querySelector(".dv"), "Esc closes the viewer");
-  await click(entry(/^Home Depot: lumber and drywall$/).querySelector(".src-pill"));
-  dv = doc.querySelector(".dv");
-  assert(dv && /No receipt or invoice attached yet/.test(dv.textContent), "Manual pill opens the entry with room for a receipt");
-  const up = dv.querySelector(".dv-attach input[type=file]");
+  assert(/\$2,450/.test(doc.querySelector(".xw-hero").textContent) && entry(/^Home Depot: lumber and drywall$/) && /\$2,450/.test(entry(/^Home Depot: lumber and drywall$/).textContent), "Enter saves the description and the amount");
+  await setVal(doc.querySelector(".xw .xw-amt"), 1);
+  doc.querySelector(".xw .xw-amt").dispatchEvent(new t.win.KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+  await settle(4);
+  assert(doc.querySelector(".xw") && doc.querySelector(".xw .xw-amt").value === "2450", "Esc in a field undoes that field and keeps the window open");
+  const up = doc.querySelector(".xw input[type=file]");
   Object.defineProperty(up, "files", { value: [new t.win.File(["%PDF receipt"], "HD receipt.pdf", { type: "application/pdf" })], configurable: true });
   up.dispatchEvent(new t.win.Event("change", { bubbles: true }));
   await sleep(40);
   await settle(8);
-  assert(/HD receipt\.pdf/.test(doc.querySelector(".dv").textContent), "receipt uploaded and attached");
-  await click(doc.querySelector(".dv-x"));
-  assert(/File/.test(entry(/^Home Depot: lumber and drywall$/).querySelector(".src-pill").textContent), "the pill now reads File");
+  assert(/HD receipt\.pdf/.test(doc.querySelector(".xw").textContent) && doc.querySelector(".xw-preview iframe"), "a receipt uploads into the window, with a preview");
+  await click(btn("Done", doc.querySelector(".xw")));
+  assert(!doc.querySelector(".xw") && /File/.test(entry(/^Home Depot: lumber and drywall$/).querySelector(".src-pill").textContent), "Done closes; the pill now reads File");
+  await click(entry(/^Purchase closing costs$/).querySelector(".ledger-row"));
+  xw = doc.querySelector(".xw");
+  assert(xw && xw.querySelectorAll(".xw-item:not(.sum)").length === 2 && /Settlement fee/.test(xw.textContent) && /add up to the entry's amount/.test(xw.textContent), "sub-expenses listed in the window, checked against the total");
+  doc.dispatchEvent(new t.win.KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+  await settle(4);
+  assert(!doc.querySelector(".xw"), "Esc closes the window");
+  await click(doc.querySelector(".lg-parent"));
+  xw = doc.querySelector(".xw");
+  assert(xw && /Purchase price/.test(xw.querySelector("h3").textContent) && xw.querySelectorAll(".xw-item.link").length === 2 && /Balance paid at closing/.test(xw.textContent) && /Earnest money deposit/.test(xw.textContent), "the purchase opens as EMD + balance paid at closing");
+  await click([...xw.querySelectorAll(".xw-item.link")].find((b) => /Earnest money/.test(b.textContent)));
+  assert(/Earnest money deposit/.test(doc.querySelector(".xw h3").textContent) && doc.querySelector(".xw-backbtn"), "each linked entry opens on its own, with a way back");
+  await click(doc.querySelector(".xw-backbtn"));
+  assert(/Purchase price/.test(doc.querySelector(".xw h3").textContent), "back to the purchase");
+  await click(doc.querySelector(".xw .dv-x"));
+
+  console.log("4b. Source pills open the document");
+  await click(entry(/^Purchase closing costs$/).querySelector(".src-pill"));
+  const dv = doc.querySelector(".dv");
+  assert(dv && /Purchase closing statement/.test(dv.textContent) && dv.querySelector("iframe") && /hud1\/preview/.test(dv.querySelector("iframe").getAttribute("src")), "HUD-1 pill opens the statement's preview");
+  doc.dispatchEvent(new t.win.KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+  await settle(4);
+  assert(!doc.querySelector(".dv"), "Esc closes the viewer");
 
   console.log("5. Drop a contractor invoice: Claude reads it, one click adds it");
   const dz = doc.querySelector(".xd-drop input[type=file]");
@@ -159,7 +182,7 @@ const INVOICE = { document_type: "Invoice", vendor: "DK Renovations", invoice_nu
   const a = S.actuals.find((x) => x.tag === "invoice");
   assert(a && a.amount === 9250 && a.cat === "Rehab / Construction" && a.bl === "ms:m2" && a.date === day(-2) && a.files.length === 1 && a.files[0].name === "DK invoice 1042.pdf", "saved: amount, category, budget line, date and the attached invoice");
   assert(S.mgmt.docs.some((d) => d.kind === "Invoice" && d.name === "DK invoice 1042.pdf"), "the invoice is kept with the deal's documents");
-  assert(S.actuals.find((x) => x.id === 14).amount === 2450 && S.actuals.find((x) => x.id === 14).files.length === 1, "inline edit and the receipt saved");
+  assert(S.actuals.find((x) => x.id === 14).amount === 2450 && S.actuals.find((x) => x.id === 14).files.length === 1, "edits made in the window and the receipt saved");
 
   console.log("6. Utilities: the status pill writes to the checklist");
   await click(nav(/^Project overview$/));
@@ -175,6 +198,31 @@ const INVOICE = { document_type: "Invoice", vendor: "DK Renovations", invoice_nu
   await settle(8);
   const S2 = saved();
   assert(S2.mgmt.utilities.items.find((x) => x.type === "electric").confirmed && S2.mgmt.checklists.contract.find((i) => i.ut === "aes-indiana:buy").done, "saved: provider confirmed, the start task done");
+  console.log("7. Expense search across projects");
+  await click(nav(/^Expenses & Documents/));
+  await setVal(doc.querySelector(".lg-search input"), "water heater");
+  await click(btn("Search all projects", doc.querySelector(".lg-tools")));
+  await sleep(60);
+  await settle(12);
+  assert(doc.querySelector(".cs") && doc.querySelector(".cs-input input").value === "water heater" && /Expense search/.test(doc.querySelector(".sidebar .sb-item.on").textContent), "Search all projects carries the words to the Expense search screen");
+  const csRows = () => [...doc.querySelectorAll("tr.cs-row")];
+  assert(csRows().length === 2 && /4623 Carrollton/.test(csRows().map((r) => r.textContent).join()) && /1188 W 104th/.test(csRows().map((r) => r.textContent).join()), "finds the water heater in both projects");
+  assert(/\$2,170/.test(doc.querySelector(".cs-stats").textContent) && /\$1,020 – \$1,150/.test(doc.querySelector(".cs-stats").textContent) && /in 2 projects/.test(doc.querySelector(".cs-stats").textContent), "total, range and project count");
+  await setVal(doc.querySelector(".cs-input input"), "title services");
+  assert(csRows().length === 2 && csRows().every((r) => /Sub-item of Purchase closing costs/.test(r.textContent)), "sub-items are searchable in every project");
+  await setVal(doc.querySelector(".cs-input input"), "");
+  assert(csRows().length === 8, "no words: every ledger line in every project (8)");
+  await click([...doc.querySelectorAll(".cs-chips .lg-chip")].find((b) => /^Acquisition/.test(b.textContent)));
+  assert(csRows().every((r) => /Acquisition/.test(r.querySelector(".cs-cat").textContent)) && csRows().length === 4, "category chip filters the results");
+  await setVal(doc.querySelector(".cs-input input"), "title services");
+  await click(csRows().find((r) => /1188 W 104th/.test(r.textContent)));
+  await sleep(60);
+  await settle(12);
+  assert(/1188 W 104th/.test(doc.querySelector(".crumbs").textContent) && /Expenses & Documents/.test(doc.querySelector(".ptab.on").textContent), "a result opens its project on Expenses & Documents");
+  const xw2 = doc.querySelector(".xw");
+  assert(xw2 && /Purchase closing costs/.test(xw2.querySelector("h3").textContent) && /Title services/.test(xw2.querySelector(".xw-item.hit").textContent), "with that expense's window open and the matching sub-item highlighted");
+  const ix = JSON.parse(t.win.localStorage.getItem("kappa_ledger_index_v1") || "{}");
+  assert(ix[fid] && ix[fid2] && ix[fid2].e.length === 2, "the ledgers are kept in the browser for the next search");
   const real = t.errors.filter((e) => !/Not implemented: navigation/.test(e));
   assert(real.length === 0, "no errors " + real.join(" | "));
   console.log("\nALL EXPENSES TESTS PASSED");

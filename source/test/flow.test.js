@@ -370,8 +370,8 @@ const STMT = {
   const catBar = [...doc.querySelectorAll(".xd-bar")].find((b) => /^Rehab/.test(b.textContent));
   assert(catBar && catBar.textContent.includes("$9,000"), "budget rail: rehab actual $9,000");
   await click(catBar);
-  assert([...doc.querySelectorAll(".xd-ledger .lg-entry")].every((e) => /Rehab/.test(e.querySelector(".lg-meta").textContent)) && /Rehab/.test(doc.querySelector(".xd-filter").textContent), "clicking the Rehab bar filters the ledger");
-  await click(doc.querySelector(".xd-filter"));
+  assert([...doc.querySelectorAll(".xd-ledger .lg-entry")].every((e) => /Rehab/.test(e.querySelector(".lg-meta").textContent)) && /^Rehab/.test(doc.querySelector(".xd-ledger .lg-chip.on").textContent), "clicking the Rehab bar filters the ledger (and lights the Rehab chip)");
+  await click(btn(/^All/, doc.querySelector(".xd-ledger .lg-chips")));
   assert(/from the milestones \(SOW\)/.test(baSec("Rehab budget by line").textContent), "rehab lines come from the SOW milestones");
   assert(/1 rehab expense, assign each one below/.test(text()), "unassigned rehab expense listed");
   const sel = [...doc.querySelectorAll(".ba-entry select")].find((x) => x.closest(".ba-entry").textContent.includes("DK draw 1"));
