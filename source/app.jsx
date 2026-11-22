@@ -4283,7 +4283,7 @@ function App() {
           <TopBar
             crumbs={
               view === "portfolio"
-                ? [{ label: "Portfolio" }, { label: DASH_META[normDash(pfFilter)].title }]
+                ? [{ label: "Dashboards" }, { label: DASH_META[normDash(pfFilter)].title }]
                 : [
                     {
                       label: DASH_META[dashOfStage(stage)].title,

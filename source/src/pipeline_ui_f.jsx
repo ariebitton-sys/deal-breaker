@@ -63,15 +63,15 @@ function upcomingFor(deals, today, days = 14) {
 // ---------- navigation ----------
 const DASHBOARDS = [
   ["overview", "Overview", "grid"],
-  ["leads", "Leads", "funnel"],
+  ["leads", "Properties", "funnel"],
   ["active", "Active projects", "hammer"],
-  ["portfolio", "Portfolio", "check"],
+  ["portfolio", "Sold Properties", "check"],
 ];
 const DASH_META = {
   overview: { title: "Overview", sub: "Every live deal, from analysis to sale", stages: ["analyzing", "contract", "rehab", "market", "sold"] },
-  leads: { title: "Leads", sub: "Deals you're analyzing and making offers on", stages: ["analyzing"] },
+  leads: { title: "Properties", sub: "Deals you're analyzing and making offers on", stages: ["analyzing"] },
   active: { title: "Active projects", sub: "Under contract, in rehab and on the market", stages: ["contract", "rehab", "market"] },
-  portfolio: { title: "Portfolio", sub: "Sold flips and how they did against the plan", stages: ["sold"] },
+  portfolio: { title: "Sold Properties", sub: "Sold flips and how they did against the plan", stages: ["sold"] },
   dead: { title: "Dead deals", sub: "Deals that didn't go ahead", stages: ["dead"] },
   costs: { title: "Expense search", sub: "Every ledger line across the projects", stages: [] },
 };
@@ -122,7 +122,7 @@ function Sidebar({ logo, view, filter, onFilter, counts, project, onNew, onSetti
         {mark && <img className="sb-mark" src={mark} alt="" aria-hidden="true" />}
         {!collapsed && <div className="sb-product">Deal Breaker</div>}
       </div>
-      <nav className="sb-nav" aria-label="Portfolio views">
+      <nav className="sb-nav" aria-label="Dashboards">
         {DASHBOARDS.map(([k, l, icn]) => (
           <button key={k} onClick={() => onFilter(k)} className={"sb-item" + (view === "portfolio" && filter === k ? " on" : "")} title={collapsed ? `${l} (${counts[k] || 0})` : undefined} aria-current={view === "portfolio" && filter === k ? "page" : undefined}>
             <Icon name={icn} size={17} />
@@ -454,17 +454,17 @@ function Dashboard({ filter: rawFilter, files, summaries, busy, connected, hasCl
   const attDeals = mine.filter((d) => d.att.length && d.s && d.s.st !== "dead");
   const tiles = {
     overview: [
-      ["Active projects", String(active.length), `${cnt("analyzing")} leads in analysis`],
+      ["Active projects", String(active.length), `${cnt("analyzing")} properties in analysis`],
       ["Capital deployed", fmt(capital), "spent so far plus deposits"],
       ["Forecast profit", fmt(projected), "active projects", projected < 0],
       [`Realized in ${year}`, fmt(realized), `${soldYr.length} sold this year`, realized < 0],
       ["Days to flip", avgDays != null ? String(avgDays) : "—", flips.length ? `average of ${flips.length} sold` : "no sold deals yet"],
     ],
     leads: [
-      ["Leads", String(leads.length), "being analyzed"],
+      ["Properties", String(leads.length), "being analyzed"],
       ["Grade B- or better", String(leads.filter((s) => /^[AB]/.test(s.gr || "")).length), "meet or beat the target"],
       ["Offers out", String(leads.filter((s) => s.oa && /sent|counter/i.test(s.os || "")).length), "sent or countered"],
-      ["Projected profit", fmt(leads.reduce((t, s) => t + Math.max(0, s.np || 0), 0)), "if every lead closes"],
+      ["Projected profit", fmt(leads.reduce((t, s) => t + Math.max(0, s.np || 0), 0)), "if every one closes"],
     ],
     active: [
       ["Active projects", String(active.length), ["contract", "rehab", "market"].map((k) => `${cnt(k)} ${stageMeta(k).label.toLowerCase()}`).join(", ")],

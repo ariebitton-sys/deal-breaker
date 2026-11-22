@@ -36,8 +36,8 @@ const ledgerIndexEntry = (d, mt, fallbackName) => ({
 const COST_STAGES = [
   ["all", "All stages"],
   ["active", "Active projects"],
-  ["sold", "Sold"],
-  ["analyzing", "Leads"],
+  ["sold", "Sold Properties"],
+  ["analyzing", "Properties"],
   ["dead", "Dead deals"],
 ];
 const COST_SORTS = [

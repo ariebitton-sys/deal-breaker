@@ -147,7 +147,7 @@ const mk = (address, stage, extra) => ({
   await openRow("300 Gamma Rd");
 
   console.log("5. Empty Portfolio explains how deals get there; past stages keep forms folded");
-  await t.click(nav(/^\s*Portfolio/));
+  await t.click(nav(/^\s*Sold Properties/));
   assert(/No sold flips yet\. When a sale closes, open the deal and choose “Mark as sold”/.test(t.text()), "empty Portfolio explains how sold deals land there");
   await t.click(nav(/^\s*Active projects/));
   await openRow("200 Beta Ave");

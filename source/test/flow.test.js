@@ -153,8 +153,8 @@ const STMT = {
   await click(btn(/Board$/));
   assert(doc.querySelectorAll(".board-col").length === 3 && doc.querySelector(".board-col:nth-child(2)").textContent.includes("55 Oak Ave"), "board view: one column per active stage");
   await click(btn(/Table$/));
-  await click(nav(/^Leads\d/));
-  assert(cards().includes("1234 Elm St") && !cards().includes("55 Oak Ave") && text().includes("Buy / ARV"), "Leads dashboard shows the analyzing deal");
+  await click(nav(/^Properties\d/));
+  assert(cards().includes("1234 Elm St") && !cards().includes("55 Oak Ave") && text().includes("Buy / ARV"), "Properties dashboard shows the analyzing deal");
   await click(nav(/^Overview\d/));
 
   console.log("3. Open the analyzing deal from its card");
@@ -165,7 +165,7 @@ const STMT = {
   assert(btn("Mark under contract"), "header shows the next stage action");
   assert(doc.querySelector(".ov-console") && text().includes("Deal analysis") && text().includes("Project management") && text().includes("Accounting"), "deal opens on the Project overview with its three console cards");
   assert(["Project overview", "Flip analysis", "Stages and milestones", "Expenses & Documents"].every((x) => doc.querySelector(".topbar .ptabs").textContent.includes(x)) && !/Flip analysis/.test(doc.querySelector(".sidebar").textContent), "project tools are tabs in the header; the rail keeps the portfolio views");
-  assert(doc.querySelector(".crumbs").textContent.includes("Leads"), "breadcrumb: Leads / address");
+  assert(doc.querySelector(".crumbs").textContent.includes("Properties"), "breadcrumb: Properties / address");
   await click(nav(/^Flip analysis$/));
   // net profit: v25 = 28,334.83 ; v26 includes lender fees ($2,000) in investor gap → +$180 investor return
   assert(doc.querySelector(".rail-profit").textContent === "$28,155", "net profit in the results rail reflects lender fees funded by investor ($28,155)");
@@ -458,10 +458,10 @@ const STMT = {
   await click(btn("Save deal"));
   await sleep(60);
   await settle(8);
-  await click(nav(/^Portfolio\d/));
+  await click(nav(/^Sold Properties\d/));
   await sleep(40);
   await settle(10);
-  assert(doc.querySelector(".pf-title").textContent === "Portfolio", "Portfolio dashboard");
+  assert(doc.querySelector(".pf-title").textContent === "Sold Properties", "Sold Properties dashboard");
   assert(text().includes("1234 Elm St") && text().includes("Actual profit"), "Elm St now appears under Sold with actual profit");
   const fin = JSON.parse(drive.files[f1].content);
   assert(fin.mgmt.analyses.length === 3 && fin.mgmt.analyses.every((a) => a.result), "3 analyses (purchase, SOW, sale) persisted in the deal file");
