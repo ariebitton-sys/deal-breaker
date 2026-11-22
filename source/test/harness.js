@@ -248,11 +248,21 @@ async function boot({ drive, settings, anthropic, localStorageInit, geo, gisInit
     if (!l) throw new Error("field not found: " + caption);
     return l.querySelector("input,select,textarea");
   };
+  // v50: a deal's tools are tabs in the header (.ptabs); portfolio views stay in the rail (.sidebar)
+  const nav = (re) => {
+    for (const sel of [".ptabs", ".sidebar"]) {
+      const root = doc.querySelector(sel);
+      if (!root) continue;
+      const b = [...root.querySelectorAll("button")].find((x) => (re instanceof RegExp ? re.test(x.textContent) : x.textContent.includes(re)));
+      if (b) return b;
+    }
+    throw new Error("nav button not found: " + re);
+  };
   const modal = () => {
     const ms = [...doc.querySelectorAll("div")].filter((d) => d.style.position === "fixed" && d.style.zIndex === "300");
     return ms[ms.length - 1] || null;
   };
   await settle(10);
-  return { dom, win, doc, errors, anthropicCalls, geoCalls, gis, settle, sleep, text, btn, click, setVal, field, modal };
+  return { dom, win, doc, errors, anthropicCalls, geoCalls, gis, settle, sleep, text, btn, click, setVal, field, modal, nav };
 }
 module.exports = { boot, makeDrive, GEO_FIXTURE };

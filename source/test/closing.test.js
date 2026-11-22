@@ -122,13 +122,15 @@ const acq = (actuals) => Math.round(actuals.reduce((t, a) => t + (["Acquisition"
   assert(st.length === 1 && st[0].label === "Closing costs from the purchase statement (10 items)" && st[0].amount === 1445.15 && st[0].items.length === 10, "one statement entry: the title company's closing costs $1,445.15, with its 10 items");
 
   console.log("3b. Open a breakdown; the credit shows as a credit");
-  await click(btn(/^Expenses/, t.doc.querySelector(".sidebar")));
-  const ccBtn = [...t.doc.querySelectorAll(".ledger-items-btn")].find((b) => /Closing costs from the purchase statement/.test(b.textContent));
-  assert(ccBtn && ccBtn.getAttribute("aria-expanded") === "false", "closing costs entry can be opened");
+  await click(t.nav(/^Expenses/));
+  const ccEntry = () => [...t.doc.querySelectorAll(".lg-entry")].find((e) => /Purchase closing costs/.test(e.querySelector(".lg-title").textContent));
+  const ccBtn = ccEntry() && ccEntry().querySelector(".ledger-items-btn");
+  assert(ccBtn && ccBtn.getAttribute("aria-expanded") === "false" && /10 items/.test(ccBtn.textContent), "closing costs entry (titled Purchase closing costs) can be opened");
+  assert(/HUD-1/.test(ccEntry().querySelector(".src-pill").textContent), "its source pill reads HUD-1");
   await click(ccBtn);
-  const list = ccBtn.closest("div").parentElement.querySelector(".ledger-items");
+  const list = ccEntry().querySelector(".ledger-items");
   assert(list && list.querySelectorAll(".ledger-item:not(.sum)").length === 10 && /Owner's Premium for 130,000\.00: Eagle Land Title, LLC\$475/.test(list.textContent) && /10 items\$1,445\.15/.test(list.textContent), "it lists the 10 closing costs and their total");
-  const crRow = [...t.doc.querySelectorAll(".ledger-row")].find((r) => /Property tax credit from the seller/.test(r.textContent));
+  const crRow = [...t.doc.querySelectorAll(".ledger-row")].find((r) => /Seller property tax credit/.test(r.textContent) && /Property Tax @/.test(r.textContent));
   assert(crRow && crRow.querySelector(".ledger-neg") && /−\$2,072 credit/.test(crRow.textContent), "ledger row reads −$2,072 credit");
   assert(!t.doc.querySelector(".ledger-credit"), "no 'waiting for the tax bill' note any more");
   assert(A.filter((a) => a.amount < 0).length === 1, "the credit is the only negative entry");
@@ -153,17 +155,17 @@ const acq = (actuals) => Math.round(actuals.reduce((t, a) => t + (["Acquisition"
   await t2.sleep(30); await t2.settle(10);
   await t2.click([...t2.doc.querySelectorAll("tr.dt-row")].find((r) => r.textContent.includes("4623 Carrollton")));
   await t2.sleep(20); await t2.settle(10);
-  await t2.click(t2.btn(/^Expenses/, t2.doc.querySelector(".sidebar")));
-  await t2.click(t2.btn(/Purchase closing docs|Fill the ledger from a document/));
-  let m2 = t2.modal();
-  if (/Purchase closing/.test(m2.textContent) && m2.querySelector('input[type="file"]') === null) { await t2.click(t2.btn(/Purchase closing/, m2)); m2 = t2.modal(); }
-  const f2 = m2.querySelector('input[type="file"]');
-  Object.defineProperty(f2, "files", { value: [new t2.win.File(["%PDF-1.4 fake"], "hud.pdf", { type: "application/pdf" })], configurable: true });
-  f2.dispatchEvent(new t2.win.Event("change", { bubbles: true }));
+  await t2.click(t2.nav(/^Expenses/));
+  // a corrected statement goes in through the drop zone: pick the file, confirm its type, the reader starts by itself
+  const dz = t2.doc.querySelector(".xd-drop input[type=file]");
+  Object.defineProperty(dz, "files", { value: [new t2.win.File(["%PDF-1.4 fake"], "hud.pdf", { type: "application/pdf" })], configurable: true });
+  dz.dispatchEvent(new t2.win.Event("change", { bubbles: true }));
   await t2.settle(4);
-  await t2.click(t2.btn("Read statement", m2));
+  const chooser = t2.doc.querySelector(".xd-choose");
+  assert(chooser && /Read hud\.pdf as/.test(chooser.textContent) && /Purchase HUD-1suggested/.test(chooser.querySelector(".xd-choose-opt.on").textContent), "drop zone: asks what the file is, suggests a purchase HUD-1");
+  await t2.click(t2.btn(/^Purchase HUD-1/, chooser));
   await t2.sleep(60); await t2.settle(10);
-  m2 = t2.modal();
+  let m2 = t2.modal();
   const fix = [...m2.querySelectorAll("label")].find((l) => /Correct the purchase price entry in the ledger from \$145,000 to \$142,500 \(\$145,000 less the \$2,500 EMD already in the ledger\)/.test(l.textContent));
   assert(fix && fix.querySelector("input").checked, "offers to correct the $145,000 entry to $142,500 (on by default)");
   await t2.click(t2.btn(/Apply \d+ line/, m2));
@@ -189,7 +191,7 @@ const acq = (actuals) => Math.round(actuals.reduce((t, a) => t + (["Acquisition"
   await t3.sleep(30); await t3.settle(10);
   await t3.click([...t3.doc.querySelectorAll("tr.dt-row")].find((r) => r.textContent.includes("4623 Carrollton")));
   await t3.sleep(20); await t3.settle(10);
-  await t3.click(t3.btn(/^Documents$/, t3.doc.querySelector(".sidebar")));
+  await t3.click(t3.nav(/^Expenses/));
   const arow = [...t3.doc.querySelectorAll(".analysis-row")].find((r) => /Purchase closing statement/.test(r.textContent));
   await t3.click(t3.btn(/^Open$/, arow));
   await t3.settle(6);
@@ -231,8 +233,8 @@ const acq = (actuals) => Math.round(actuals.reduce((t, a) => t + (["Acquisition"
   await t5.sleep(1900); await t5.settle(10);
   let s5 = JSON.parse(drive5.files[fid5].content);
   assert(acq(s5.actuals) === 144373.61 && s5.actuals.filter((a) => a.tag === "stmt_buy_credit").length === 1 && s5.mgmt.credits[0].counted, "on opening: the kept credit becomes a ledger credit, saved by itself");
-  await t5.click(t5.btn(/^Expenses/, t5.doc.querySelector(".sidebar")));
-  const delRow = [...t5.doc.querySelectorAll(".ledger-row")].find((r) => /Property tax credit from the seller/.test(r.textContent));
+  await t5.click(t5.nav(/^Expenses/));
+  const delRow = [...t5.doc.querySelectorAll(".ledger-row")].find((r) => /Seller property tax credit/.test(r.textContent));
   await t5.click([...delRow.querySelectorAll("button")].find((b) => /Delete|Remove/i.test(b.getAttribute("title") || b.getAttribute("aria-label") || "")));
   await t5.sleep(1900); await t5.settle(10);
   t5.win.close();
@@ -262,8 +264,8 @@ const acq = (actuals) => Math.round(actuals.reduce((t, a) => t + (["Acquisition"
   await t6.sleep(30); await t6.settle(10);
   await t6.click([...t6.doc.querySelectorAll("tr.dt-row")].find((r) => r.textContent.includes("4623 Carrollton")));
   await t6.sleep(20); await t6.settle(10);
-  await t6.click(t6.btn(/^Expenses/, t6.doc.querySelector(".sidebar")));
-  await t6.click(t6.btn("Sale closing docs"));
+  await t6.click(t6.nav(/^Expenses/));
+  await t6.click(t6.btn("Add Sale HUD"));
   let m6 = t6.modal();
   const f6 = m6.querySelector('input[type="file"]');
   Object.defineProperty(f6, "files", { value: [new t6.win.File(["%PDF-1.4 sale"], "sale.pdf", { type: "application/pdf" })], configurable: true });

@@ -3,17 +3,17 @@
 // ============================================================================
 const lblSt = () => ({
   display: "block",
-  fontSize: 11,
+  fontSize: 12,
   color: T.txtDim,
   marginBottom: 5,
   letterSpacing: "0",
-  fontWeight: 600,
+  fontWeight: 500,
 });
 const inSt = () => ({
   width: "100%",
   padding: "9px 10px",
   border: `1px solid ${T.border}`,
-  borderRadius: 4,
+  borderRadius: 6,
   fontSize: 13.5,
   fontFamily: FONT,
   background: T.inputBg,
@@ -83,14 +83,14 @@ function Chip({ color, children, solid, title }) {
         display: "inline-flex",
         alignItems: "center",
         gap: 4,
-        padding: "1px 7px",
-        borderRadius: 3,
+        padding: "2px 9px",
+        borderRadius: 999,
         fontSize: 11.5,
         fontWeight: 600,
         whiteSpace: "nowrap",
-        background: solid ? color : `${color}14`,
+        background: solid ? color : `${color}12`,
         color: solid ? "#fff" : color,
-        border: solid ? "none" : `1px solid ${color}38`,
+        border: "none",
       }}
     >
       {children}
@@ -100,7 +100,7 @@ function Chip({ color, children, solid, title }) {
 function Bar({ pct, color, h = 6, marker }) {
   const p = Math.max(0, Math.min(100, pct || 0));
   return (
-    <div style={{ position: "relative", height: h, background: "#E3E9F1", borderRadius: 1, overflow: "hidden" }}>
+    <div style={{ position: "relative", height: h, background: "#EEF0F3", borderRadius: 999, overflow: "hidden" }}>
       <div style={{ width: `${p}%`, height: "100%", background: color, transition: "width .3s" }} />
       {marker != null && <div style={{ position: "absolute", top: 0, bottom: 0, left: `${Math.max(0, Math.min(100, marker))}%`, width: 2, background: T.marker }} />}
     </div>
@@ -114,7 +114,8 @@ function Modal({ kicker, title, children, onClose, width = 480, footer }) {
       style={{
         position: "fixed",
         inset: 0,
-        background: "rgba(21,40,75,.42)",
+        background: "rgba(17,24,39,.36)",
+        backdropFilter: "blur(2px)",
         zIndex: 300,
         display: "flex",
         alignItems: "center",
@@ -130,7 +131,8 @@ function Modal({ kicker, title, children, onClose, width = 480, footer }) {
           width: "100%",
           maxHeight: "92vh",
           overflowY: "auto",
-          boxShadow: "0 18px 50px rgba(21,40,75,.25)",
+          boxShadow: "0 0 0 1px rgba(17,24,39,.06), 0 24px 60px rgba(17,24,39,.22)",
+          borderRadius: 14,
           background: "#fff",
         })}
       >
@@ -152,9 +154,9 @@ function Note({ children, tone }) {
         fontSize: 12,
         lineHeight: 1.55,
         color: T.txtDim,
-        background: `${c}0f`,
-        border: `1px solid ${c}33`,
-        borderRadius: 4,
+        background: `${c}0d`,
+        border: `1px solid ${c}2b`,
+        borderRadius: 8,
         padding: "9px 11px",
         margin: "4px 0 12px",
       }}

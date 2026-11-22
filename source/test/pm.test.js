@@ -30,7 +30,7 @@ const base = {
   });
   const t = await boot({ drive, settings: { clientId: "c", folderId: "f" } });
   const { doc, click, btn, setVal, settle, sleep, text } = t;
-  const nav = (re) => btn(re, doc.querySelector(".sidebar"));
+  const nav = t.nav;
   const row = (name) => [...doc.querySelectorAll("tr.dt-row")].find((r) => r.textContent.includes(name));
   const group = (title) => [...doc.querySelectorAll("section.grp")].find((s) => s.querySelector(".grp-title").textContent === title);
   await click(btn("Connect Google", doc.querySelector(".pf-empty")));
@@ -93,8 +93,7 @@ const base = {
   await settle(4);
   assert(/add up to 110%/.test(pay().textContent), "warns when the shares don't add up to 100%");
   await setVal([...pay().querySelectorAll(".pm-inst")][1].querySelector('input[type="number"]'), "40");
-  await click(nav(/^Budget vs actual$/));
-  assert([...doc.querySelectorAll("tr, .bva-row, div")].some((r) => /^Services/.test(r.textContent.trim()) && /\$3,000/.test(r.textContent) && /\$1,200/.test(r.textContent)), "Budget vs actual: Services budget $3,000, actual $1,200");
+  assert([...doc.querySelectorAll(".xd-bar")].some((r) => /^Services/.test(r.textContent.trim()) && /\$3,000/.test(r.textContent) && /\$1,200/.test(r.textContent)), "Budget vs actual: Services budget $3,000, actual $1,200");
   await sleep(1700); await settle(8);
   const sp = JSON.parse(drive.files[fP].content);
   assert(sp.actuals.some((a) => a.tag === "pm_fee" && a.cat === "Services" && a.amount === 1200 && a.pmInst === "pm1"), "saved: the payment is tied to installment 1");

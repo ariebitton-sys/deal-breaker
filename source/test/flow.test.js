@@ -118,11 +118,11 @@ const STMT = {
   const { text, btn, click, setVal, field, modal, settle, sleep, doc, errors } = t;
   const cards = () => [...doc.querySelectorAll("tr.dt-row")].map((b) => b.textContent).join(" | ");
   const row = (name) => [...doc.querySelectorAll("tr.dt-row")].find((r) => r.textContent.includes(name));
-  const nav = (re) => btn(re, doc.querySelector(".sidebar"));
+  const nav = t.nav;
   const headStage = () => doc.querySelector(".deal-head .sp").textContent;
   const addr = () => doc.querySelector('input[placeholder="Property address"]');
   const group = (title) => [...doc.querySelectorAll("section.grp")].find((s) => s.querySelector(".grp-title").textContent === title);
-  const docsSection = () => [...doc.querySelectorAll("section")].find((x) => /Read a document with AI/.test(x.textContent));
+  const docsSection = () => doc.getElementById("sec-docs");
   const openAnalysisRow = async (label) => {
     const row = [...docsSection().querySelectorAll(".analysis-row")].find((r) => r.textContent.includes(label));
     await click(btn(/^Open$/, row));
@@ -140,11 +140,16 @@ const STMT = {
   assert(cards().includes("1234 Elm St") && cards().includes("55 Oak Ave"), "Overview table lists both deals");
   assert(row("55 Oak Ave").textContent.includes("Rehab") && row("1234 Elm St").textContent.includes("Analyzing"), "old acquired deal inferred as Rehab, the other as Analyzing");
   assert(text().includes("Needs attention") && /over budget by 18%/.test(text()), "needs-attention list: rehab over budget (47/40 = 117.5% → 18%)");
-  assert(row("55 Oak Ave").querySelector(".hp").textContent === "At risk", "health status: over budget → At risk");
+  assert(row("55 Oak Ave").querySelector(".vpill").textContent === "+18% over" && row("55 Oak Ave").querySelector(".vpill.red"), "budget & status: over budget → one crimson pill, +18% over");
   await click(nav(/^Active projects\d/));
   assert(doc.querySelector(".pf-title").textContent === "Active projects" && cards().includes("55 Oak Ave") && !cards().includes("1234 Elm St"), "Active projects dashboard shows only the rehab deal");
   assert(doc.querySelector(".sb-item.on").textContent === "Active projects1", "sidebar highlights Active projects with its count");
-  assert(/\$47K of \$40K/.test(row("55 Oak Ave").textContent) && /118%/.test(row("55 Oak Ave").textContent), "rehab budget vs actual column");
+  assert(/\$47K \/ \$40K/.test(row("55 Oak Ave").textContent) && /\+18% over/.test(row("55 Oak Ave").textContent) && !/At risk/.test(row("55 Oak Ave").textContent), "budget & status column: actual / budget with the variance, no second status");
+  assert(doc.querySelector(".fn") && /Rehab1/.test(doc.querySelector(".fn").textContent.replace(/\s/g, "")), "pipeline funnel counts the deals by stage");
+  await click(btn(/^Under contract/, doc.querySelector(".fn-steps")));
+  assert(!cards().includes("55 Oak Ave") && doc.querySelector(".fn.filtered"), "funnel: one click filters the table to a stage");
+  await click(btn(/^All/, doc.querySelector(".fn")));
+  assert(cards().includes("55 Oak Ave"), "funnel: All shows every active deal again");
   await click(btn(/Board$/));
   assert(doc.querySelectorAll(".board-col").length === 3 && doc.querySelector(".board-col:nth-child(2)").textContent.includes("55 Oak Ave"), "board view: one column per active stage");
   await click(btn(/Table$/));
@@ -159,7 +164,7 @@ const STMT = {
   assert(addr().value === v25Deal.address, "deal opened in workspace");
   assert(btn("Mark under contract"), "header shows the next stage action");
   assert(doc.querySelector(".ov-console") && text().includes("Deal analysis") && text().includes("Project management") && text().includes("Accounting"), "deal opens on the Project overview with its three console cards");
-  assert(["Project overview", "Flip analysis", "Stages and milestones", "Budget vs actual", "Expenses", "Documents"].every((x) => doc.querySelector(".sidebar").textContent.includes(x)), "project tools in the sidebar");
+  assert(["Project overview", "Flip analysis", "Stages and milestones", "Expenses & Documents"].every((x) => doc.querySelector(".topbar .ptabs").textContent.includes(x)) && !/Flip analysis/.test(doc.querySelector(".sidebar").textContent), "project tools are tabs in the header; the rail keeps the portfolio views");
   assert(doc.querySelector(".crumbs").textContent.includes("Leads"), "breadcrumb: Leads / address");
   await click(nav(/^Flip analysis$/));
   // net profit: v25 = 28,334.83 ; v26 includes lender fees ($2,000) in investor gap → +$180 investor return
@@ -268,8 +273,8 @@ const STMT = {
   assert(![...group("Buying costs").querySelectorAll("button")].some((b) => /Import PDF/.test(b.textContent)) && ![...group("Selling costs").querySelectorAll("button")].some((b) => /Import PDF/.test(b.textContent)), "no statement import on the estimated Buying / Selling costs");
   const estBefore = [...group("Buying costs").querySelectorAll('input[type="number"]')].map((i) => i.value);
   const pointsBefore = field("Points / Lender Fees").value;
-  await click(nav(/^Documents$/));
-  await click(btn("Purchase closing statement", docsSection()));
+  await click(nav(/^Expenses/));
+  await click(btn("Add Purchase HUD"));
   md = modal();
   const finput = md.querySelector('input[type="file"]');
   const pdf = new t.win.File(["%PDF-1.4 fake"], "Elm closing.pdf", { type: "application/pdf" });
@@ -295,15 +300,17 @@ const STMT = {
   const vals0 = [...group("Buying costs").querySelectorAll('input[type="number"]')].map((i) => i.value);
   assert(JSON.stringify(vals0) === JSON.stringify(estBefore) && field("Points / Lender Fees").value === pointsBefore, "estimated Buying costs and points unchanged");
   await click(nav(/^Expenses/));
-  assert(text().includes("Closing costs from the purchase statement (6 items)") && text().includes("Lender fees and interest from the statement (2 items)"), "statement in the ledger, one entry per category");
-  assert([...doc.querySelectorAll(".ledger-row")].some((r) => /Property tax credit from the seller at closing \(County taxes/.test(r.textContent) && /−\$1,450 credit/.test(r.textContent)), "the seller's tax credit is counted: −$1,450 under Holding");
+  const entry = (re) => [...doc.querySelectorAll(".lg-entry")].find((e) => re.test(e.querySelector(".lg-title").textContent));
+  assert(entry(/^Purchase closing costs$/) && /6 items/.test(entry(/^Purchase closing costs$/).textContent) && entry(/^Lender fees & interest$/) && /2 items/.test(entry(/^Lender fees & interest$/).textContent), "statement in the ledger, one entry per category, crisp titles");
+  assert([...doc.querySelectorAll(".ledger-row")].some((r) => /Seller property tax credit/.test(r.textContent) && /County taxes/.test(r.textContent) && /−\$1,450 credit/.test(r.textContent)), "the seller's tax credit is counted: −$1,450 under Holding");
+  assert(/HUD-1 Purchase/.test(doc.querySelector(".xd-chips").textContent) && /Add Sale HUD/.test(doc.querySelector(".xd-chips").textContent), "source chips: purchase HUD on file, sale HUD to add");
   assert(text().includes("Purchase price"), "purchase price logged");
-  const ledgerCount = () => [...doc.querySelectorAll("section")].find((x) => /Expense ledger/i.test(x.textContent)).textContent.match(/(\d+) entries/)[1];
+  const ledgerCount = () => doc.querySelector(".xd-ledger .dcard-r").textContent.match(/(\d+) entr/)[1];
   const before = ledgerCount();
 
   console.log("9b. Reopen the saved analysis from Documents — no upload, no new AI call");
-  assert(/1 saved analysis in Documents/.test(text()), "ledger points to the saved analysis");
-  await click(btn(/saved analysis in Documents/));
+  assert(/1 saved analysis\b/.test(doc.querySelector(".xd-drop").textContent), "the drop zone points to the saved analysis");
+  await click(btn(/saved analysis/));
   assert(/Purchase closing statement/.test(docsSection().textContent) && /Applied/.test(docsSection().textContent), "Documents lists the saved analysis as applied");
   const callsBefore = t.anthropicCalls.length;
   await openAnalysisRow("Purchase closing statement");
@@ -321,7 +328,6 @@ const STMT = {
   assert(JSON.stringify(vals) === JSON.stringify(estBefore) && field("Points / Lender Fees").value === pointsBefore, "re-applying still leaves Flip analysis untouched");
   await click(nav(/^Expenses/));
   assert(ledgerCount() === before, `re-apply replaced the imported entries (${before} → ${ledgerCount()})`);
-  await click(nav(/^Documents$/));
   await openAnalysisRow("Purchase closing statement");
   md = modal();
   const wireSel = [...md.querySelectorAll("tr")].find((r) => r.textContent.includes("Wire fee")).querySelector("select");
@@ -347,9 +353,11 @@ const STMT = {
   await settle(6);
   assert(text().includes("SOW budget $41,800"), "milestones carry SOW budgets");
   assert(text().includes("Created 5 milestones from the SOW"), "logged");
-  await click(nav(/^Documents$/));
-  assert(text().includes("DK Renovations"), "contractor added to contacts (Documents tab)");
+  await click(nav(/^Project overview$/));
+  assert(text().includes("DK Renovations"), "contractor added to contacts (on the project overview)");
+  await click(nav(/^Expenses/));
   assert(/Scope of work/.test(docsSection().textContent), "SOW analysis listed under Documents");
+  assert(/SOW v1/.test(doc.querySelector(".xd-chips").textContent), "source chips: SOW v1 on file");
 
   console.log("9c2. Budget vs actual: log a rehab draw, assign it to a milestone");
   await click(nav(/^Expenses/));
@@ -358,10 +366,12 @@ const STMT = {
   await setVal(addRow.querySelector('input[placeholder="Description"]'), "DK draw 1, roof");
   await setVal([...addRow.querySelectorAll('input')].filter((i) => i.type !== "date" && i.placeholder !== "Description").pop(), 9000);
   await click(addRow.querySelector("button"));
-  await click(nav(/^Budget vs actual$/));
   const baSec = (t) => [...doc.querySelectorAll("section.dcard")].find((x) => x.querySelector(".dcard-h").textContent.includes(t));
-  const catRow = [...baSec("Project budget by category").querySelectorAll("tr")].find((r) => r.textContent.startsWith("Rehab"));
-  assert(catRow && catRow.textContent.includes("$9,000"), "category table: rehab actual $9,000");
+  const catBar = [...doc.querySelectorAll(".xd-bar")].find((b) => /^Rehab/.test(b.textContent));
+  assert(catBar && catBar.textContent.includes("$9,000"), "budget rail: rehab actual $9,000");
+  await click(catBar);
+  assert([...doc.querySelectorAll(".xd-ledger .lg-entry")].every((e) => /Rehab/.test(e.querySelector(".lg-meta").textContent)) && /Rehab/.test(doc.querySelector(".xd-filter").textContent), "clicking the Rehab bar filters the ledger");
+  await click(doc.querySelector(".xd-filter"));
   assert(/from the milestones \(SOW\)/.test(baSec("Rehab budget by line").textContent), "rehab lines come from the SOW milestones");
   assert(/1 rehab expense, assign each one below/.test(text()), "unassigned rehab expense listed");
   const sel = [...doc.querySelectorAll(".ba-entry select")].find((x) => x.closest(".ba-entry").textContent.includes("DK draw 1"));
@@ -370,11 +380,14 @@ const STMT = {
   const roofRow = [...doc.querySelectorAll("tr.ba-line")].find((r) => r.textContent.includes("Roof"));
   assert(roofRow.textContent.includes("$9,000") && roofRow.textContent.includes("$800 left"), "Roof line: $9,000 of $9,800, $800 left");
   assert(/every rehab expense is assigned/.test(text()), "nothing left unassigned");
-  assert(doc.querySelector(".ba .pf-strip").textContent.includes("Projected profit"), "projected profit at completion shown");
+  assert(doc.querySelector(".xd-rail").textContent.includes("Projected net profit"), "projected profit at completion shown");
+  await click(btn("Cash basis", doc.querySelector(".xd-rail")));
+  assert(/Cash out so far/.test(doc.querySelector(".xd-rail").textContent), "cash basis shows the cash out so far");
+  await click(btn("Projected", doc.querySelector(".xd-rail")));
 
   console.log("9d. Sale closing docs picked from Google Drive (via the Ledger)");
   await click(nav(/^Expenses/));
-  await click(btn("Sale closing docs"));
+  await click(btn("Add Sale HUD"));
   md = modal();
   await click(btn("From Google Drive", md));
   await sleep(30);
@@ -395,8 +408,8 @@ const STMT = {
   assert(/List this Drive file under the deal's Documents/.test(md.textContent), "offers to list the Drive file");
   // don't apply now — close; it stays saved
   await click(btn("Close", md));
-  assert(/3 saved analyses in Documents/.test(text()), "ledger counts the unapplied analysis too");
-  await click(btn(/saved analyses in Documents/));
+  assert(/3 saved analyses/.test(doc.querySelector(".xd-drop").textContent), "the drop zone counts the unapplied analysis too");
+  await click(btn(/saved analyses/));
   assert(/Sale closing statement/.test(docsSection().textContent) && /Not applied/.test(docsSection().textContent), "unapplied analysis still saved");
   const salesBefore = t.anthropicCalls.length;
   await openAnalysisRow("Sale closing statement");

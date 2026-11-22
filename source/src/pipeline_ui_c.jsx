@@ -178,7 +178,7 @@ function DrawsPanel({ draws, upd, m, drawFee, addLog }) {
           {pending > 0 && (
             <React.Fragment>
               {" "}
-              , pending <b style={{ fontFamily: MONO, color: T.amber }}>{fmt(pending)}</b>
+              , pending <b style={{ fontFamily: MONO, color: T.txt }}>{fmt(pending)}</b>
             </React.Fragment>
           )}
         </span>
@@ -203,7 +203,7 @@ function DrawsPanel({ draws, upd, m, drawFee, addLog }) {
             />
             {num(x.fee) > 0 && <span style={{ fontSize: 11, color: T.txtMute, fontFamily: MONO }}>fee {fmt(num(x.fee))}</span>}
             <span style={{ flex: 1 }} />
-            <Chip color={x.received ? T.green : T.amber}>{x.received ? "Received" : "Pending"}</Chip>
+            <Chip color={x.received ? T.green : T.txtMute}>{x.received ? "Received" : "Pending"}</Chip>
             <button onClick={() => upd("draws", draws.filter((y) => y.id !== x.id))} style={iconBtn()}>
               ×
             </button>
@@ -356,7 +356,7 @@ function RehabSection({ mgmt, upd, m, uwBaseline, actuals, rehabFunding, drawFee
     );
   const STATUS = {
     todo: ["To do", T.txtMute],
-    doing: ["In progress", T.amber],
+    doing: ["In progress", T.txt],
     done: ["Done", T.green],
   };
   return (
@@ -406,7 +406,7 @@ function RehabSection({ mgmt, upd, m, uwBaseline, actuals, rehabFunding, drawFee
               {plan != null ? ` of ${plan}` : ""}
             </span>
           </div>
-          <Bar pct={plan > 0 ? (elapsed / plan) * 100 : 0} color={plan != null && elapsed > plan ? T.red : "#d97706"} />
+          <Bar pct={plan > 0 ? (elapsed / plan) * 100 : 0} color={plan != null && elapsed > plan ? T.red : T.txt} />
         </div>
         <div>
           <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, color: T.txtDim, marginBottom: 4 }}>
@@ -415,7 +415,7 @@ function RehabSection({ mgmt, upd, m, uwBaseline, actuals, rehabFunding, drawFee
               {fmt(spent)} / {fmt(budget)}
             </span>
           </div>
-          <Bar pct={spentPct} color={spentPct > 110 ? T.red : spentPct > 100 ? T.amber : "#d97706"} marker={mp} />
+          <Bar pct={spentPct} color={spentPct > 110 ? "#DC2626" : spentPct > 100 ? "#F59E0B" : T.txt} marker={mp} />
           <div style={{ fontSize: 10.5, color: T.txtMute, marginTop: 3 }}>
             {fmt(budget - spent)} {budget - spent >= 0 ? "remaining" : "over"}, bar = spent, line = work done ({mp != null ? mp : 0}%)
           </div>
@@ -452,7 +452,7 @@ function RehabSection({ mgmt, upd, m, uwBaseline, actuals, rehabFunding, drawFee
                 padding: "6px 8px",
                 borderRadius: 4,
                 border: `1px solid ${x.status === "done" ? T.green + "55" : T.border}`,
-                background: x.status === "done" ? `${T.green}0d` : x.status === "doing" ? `${T.amber}0d` : "transparent",
+                background: x.status === "done" ? `${T.green}0d` : x.status === "doing" ? "#F3F4F6" : "transparent",
               }}
             >
               <button
@@ -565,7 +565,7 @@ function MarketSection({ mgmt, upd, m, dealInputs, addLog }) {
           color={atList >= 0 ? T.green : T.red}
         />
         <MiniRow label="Break-even sale price" value={breakeven != null ? fmt(breakeven) : "—"} />
-        <MiniRow label="Each extra month costs" value={fmt(carry)} color={T.amber} />
+        <MiniRow label="Each extra month costs" value={fmt(carry)} />
       </div>
       <div style={subHead(STAGES[3].color)}>Price changes</div>
       {L.prices.map((p, i) => {
@@ -798,10 +798,10 @@ function KeyDates({ mgmt, analysisDate }) {
         const future = dd > 0;
         return (
           <div key={l} style={{ display: "flex", alignItems: "center", gap: 10, padding: "5px 0", borderBottom: `1px solid ${T.border}` }}>
-            <span style={{ width: 7, height: 7, borderRadius: "50%", background: future ? T.amber : T.teal, flexShrink: 0 }} />
+            <span style={{ width: 7, height: 7, borderRadius: "50%", background: future ? "#D1D5DB" : T.txt, flexShrink: 0 }} />
             <span style={{ flex: 1, fontSize: 12.5, color: T.txt }}>{l}</span>
             <span style={{ fontFamily: MONO, fontSize: 11.5, color: T.txtDim }}>{fmtDate(d)}</span>
-            {future && dd <= 30 && <span style={{ fontSize: 10.5, color: dd <= 7 ? T.amber : T.txtMute, fontWeight: 700 }}>{relDays(dd)}</span>}
+            {future && dd <= 30 && <span style={{ fontSize: 10.5, color: dd <= 7 ? T.txt : T.txtMute, fontWeight: 700 }}>{relDays(dd)}</span>}
           </div>
         );
       })}
@@ -879,7 +879,8 @@ function ContactsPanel({ contacts, upd }) {
     </Panel>
   );
 }
-function DocsPanel({ docs, upd, onImport, onImportSow, onUploadDoc, openAttachment, connected, uploading, stage, analyses, onOpenAnalysis, onDeleteAnalysis, plain }) {
+// Files and links kept with the deal (Drive uploads or URLs). Lives under Expenses & Documents.
+function DocsPanel({ docs, upd, onUploadDoc, openAttachment, connected, uploading }) {
   const fileRef = useRef(null);
   const [link, setLink] = useState({ name: "", url: "" });
   const [adding, setAdding] = useState(false);
@@ -890,40 +891,20 @@ function DocsPanel({ docs, upd, onImport, onImportSow, onUploadDoc, openAttachme
     setLink({ name: "", url: "" });
     setAdding(false);
   };
-  const sIdx = stageIdx(stage);
   return (
-    <Panel title={plain ? "Files and links" : "Documents"} kicker={plain ? "contracts, inspections, permits, photos" : undefined} accent={T.violet}>
-      {!plain && <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 10 }}>
-        <button onClick={() => onImport("buy")} style={smallBtn(sIdx >= 1 && sIdx <= 2 ? T.violet : T.glass, sIdx >= 1 && sIdx <= 2 ? "#fff" : T.violet)}>
-          Import purchase closing statement
-        </button>
-        <button onClick={() => onImport("sell")} style={smallBtn(sIdx >= 3 ? T.violet : T.glass, sIdx >= 3 ? "#fff" : T.violet)}>
-          Import sale closing statement
-        </button>
-        <button onClick={onImportSow} style={smallBtn(T.glass, T.violet)}>
-          Scope of work → milestones
-        </button>
-      </div>}
-      {!plain && (analyses || []).length > 0 && (
-        <div style={{ marginBottom: 10 }}>
-          <div style={subHead(T.violet)}>Saved AI analyses</div>
-          <AnalysesList
-            analyses={analyses}
-            onOpen={onOpenAnalysis}
-            onView={(a) => openAttachment({ type: "drive_file", driveFileId: a.driveFileId })}
-            onDelete={onDeleteAnalysis}
-          />
-        </div>
-      )}
-      {docs.length === 0 && <div style={{ fontSize: 13, color: T.txtMute, marginBottom: 6 }}>{plain ? "No files yet. Upload a file to the deal's Drive folder or add a link." : "Contracts, inspection reports, closing statements, permits…"}</div>}
+    <div className="dcard-b xd-files">
+      <div className="xd-sub-h">Files and links</div>
+      {docs.length === 0 && <div className="dcard-empty">No files yet. Upload a file to the deal's Drive folder or add a link.</div>}
       {docs.map((f) => (
-        <div key={f.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 0", borderBottom: `1px solid ${T.border}` }}>
-          <span style={{ display: "flex", color: T.txtMute }}><Icon name={f.type === "link" ? "link" : "file"} /></span>
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontSize: 13.5, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{f.name}</div>
-            {(f.kind || f.date) && <div style={{ fontSize: 12, color: T.txtMute }}>{[f.kind, f.date ? fmtDateShort(f.date) : ""].filter(Boolean).join(", ")}</div>}
+        <div key={f.id} className="doc-row">
+          <span className="doc-ic">
+            <Icon name={f.type === "link" ? "link" : "file"} />
+          </span>
+          <div className="doc-txt">
+            <b>{f.name}</b>
+            {(f.kind || f.date) && <span>{[f.kind, f.date ? fmtDate(f.date) : ""].filter(Boolean).join(" · ")}</span>}
           </div>
-          <button onClick={() => openAttachment(f)} style={smallBtn(`${T.teal}22`, T.tealLt)}>
+          <button onClick={() => openAttachment(f)} style={smallBtn("#FFFFFF", T.blue)}>
             Open
           </button>
           <button onClick={() => upd("docs", docs.filter((x) => x.id !== f.id))} title="Remove from this deal (the Drive file stays)" aria-label="Remove file" style={iconBtn()}>
@@ -943,30 +924,30 @@ function DocsPanel({ docs, upd, onImport, onImportSow, onUploadDoc, openAttachme
         }}
       />
       {adding ? (
-        <div style={{ marginTop: 8 }}>
+        <div style={{ marginTop: 10 }}>
           <TextIn label="Link" value={link.url} onChange={(v) => setLink({ ...link, url: v })} placeholder="Drive / Docs / Dropbox URL" autoFocus />
           <TextIn label="Name" value={link.name} onChange={(v) => setLink({ ...link, name: v })} placeholder="e.g. Purchase contract" onKeyDown={(e) => e.key === "Enter" && addLink()} />
           <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
-            <button onClick={() => setAdding(false)} style={smallBtn(T.glass, T.txtDim)}>
+            <button onClick={() => setAdding(false)} style={btnGhost()}>
               Cancel
             </button>
-            <button onClick={addLink} style={smallBtn(T.violet, "#fff")}>
+            <button onClick={addLink} style={btnPrimary()}>
               Add link
             </button>
           </div>
         </div>
       ) : (
-        <div style={{ display: "flex", gap: 6, marginTop: 8 }}>
-          <button disabled={!connected || uploading} onClick={() => fileRef.current && fileRef.current.click()} style={smallBtn(T.glass, connected ? T.txtDim : T.txtMute)}>
-            {uploading ? "Uploading…" : "Upload file"}
+        <div style={{ display: "flex", gap: 6, marginTop: 10 }}>
+          <button disabled={!connected || uploading} onClick={() => fileRef.current && fileRef.current.click()} style={btnGhost(connected ? T.txt : T.txtMute)}>
+            <Icon name="download" /> {uploading ? "Uploading…" : "Upload file"}
           </button>
-          <button onClick={() => setAdding(true)} style={smallBtn(T.glass, T.txtDim)}>
-            Add link
+          <button onClick={() => setAdding(true)} style={btnGhost()}>
+            <Icon name="link" /> Add link
           </button>
         </div>
       )}
-      {!connected && <div style={{ fontSize: 10.5, color: T.amber, marginTop: 6 }}>Connect Google Drive to upload files</div>}
-    </Panel>
+      {!connected && <div style={{ fontSize: 11.5, color: T.amber, marginTop: 6 }}>Connect Google Drive to upload files</div>}
+    </div>
   );
 }
 function ActivityLog({ log, upd, addLog, userEmail }) {
@@ -982,7 +963,7 @@ function ActivityLog({ log, upd, addLog, userEmail }) {
     setShowLink(false);
   };
   return (
-    <Panel title="Activity Log" kicker={`${log.length}`} accent={T.amber}>
+    <Panel title="Activity Log" kicker={`${log.length}`}>
       <textarea
         value={text}
         onChange={(e) => setText(e.target.value)}
@@ -1000,7 +981,7 @@ function ActivityLog({ log, upd, addLog, userEmail }) {
         <button onClick={() => setShowLink((s) => !s)} style={smallBtn(T.glass, T.txtDim)}>
           {showLink ? "Remove link" : "Add link"}
         </button>
-        <button onClick={add} disabled={!text.trim()} style={smallBtn(text.trim() ? T.amber : T.glass, text.trim() ? "#fff" : T.txtMute)}>
+        <button onClick={add} disabled={!text.trim()} style={smallBtn(text.trim() ? T.txt : T.glass, text.trim() ? "#fff" : T.txtMute)}>
           Add update
         </button>
       </div>

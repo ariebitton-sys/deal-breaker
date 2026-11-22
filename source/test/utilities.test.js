@@ -70,7 +70,7 @@ async function openDeal(t) {
   assert(/utility tasks? still open before closing/.test(t.doc.querySelector(".ov-health") ? t.doc.querySelector(".ov-health").textContent : ""), "closing in 5 days with open utility tasks → health warning");
 
   console.log("3. Tasks on the Under contract checklist");
-  await t.click(t.btn(/^Stages and milestones$/, t.doc.querySelector(".sidebar")));
+  await t.click(t.nav(/^Stages and milestones$/));
   const txt = t.text();
   assert(txt.includes("Citizens Energy Group: start water, sewer and gas in the LLC's name from the closing date"), "one Citizens task for water, sewer and gas");
   assert(txt.includes("AES Indiana: start electric in the LLC's name from the closing date"), "AES Indiana start task");
@@ -83,10 +83,12 @@ async function openDeal(t) {
   await t.settle(4);
 
   console.log("4. Status, confirm, account number, change provider");
-  await t.click(t.btn(/^Project overview$/, t.doc.querySelector(".sidebar")));
-  assert(/Set up/.test(row(t, "Water").textContent) && /To do/.test(row(t, "Electric").textContent), "status follows the checklist (Citizens set up, AES to do)");
-  await t.click(t.btn("Mark confirmed", row(t, "Electric")));
-  assert(/Confirmed/.test(row(t, "Electric").textContent), "electric marked confirmed");
+  await t.click(t.nav(/^Project overview$/));
+  const pill = (label) => row(t, label).querySelector(".util-st");
+  assert(pill("Water").textContent === "Active" && pill("Electric").textContent === "To do", "status follows the checklist (Citizens active, AES to do)");
+  assert(/317-261-8222/.test(row(t, "Electric").querySelector(".util-phone").textContent), "the provider's phone is a one-click copy button");
+  await t.click(pill("Electric"));
+  assert(pill("Electric").textContent === "Confirmed" && pill("Electric").classList.contains("confirmed"), "status pill: To do → Confirmed");
   await t.setVal(row(t, "Electric").querySelector("input.util-acct"), "AES-778812");
   await t.click(t.btn("Change", row(t, "Trash")));
   await t.setVal(row(t, "Trash").querySelector('input[placeholder="Provider name"]'), "Ray's Trash Service");

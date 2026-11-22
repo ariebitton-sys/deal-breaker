@@ -222,33 +222,35 @@ const LIGHT_T = {
   bg: "linear-gradient(150deg,#e8f4f8 0%,#f0f9ff 40%,#f8fafc 100%)",
   shadow: "0 2px 12px rgba(0,0,0,0.08), 0 1px 3px rgba(0,0,0,0.05)",
 };
-// v29 "Site plan" palette — drafting navy, blueprint blue, survey-marker yellow
+// v50 "Deal room" palette: neutral slate ink on an airy canvas. Emerald only for credits, verified
+// documents and positive variance; amber / crimson only for overruns and overdue items.
+const ELEV = "0 0 0 1px rgba(17,24,39,.05), 0 1px 2px rgba(17,24,39,.04), 0 2px 6px rgba(17,24,39,.03)";
 const SITE_T = {
-  teal: "#23508F",
-  tealLt: "#23508F",
-  txt: "#15284B",
-  txtDim: "#4E5F7A",
-  txtMute: "#7D8BA3",
-  green: "#1B7F4C",
-  lime: "#3F7D20",
-  amber: "#B25E09",
-  red: "#B42318",
-  violet: "#23508F",
-  blue: "#23508F",
+  teal: "#2563EB",
+  tealLt: "#1D4ED8",
+  txt: "#111827",
+  txtDim: "#4B5563",
+  txtMute: "#6B7280",
+  green: "#047857",
+  lime: "#047857",
+  amber: "#B45309",
+  red: "#B91C1C",
+  violet: "#2563EB",
+  blue: "#2563EB",
   glass: "#FFFFFF",
-  glassHi: "#F3F6FA",
-  border: "#D3DCE6",
-  borderHi: "#B5C2D2",
-  inputBg: "#F7F9FB",
-  bg: "#EDF1F5",
-  shadow: "none",
-  marker: "#F4C430",
-  navy: "#15284B",
+  glassHi: "#F9FAFB",
+  border: "#E5E7EB",
+  borderHi: "#D1D5DB",
+  inputBg: "#FFFFFF",
+  bg: "#FAFAFB",
+  shadow: ELEV,
+  marker: "#111827",
+  navy: "#111827",
 };
 let T = SITE_T;
-const FONT = "'IBM Plex Sans',system-ui,-apple-system,'Segoe UI',sans-serif";
+const FONT = "'Inter',system-ui,-apple-system,'Segoe UI',sans-serif";
 const MONO = FONT; // numbers use tabular figures (set globally in CSS) instead of a monospace face
-const LFONT = "'IBM Plex Sans Condensed','IBM Plex Sans',system-ui,sans-serif";
+const LFONT = FONT;
 const txnSummary = (items, basisLabel) => {
   const on = TXN_TEMPLATE.filter((t) => items && items[t.key] && items[t.key].on).length;
   return on ? `${on} of ${TXN_TEMPLATE.length} lines on, % ${basisLabel}` : "No lines turned on";
@@ -476,15 +478,15 @@ const TXN_TEMPLATE = [
   },
 ];
 const gp = (e) => ({
-  background: T.glass,
-  border: `1px solid ${T.border}`,
-  borderRadius: 4,
-  boxShadow: "none",
+  background: "#FFFFFF",
+  border: "none",
+  borderRadius: 10,
+  boxShadow: ELEV,
   ...e,
 });
 const bs = (bg, color) => ({
-  padding: "8px 13px",
-  borderRadius: 3,
+  padding: "7px 12px",
+  borderRadius: 6,
   border: `1px solid ${T.border}`,
   cursor: "pointer",
   fontSize: 13,
@@ -498,7 +500,7 @@ const ss = {
   width: "100%",
   padding: "8px 10px",
   border: `1px solid ${SITE_T.border}`,
-  borderRadius: 3,
+  borderRadius: 6,
   fontSize: 13.5,
   fontFamily: FONT,
   background: SITE_T.inputBg,
@@ -537,11 +539,11 @@ function Field({ label, value, onChange, prefix, suffix, step = 1, hint, accent 
           display: "flex",
           alignItems: "stretch",
           border: `1px solid ${focus ? T.teal : T.border}`,
-          borderRadius: 3,
+          borderRadius: 6,
           overflow: "hidden",
-          background: focus ? "#FFFFFF" : T.inputBg,
-          transition: "border-color .15s",
-          boxShadow: focus ? `0 0 0 3px ${T.teal}22` : "none",
+          background: "#FFFFFF",
+          transition: "border-color .15s, box-shadow .15s",
+          boxShadow: focus ? `0 0 0 3px ${T.teal}1f` : "none",
         }}
       >
         {prefix && (
@@ -1098,7 +1100,7 @@ function SettingsModal({ settings, connected, team, onSave, onClose }) {
   const hasKeys = !!(formKeys.anthropicKey || formKeys.mapsApiKey);
   const differs = TEAM_KEYS.some((k) => formKeys[k] && formKeys[k] !== (teamKeys[k] || ""));
   const canShare = connected && !!fid.trim() && fid.trim() === (settings.folderId || "") && hasKeys && (!team || differs);
-  const teamDate = team && team.modifiedTime ? new Date(team.modifiedTime).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "";
+  const teamDate = team && team.modifiedTime ? fmtDate(isoOf(new Date(team.modifiedTime))) : "";
   const builtIn = cid.trim() === KAPPA_CLIENT_ID;
   const [copied, setCopied] = useState(null); // null | "ok" | link text when the clipboard isn't available
   const link = settings.folderId ? inviteLink(settings.folderId) : "";
@@ -2214,13 +2216,8 @@ function App() {
   const [investorAuto, setInvestorAuto] = useState(true);
   const [investorRate, setInvestorRate] = useState(0.09);
   const [analysisDate, setAnalysisDate] = useState(() => new Date().toISOString().slice(0, 10));
-  const [editingId, setEditingId] = useState(null);
-  const [editDraft, setEditDraft] = useState({});
   const [cmaFiles, setCmaFiles] = useState([]);
   const cmaFileInputRef = useRef(null);
-  const [linkInputFor, setLinkInputFor] = useState(null);
-  const [linkInputUrl, setLinkInputUrl] = useState("");
-  const [linkInputName, setLinkInputName] = useState("");
   const [actuals, setActuals] = useState([]);
   // ---- v26 pipeline state ----
   const [view, setView] = useState(() => {
@@ -2255,12 +2252,6 @@ function App() {
   const loadedRef = useRef(null); // Drive file this deal was opened from: {id, name, modifiedTime}
   const acquired = ["rehab", "market", "sold"].includes(stage) || (stage === "dead" && mgmt.dead && ["rehab", "market"].includes(mgmt.dead.fromStage));
   const [actualSale, setActualSale] = useState(0);
-  const [newItem, setNewItem] = useState({
-    cat: "Acquisition",
-    label: "",
-    amount: 0,
-    date: new Date().toISOString().slice(0, 10),
-  });
   const [settings, setSettings] = useState(() => {
     try {
       return withBuiltIns(JSON.parse(localStorage.getItem("kappa_settings") || "{}") || {});
@@ -2313,7 +2304,6 @@ function App() {
   const [pendingAction, setPendingAction] = useState(null);
   const afterSaveRef = useRef(null);
   const [photosUrl, setPhotosUrl] = useState("");
-  const [ledgerFilter, setLedgerFilter] = useState("All");
   const [gradeHover, setGradeHover] = useState(false);
   const [driveLoading, setDriveLoading] = useState(false);
   const [autoSave, setAutoSave] = useState({ status: "idle" }); // idle | saving | saved | error | conflict | exists
@@ -2763,7 +2753,6 @@ function App() {
     setActualSale(0);
     setCmaFiles([]);
     setPhotosUrl("");
-    setLedgerFilter("All");
     setAnalysisDate(todayISO());
     setStage("analyzing");
     setStageHistory([]);
@@ -2925,7 +2914,6 @@ function App() {
     // v38: comps (CMA) live with the deal's other files in Documents
     setCmaFiles([]);
     setPhotosUrl(d.photosUrl || "");
-    setLedgerFilter("All");
     setStage(inferStage(d));
     setStageHistory(Array.isArray(d.stageHistory) ? d.stageHistory : []);
     setUwBaseline(d.uwBaseline || null);
@@ -3241,10 +3229,16 @@ function App() {
     const next = {};
     const toRead = [];
     driveFiles.forEach((f) => {
+      // summaries written before v50 have no paperwork flags (dk): re-read those deals once if the flags matter
+      const fresh = (sm) => sm && (sm.dk !== undefined || !DOC_NEEDS[sm.st]);
       const fromProps = propsToSummary(f.appProperties);
-      if (fromProps) next[f.id] = fromProps;
-      else if (cache[f.id] && cache[f.id].modifiedTime === f.modifiedTime) next[f.id] = cache[f.id].sum;
-      else if (!summaryReadsRef.current.has(f.id + f.modifiedTime)) toRead.push(f);
+      const cached = cache[f.id] && cache[f.id].modifiedTime === f.modifiedTime ? cache[f.id].sum : null;
+      if (fresh(fromProps)) next[f.id] = fromProps;
+      else if (fresh(cached)) next[f.id] = cached;
+      else {
+        if (fromProps || cached) next[f.id] = fromProps || cached; // show what's there while the file is read
+        if (!summaryReadsRef.current.has(f.id + f.modifiedTime)) toRead.push(f);
+      }
     });
     setSummaries((s) => ({ ...s, ...next }));
     if (!toRead.length) return;
@@ -3440,6 +3434,26 @@ function App() {
     info: (id) => withAuthRetry((tok) => driveFileInfo(tok, id)),
     download: (f) => withAuthRetry((tok) => payloadFromDrive(tok, f)),
   };
+  // An invoice becomes one ledger entry; the file is kept with the deal and attached to it.
+  const applyInvoice = async ({ entry, source, keep }) => {
+    const id = numId();
+    setActuals((p) => [...p, { ...entry, tag: "invoice", files: [], id }]);
+    setAiModal(null);
+    addLogEntry(`Invoice logged: ${entry.label}, ${fmt(entry.amount)}`);
+    setDriveMsg("✓ Added to the ledger");
+    setTimeout(() => setDriveMsg(""), 2500);
+    if (!keep || !source) return;
+    let ref = null;
+    if (source.kind === "drive") {
+      const f = source.file;
+      ref = { type: "drive_file", driveFileId: f.id, name: f.name, mimeType: f.mimeType, size: f.size };
+      setMgmt((mm) => (mm.docs.some((d) => d.driveFileId === f.id) ? mm : { ...mm, docs: [...mm.docs, { id: uid(), ...ref, kind: "Invoice", date: todayISO() }] }));
+    } else {
+      const doc = await uploadDealDoc(source.file, "Invoice");
+      if (doc) ref = { type: "drive_file", driveFileId: doc.driveFileId, name: doc.name, mimeType: doc.mimeType, size: doc.size };
+    }
+    if (ref) setActuals((p) => p.map((a) => (a.id === id ? { ...a, files: [...(a.files || []), ref] } : a)));
+  };
   const applySow = ({ analysisId, milestones, review, opts, repairTotal: rt, contractor, source, docType }) => {
     const fresh = milestones.map((x) => ({ id: uid(), label: x.name, status: "todo", budget: x.cost, scope: x.scope, trade: x.trade, src: "sow" }));
     setMgmt((mm) => {
@@ -3526,11 +3540,24 @@ function App() {
   };
   const openFromPortfolio = (f) => loadDeal(f);
   const navCounts = stageCounts(driveFiles, summaries);
-  const goProject = (k) => {
+  const goProject = (k, anchor) => {
     setView("deal");
-    setMode(k);
-    window.scrollTo({ top: 0 });
+    setMode(normMode(k));
+    if (anchor)
+      setTimeout(() => {
+        const el = document.getElementById(anchor);
+        if (el && el.scrollIntoView) el.scrollIntoView({ block: "start", behavior: "smooth" });
+      }, 60);
+    else window.scrollTo({ top: 0 });
   };
+  const [railCollapsed, setRailCollapsed] = useState(readRailCollapsed);
+  const toggleRail = () =>
+    setRailCollapsed((c) => {
+      try {
+        localStorage.setItem(RAIL_KEY, c ? "0" : "1");
+      } catch (e) {}
+      return !c;
+    });
   const goPortfolio = () => {
     setLoadOpen(false);
     setView("portfolio");
@@ -3615,7 +3642,7 @@ function App() {
     if (s.f === cur) {
       n.target = s.key;
       setView("deal");
-      setMode(s.m);
+      setMode(normMode(s.m));
       restoreScroll();
       return;
     }
@@ -3629,7 +3656,7 @@ function App() {
     const go = () => {
       n.target = s.key;
       openDeal(file).then(() => {
-        if (loadedRef.current && loadedRef.current.id === s.f && s.m !== "overview") setMode(s.m);
+        if (loadedRef.current && loadedRef.current.id === s.f && s.m !== "overview") setMode(normMode(s.m));
         settle();
       });
     };
@@ -3651,39 +3678,6 @@ function App() {
     return () => window.removeEventListener("popstate", h);
   }, []);
   const goBack = () => window.history.back();
-  const addActual = () => {
-    if (!newItem.label && !newItem.amount) return;
-    setActuals((p) => [
-      ...p,
-      {
-        ...newItem,
-        date: newItem.date || new Date().toISOString().slice(0, 10),
-        id: Date.now(),
-        files: [],
-      },
-    ]);
-    setNewItem({
-      cat: newItem.cat,
-      label: "",
-      amount: 0,
-      date: new Date().toISOString().slice(0, 10),
-    });
-  };
-  const catTotals = actualCats
-    .map((c) => ({
-      cat: c,
-      total: actuals.filter((a) => a.cat === c).reduce((s, a) => s + (parseFloat(a.amount) || 0), 0),
-    }))
-    .filter((x) => x.total > 0);
-  const sortedActuals = [...actuals].sort((a, b) => {
-    const da = a.date || "",
-      db = b.date || "";
-    if (da !== db) return db.localeCompare(da);
-    return (b.id || 0) - (a.id || 0);
-  });
-  const effFilter = ledgerFilter !== "All" && actuals.some((a) => a.cat === ledgerFilter) ? ledgerFilter : "All";
-  const filteredActuals = effFilter === "All" ? sortedActuals : sortedActuals.filter((a) => a.cat === effFilter);
-  const filteredTotal = filteredActuals.reduce((s, a) => s + (parseFloat(a.amount) || 0), 0);
   const gradeCardRef = useRef(null);
   const [showStickyGrade, setShowStickyGrade] = useState(false);
   useEffect(() => {
@@ -3734,8 +3728,6 @@ function App() {
         preventScroll: true,
       });
   }, [stickyCollapsed]);
-  const [expandedEntry, setExpandedEntry] = useState(null);
-  const [openItems, setOpenItems] = useState({}); // ledger entries showing their breakdown
   // Deals from v43-v47 kept the seller's credit aside for the tax bill. It counts in the ledger now:
   // an unused one becomes a credit entry (once), a used one is already inside its tax bill entry.
   useEffect(() => {
@@ -3746,13 +3738,9 @@ function App() {
     setMgmt((mm) => ({ ...mm, credits: (mm.credits || []).map((x) => { const i = open.findIndex((c) => c.id === x.id); return i < 0 ? x : { ...x, used: add[i].id, counted: true }; }) }));
   }, [mgmt.credits]);
   const [fileUploading, setFileUploading] = useState(null);
-  const fileInputRef = useRef(null);
-  const pendingEntryId = useRef(null);
-  const handleFileSelect = async (e) => {
-    const files = Array.from(e.target.files);
-    if (!files.length) return;
-    const entryId = pendingEntryId.current;
-    if (!entryId) return;
+  // attach files to a ledger entry (from the document viewer)
+  const uploadEntryFiles = async (entryId, files) => {
+    if (!files.length || !entryId) return;
     if (!accessToken) {
       setDriveMsg("⚠ Connect Google Drive first");
       setTimeout(() => setDriveMsg(""), 3000);
@@ -3769,34 +3757,25 @@ function App() {
         const results = [];
         for (const file of files) {
           const result = await driveUploadFile(tok, settings.folderId, file);
-          results.push({
-            type: "drive_file",
-            driveFileId: result.id,
-            name: result.name,
-            mimeType: result.mimeType,
-            size: result.size,
-          });
+          results.push({ type: "drive_file", driveFileId: result.id, name: result.name, mimeType: result.mimeType, size: result.size });
         }
         return results;
       });
-      setActuals((prev) =>
-        prev.map((a) =>
-          a.id === entryId
-            ? {
-                ...a,
-                files: [...(a.files || []), ...uploaded],
-              }
-            : a,
-        ),
-      );
+      setActuals((prev) => prev.map((a) => (a.id === entryId ? { ...a, files: [...(a.files || []), ...uploaded] } : a)));
       setDriveMsg(`✓ ${uploaded.length} file(s) uploaded`);
       setTimeout(() => setDriveMsg(""), 2500);
     } catch (err) {
       setDriveMsg("❌ " + err.message);
     } finally {
       setFileUploading(null);
-      e.target.value = "";
     }
+  };
+  const addEntryLink = (entryId, url, label) => {
+    const u = String(url || "").trim();
+    if (!u) return;
+    const href = /^https?:\/\//i.test(u) ? u : "https://" + u;
+    const entry = { type: "link", url: href, name: String(label || "").trim() || href.replace(/.*\//, "").slice(0, 40) || "Link" };
+    setActuals((prev) => prev.map((a) => (a.id === entryId ? { ...a, files: [...(a.files || []), entry] } : a)));
   };
   const removeAttachment = async (entryId, fileRef) => {
     if (fileRef.driveFileId && accessToken) {
@@ -3818,32 +3797,6 @@ function App() {
   const openAttachment = (f) => {
     if (f.type === "link") window.open(f.url, "_blank");
     else window.open(`https://drive.google.com/file/d/${f.driveFileId}/view`, "_blank");
-  };
-  const confirmLink = (targetId) => {
-    if (!linkInputUrl.trim()) return;
-    const name = linkInputName.trim() || linkInputUrl.replace(/.*\//, "").slice(0, 40) || "Google Link";
-    const entry = {
-      type: "link",
-      url: linkInputUrl.trim(),
-      name,
-    };
-    if (targetId === "cma") {
-      setCmaFiles((prev) => [...prev, entry]);
-    } else {
-      setActuals((prev) =>
-        prev.map((a) =>
-          a.id === targetId
-            ? {
-                ...a,
-                files: [...(a.files || []), entry],
-              }
-            : a,
-        ),
-      );
-    }
-    setLinkInputFor(null);
-    setLinkInputUrl("");
-    setLinkInputName("");
   };
   const handleCMAFileSelect = async (e) => {
     const files = Array.from(e.target.files);
@@ -3879,29 +3832,6 @@ function App() {
       e.target.value = "";
     }
   };
-  const startEdit = (a) => {
-    setEditingId(a.id);
-    setEditDraft({
-      cat: a.cat,
-      label: a.label,
-      amount: a.amount,
-      date: a.date || new Date().toISOString().slice(0, 10),
-    });
-  };
-  const saveEdit = (id) => {
-    setActuals((prev) =>
-      prev.map((a) =>
-        a.id === id
-          ? {
-              ...a,
-              ...editDraft,
-            }
-          : a,
-      ),
-    );
-    setEditingId(null);
-  };
-  const cancelEdit = () => setEditingId(null);
   const exportCSV = () => {
     const n = (v) => (typeof v === "number" && isFinite(v) ? Math.round(v * 100) / 100 : "");
     const pc = (v) => (typeof v === "number" && isFinite(v) ? (v * 100).toFixed(1) + "%" : "");
@@ -4195,6 +4125,7 @@ function App() {
       {aiModal && aiModal.kind === "closing" && (
         <ClosingImportModal
           initialSide={aiModal.side}
+          initialSource={aiModal.source || null}
           existing={aiModal.existing || null}
           apiKey={settings.anthropicKey}
           driveApi={driveApi}
@@ -4220,6 +4151,7 @@ function App() {
       )}
       {aiModal && aiModal.kind === "sow" && (
         <SowImportModal
+          initialSource={aiModal.source || null}
           existing={aiModal.existing || null}
           apiKey={settings.anthropicKey}
           driveApi={driveApi}
@@ -4243,13 +4175,28 @@ function App() {
           }}
         />
       )}
+      {aiModal && aiModal.kind === "invoice" && (
+        <InvoiceImportModal
+          apiKey={settings.anthropicKey}
+          initialSource={aiModal.source || null}
+          driveApi={driveApi}
+          ctx={{ connected: !!accessToken && !!settings.folderId, dealDocs: mgmt.docs }}
+          budgetLines={rehabBudgetLines({ milestones: mgmt.rehab.milestones, repairs, useRepairBuilder, repairTotal }).lines}
+          onApply={applyInvoice}
+          onClose={() => setAiModal(null)}
+          onOpenSettings={() => {
+            setAiModal(null);
+            setShowSettings(true);
+          }}
+        />
+      )}
       {driveMsg && (
         <div className="toast no-print" role="status">
           <i style={{ background: driveMsg.startsWith("✓") ? "#6FD3A0" : driveMsg.startsWith("⚠") ? "#F4C430" : "#FF8A80" }} />
           {driveMsg.replace(/^[✓⚠❌]\s*/, "")}
         </div>
       )}
-      <div className="app-shell">
+      <div className={"app-shell" + (railCollapsed ? " rail-collapsed" : "")}>
         <Sidebar
           logo={LOGO}
           view={view}
@@ -4260,25 +4207,25 @@ function App() {
           }}
           counts={navCounts}
           project={
-            view === "deal" || address.trim()
+            view !== "deal" && address.trim()
               ? {
-                  name: address.trim() ? splitAddress(address)[0] : "New deal",
+                  name: splitAddress(address)[0],
                   mode,
                   dirty,
-                  context: dealContext,
-                  ledgerCount: actuals.length,
                   go: goProject,
                 }
               : null
           }
           onNew={requestNewDeal}
           onSettings={() => setShowSettings(true)}
+          collapsed={railCollapsed}
+          onToggle={toggleRail}
         />
         <main className="app-main">
           <TopBar
             crumbs={
               view === "portfolio"
-                ? [{ label: "Dashboards" }, { label: DASH_META[normDash(pfFilter)].title }]
+                ? [{ label: "Portfolio" }, { label: DASH_META[normDash(pfFilter)].title }]
                 : [
                     {
                       label: DASH_META[dashOfStage(stage)].title,
@@ -4287,7 +4234,7 @@ function App() {
                         goPortfolio();
                       },
                     },
-                    { label: address.trim() ? splitAddress(address)[0] : "New deal" },
+                    { label: address.trim() ? splitAddress(address)[0] : "New deal", switcher: true },
                   ]
             }
             connected={!!accessToken}
@@ -4295,6 +4242,7 @@ function App() {
             onConnect={signIn}
             onBack={navIndex > 0 ? goBack : null}
             finder={{ files: driveFiles, summaries, onOpen: (f) => loadDeal(f), onDelete: deleteDeal, onRefresh: () => refreshFiles() }}
+            tabs={view === "deal" ? <ProjectTabs mode={mode} go={goProject} counts={{ expenses: actuals.length }} /> : null}
           />
           <div className="app-main-inner">
         {view === "portfolio" ? (
@@ -4348,7 +4296,6 @@ function App() {
           onPrint={() => window.print()}
           actions={<StageActions stage={stage} mgmt={mgmt} onAction={(k) => setTransition(k)} />}
         />
-        <ProjectTabs mode={mode} go={goProject} />
         {mode === "overview" ? (
           <ProjectOverview
             address={address}
@@ -4372,21 +4319,11 @@ function App() {
             analysisDate={analysisDate}
             health={liveHealth}
             onGo={goProject}
-          />
-        ) : mode === "budget" ? (
-          <BudgetVsActual
-            m={m}
-            uwBaseline={uwBaseline}
-            actuals={actuals}
-            setActuals={setActuals}
-            mgmt={mgmt}
-            repairs={repairs}
-            useRepairBuilder={useRepairBuilder}
-            repairTotal={repairTotal}
-            arv={arv}
-            actualSale={actualSale}
-            stage={stage}
-            onGo={goProject}
+            userEmail={userEmail}
+            addLog={addLogEntry}
+            onUploadDoc={(f, kind) => uploadDealDoc(f, kind)}
+            openAttachment={openAttachment}
+            connected={!!accessToken && !!settings.folderId}
           />
         ) : mode === "underwrite" ? (
           <React.Fragment>
@@ -4913,7 +4850,7 @@ function App() {
                     }}
                   >
                     <LR label="Monthly holding" value={fmt(m.totalMonthlyHold)} />
-                    <LR label={`Total holding × ${holdMonths} mo`} value={fmt(m.totalHolding)} strong={true} accent={T.amber} />
+                    <LR label={`Total holding × ${holdMonths} mo`} value={fmt(m.totalHolding)} strong={true} />
                   </div>
                                 </Group>
                 <Group
@@ -4983,852 +4920,59 @@ function App() {
             connected={!!accessToken && !!settings.folderId}
             docUploading={docUploading}
           />
-        ) : mode === "docs" ? (
-          <DocumentsTab
+        ) : (
+          <ExpensesDocs
+            actuals={actuals}
+            setActuals={setActuals}
+            pushActuals={pushActuals}
+            actualsTotal={actualsTotal}
+            actualSale={actualSale}
+            setActualSale={setActualSale}
+            m={m}
+            uwBaseline={uwBaseline}
+            arv={arv}
+            stage={stage}
             mgmt={mgmt}
             upd={(path, val) => setMgmt((mm) => setIn(mm, path, val))}
-            analyses={mgmt.analyses}
-            onImport={(sd) => setImportSide(sd)}
-            onImportSow={() => setAiModal({ kind: "sow" })}
+            repairs={repairs}
+            useRepairBuilder={useRepairBuilder}
+            repairTotal={repairTotal}
+            onGo={goProject}
+            onImportClosing={(sd, source) => setAiModal({ kind: "closing", side: sd, origin: "ledger", source: source || null })}
+            onImportSow={(source) => setAiModal({ kind: "sow", origin: "ledger", source: source || null })}
+            onReadInvoice={(source) => setAiModal({ kind: "invoice", source: source || null })}
             onOpenAnalysis={openAnalysis}
             onDeleteAnalysis={deleteAnalysis}
             onUploadDoc={(f) => uploadDealDoc(f, "")}
             openAttachment={openAttachment}
             connected={!!accessToken && !!settings.folderId}
-            uploading={docUploading}
-            stage={stage}
-          />
-        ) : (
-          <React.Fragment>
-            <div className="pf-strip strip-4">
-              <div title="Sum of every real expense logged in the ledger below, across all categories.">
-                <span>Total spent</span>
-                <b>{fmt(actualsTotal)}</b>
-                <em>{actuals.length} entries</em>
-              </div>
-              <div title="The real, final sale price the property closed for.">
-                <span>Sale price</span>
-                <b>{actualSale > 0 ? fmt(actualSale) : "Not sold yet"}</b>
-                <em>{"\u00a0"}</em>
-              </div>
-              <div title="Actual sale price minus total actual spend: the real profit on this deal.">
-                <span>Actual profit</span>
-                <b style={!salePending && actualProfit < 0 ? { color: T.red } : undefined}>{salePending ? "Pending sale" : fmt(actualProfit)}</b>
-                <em>{salePending ? `plan ${fmt(planNet)}` : "\u00a0"}</em>
-              </div>
-              <div
-                title={
-                  uwBaseline
-                    ? "Actual net profit minus the original underwriting frozen when the deal went under contract. Positive means you beat the plan."
-                    : "Actual net profit minus the current underwriting (no original snapshot was frozen for this deal). Positive means you beat the plan."
-                }
-              >
-                <span>Against the plan</span>
-                <b style={salePending ? undefined : { color: variance >= 0 ? T.green : T.red }}>{salePending ? `${spendBudget > 0 ? Math.round((actualsTotal / spendBudget) * 100) : 0}% spent` : (variance >= 0 ? "+" : "") + fmt(variance)}</b>
-                <em>{salePending ? `${fmt(actualsTotal)} of ${fmt(spendBudget)} budget` : `plan ${fmt(planNet)}`}</em>
-              </div>
-            </div>
-            <div className="ledger-ai no-print">
-              <span className="ledger-ai-k">Fill the ledger from a document</span>
-              <button onClick={() => setImportSide("buy", "ledger")} style={btnGhost()}>
-                <Icon name="file" /> Purchase closing docs
-              </button>
-              <button onClick={() => setImportSide("sell", "ledger")} style={btnGhost()}>
-                <Icon name="file" /> Sale closing docs
-              </button>
-              <button onClick={() => setAiModal({ kind: "sow", origin: "ledger" })} style={btnGhost()}>
-                <Icon name="file" /> Read SOW
-              </button>
-              {(mgmt.analyses || []).length > 0 && (
-                <button className="ledger-ai-link" onClick={() => setMode("docs")}>
-                  {mgmt.analyses.length} saved {mgmt.analyses.length === 1 ? "analysis" : "analyses"} in Documents
-                </button>
-              )}
-            </div>
-            {((m.pmFee || 0) > 0 || actuals.some((a) => a.tag === "pm_fee")) && (
-              <PmPayments
-                mgmt={mgmt}
-                upd={(path, val) => setMgmt((mm) => setIn(mm, path, val))}
-                actuals={actuals}
-                pushActuals={pushActuals}
-                fee={m.pmFee || 0}
-                feeNote={pm.type === "flat" ? "fixed amount" : `${+(pm.val || 0)}% of the ${fmt(m.repair || 0)} rehab estimate`}
-                addLog={addLogEntry}
-                onEditFee={() => {
-                  // open the Project manager group in Flip analysis and bring it into view
-                  try {
-                    localStorage.setItem(GROUPS_KEY, JSON.stringify({ ...loadGroups(), pm: true }));
-                  } catch (e) {}
-                  setMode("underwrite");
-                  setTimeout(() => {
-                    const el = document.getElementById("grp-pm");
-                    if (el && el.scrollIntoView) el.scrollIntoView({ block: "start", behavior: "smooth" });
-                  }, 60);
-                }}
-              />
-            )}
-            <div
-              className="actuals-two-col"
-              style={{
-                display: "grid",
-                gap: 16,
-                alignItems: "start",
-              }}
-            >
-              <Panel title="Expense Ledger" kicker={`${actuals.length} entries`} accent={T.amber}>
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept="image/*,.pdf"
-                  multiple={true}
-                  style={{
-                    display: "none",
+            docUploading={docUploading}
+            entryTools={{ upload: uploadEntryFiles, addLink: addEntryLink, remove: removeAttachment, uploading: fileUploading, connected: !!accessToken && !!settings.folderId }}
+            pmPanel={
+              (m.pmFee || 0) > 0 || actuals.some((a) => a.tag === "pm_fee") ? (
+                <PmPayments
+                  mgmt={mgmt}
+                  upd={(path, val) => setMgmt((mm) => setIn(mm, path, val))}
+                  actuals={actuals}
+                  pushActuals={pushActuals}
+                  fee={m.pmFee || 0}
+                  feeNote={pm.type === "flat" ? "fixed amount" : `${+(pm.val || 0)}% of the ${fmt(m.repair || 0)} rehab estimate`}
+                  addLog={addLogEntry}
+                  onEditFee={() => {
+                    // open the Project manager group in Flip analysis and bring it into view
+                    try {
+                      localStorage.setItem(GROUPS_KEY, JSON.stringify({ ...loadGroups(), pm: true }));
+                    } catch (e) {}
+                    setMode("underwrite");
+                    setTimeout(() => {
+                      const el = document.getElementById("grp-pm");
+                      if (el && el.scrollIntoView) el.scrollIntoView({ block: "start", behavior: "smooth" });
+                    }, 60);
                   }}
-                  onChange={handleFileSelect}
                 />
-                <div
-                  className="ledger-add-row"
-                  style={{
-                    display: "grid",
-                    gap: 8,
-                    marginBottom: 14,
-                    alignItems: "center",
-                  }}
-                >
-                  <input
-                    type="date"
-                    value={newItem.date || ""}
-                    onChange={(e) =>
-                      setNewItem({
-                        ...newItem,
-                        date: e.target.value,
-                      })
-                    }
-                    title="Expense date"
-                    style={{
-                      ...ss,
-                      fontFamily: MONO,
-                      fontSize: 12,
-                      colorScheme: "light",
-                    }}
-                  />
-                  <select
-                    value={newItem.cat}
-                    onChange={(e) =>
-                      setNewItem({
-                        ...newItem,
-                        cat: e.target.value,
-                      })
-                    }
-                    style={ss}
-                  >
-                    {actualCats.map((c) => (
-                      <option
-                        key={c}
-                        style={{
-                          color: "#000",
-                        }}
-                      >
-                        {c}
-                      </option>
-                    ))}
-                  </select>
-                  <input
-                    placeholder="Description"
-                    value={newItem.label}
-                    onChange={(e) =>
-                      setNewItem({
-                        ...newItem,
-                        label: e.target.value,
-                      })
-                    }
-                    onKeyDown={(e) => e.key === "Enter" && addActual()}
-                    style={ss}
-                  />
-                  <input
-                    type="number"
-                    onFocus={(e) => e.target.select()}
-                    placeholder="$ amount"
-                    value={newItem.amount || ""}
-                    onChange={(e) =>
-                      setNewItem({
-                        ...newItem,
-                        amount: parseFloat(e.target.value) || 0,
-                      })
-                    }
-                    onKeyDown={(e) => e.key === "Enter" && addActual()}
-                    style={{
-                      ...ss,
-                      fontFamily: MONO,
-                    }}
-                  />
-                  <button
-                    onClick={addActual}
-                    style={{
-                      background: T.teal,
-                      border: "none",
-                      borderRadius: 4,
-                      color: "#FFFFFF",
-                      fontSize: 20,
-                      fontWeight: 800,
-                      cursor: "pointer",
-                      height: 38,
-                    }}
-                  >
-                    +
-                  </button>
-                </div>
-                {actuals.length > 0 && (
-                  <div
-                    className="no-print"
-                    style={{
-                      display: "flex",
-                      flexWrap: "wrap",
-                      alignItems: "center",
-                      gap: 6,
-                      margin: "2px 0 12px",
-                    }}
-                  >
-                    {["All", ...actualCats].map((c) => {
-                      const active = effFilter === c;
-                      const count = c === "All" ? actuals.length : actuals.filter((a) => a.cat === c).length;
-                      if (c !== "All" && count === 0) return null;
-                      return (
-                        <button
-                          key={c}
-                          onClick={() => setLedgerFilter(c)}
-                          style={{
-                            padding: "4px 11px",
-                            borderRadius: 4,
-                            border: `1px solid ${active ? T.teal : T.border}`,
-                            background: active ? `${T.teal}22` : T.glass,
-                            color: active ? T.teal : T.txtDim,
-                            fontSize: 11.5,
-                            fontWeight: active ? 700 : 500,
-                            cursor: "pointer",
-                            transition: "all .12s",
-                          }}
-                        >
-                          {c}
-                          <span
-                            style={{
-                              marginLeft: 5,
-                              opacity: 0.6,
-                              fontSize: 10,
-                            }}
-                          >
-                            {count}
-                          </span>
-                        </button>
-                      );
-                    })}
-                    {effFilter !== "All" && (
-                      <span
-                        style={{
-                          marginLeft: "auto",
-                          fontSize: 12,
-                          fontFamily: MONO,
-                          color: T.txtDim,
-                        }}
-                      >
-                        {filteredActuals.length} item{filteredActuals.length === 1 ? "" : "s"},{" "}
-                        <b
-                          style={{
-                            color: T.txt,
-                          }}
-                        >
-                          {fmt(filteredTotal)}
-                        </b>
-                      </span>
-                    )}
-                  </div>
-                )}
-                {actuals.length === 0 ? (
-                  <div
-                    style={{
-                      textAlign: "center",
-                      padding: "30px 0",
-                      color: T.txtMute,
-                      fontSize: 13,
-                    }}
-                  >
-                    No expenses logged yet.
-                  </div>
-                ) : (
-                  <div>
-                    {filteredActuals.map((a) => {
-                      const fileCount = (a.files || []).length;
-                      const isExpanded = expandedEntry === a.id;
-                      const isUploading = fileUploading === a.id;
-                      const isEditing = editingId === a.id;
-                      return (
-                        <div key={a.id}>
-                          {isEditing ? (
-                            <div
-                              className="ledger-edit-row"
-                              style={{
-                                display: "grid",
-                                gap: 8,
-                                alignItems: "center",
-                                padding: "6px 0",
-                                borderBottom: `1px solid ${T.border}`,
-                                background: `${T.teal}0a`,
-                                borderRadius: 8,
-                              }}
-                            >
-                              <input
-                                type="date"
-                                value={editDraft.date || ""}
-                                onChange={(e) =>
-                                  setEditDraft((d) => ({
-                                    ...d,
-                                    date: e.target.value,
-                                  }))
-                                }
-                                style={{
-                                  ...ss,
-                                  fontSize: 12,
-                                  fontFamily: MONO,
-                                  colorScheme: "light",
-                                }}
-                              />
-                              <select
-                                value={editDraft.cat}
-                                onChange={(e) =>
-                                  setEditDraft((d) => ({
-                                    ...d,
-                                    cat: e.target.value,
-                                  }))
-                                }
-                                style={{
-                                  ...ss,
-                                  fontSize: 12,
-                                }}
-                              >
-                                {actualCats.map((c) => (
-                                  <option
-                                    key={c}
-                                    style={{
-                                      color: "#000",
-                                    }}
-                                  >
-                                    {c}
-                                  </option>
-                                ))}
-                              </select>
-                              <input
-                                value={editDraft.label}
-                                onChange={(e) =>
-                                  setEditDraft((d) => ({
-                                    ...d,
-                                    label: e.target.value,
-                                  }))
-                                }
-                                onKeyDown={(e) => {
-                                  if (e.key === "Enter") saveEdit(a.id);
-                                  if (e.key === "Escape") cancelEdit();
-                                }}
-                                style={{
-                                  ...ss,
-                                  fontSize: 13,
-                                }}
-                                autoFocus={true}
-                              />
-                              <input
-                                type="number"
-                                onFocus={(e) => e.target.select()}
-                                value={editDraft.amount || ""}
-                                onChange={(e) =>
-                                  setEditDraft((d) => ({
-                                    ...d,
-                                    amount: parseFloat(e.target.value) || 0,
-                                  }))
-                                }
-                                onKeyDown={(e) => {
-                                  if (e.key === "Enter") saveEdit(a.id);
-                                }}
-                                style={{
-                                  ...ss,
-                                  fontFamily: MONO,
-                                  fontSize: 13,
-                                }}
-                              />
-                              <div
-                                style={{
-                                  display: "flex",
-                                  gap: 5,
-                                }}
-                              >
-                                <button
-                                  onClick={() => saveEdit(a.id)}
-                                  style={{
-                                    ...bs(T.teal, "#FFFFFF"),
-                                    fontSize: 11,
-                                    padding: "5px 10px",
-                                  }}
-                                >
-                                  <Icon name="check" size={14} />
-                                </button>
-                                <button
-                                  onClick={cancelEdit}
-                                  style={{
-                                    ...bs(T.glass, T.txtDim),
-                                    fontSize: 11,
-                                    padding: "5px 10px",
-                                  }}
-                                >
-                                  <Icon name="x" size={14} />
-                                </button>
-                              </div>
-                            </div>
-                          ) : (
-                            <div
-                              className="ledger-row"
-                              style={{
-                                display: "grid",
-                                gap: 6,
-                                alignItems: "center",
-                                padding: "7px 0",
-                                borderBottom: isExpanded ? "none" : `1px solid ${T.border}`,
-                              }}
-                            >
-                              <span
-                                style={{
-                                  fontSize: 11,
-                                  fontFamily: MONO,
-                                  color: T.txtMute,
-                                  whiteSpace: "nowrap",
-                                }}
-                              >
-                                {a.date ? a.date.slice(5).replace("-", "/") : "—"}
-                              </span>
-                              <span
-                                style={{
-                                  fontSize: 11,
-                                  fontWeight: 500,
-                                  color: T.txtDim,
-                                  letterSpacing: "0",
-                                }}
-                              >
-                                {a.cat}
-                              </span>
-                              {Array.isArray(a.items) && a.items.length > 1 ? (
-                                <button
-                                  className={"ledger-items-btn" + (openItems[a.id] ? " open" : "")}
-                                  onClick={() => setOpenItems((o) => ({ ...o, [a.id]: !o[a.id] }))}
-                                  aria-expanded={!!openItems[a.id]}
-                                  title={openItems[a.id] ? "Hide the breakdown" : `Show the ${a.items.length} items`}
-                                >
-                                  <Icon name="down" size={13} />
-                                  <span>{a.label || "—"}</span>
-                                </button>
-                              ) : (
-                                <span
-                                  style={{
-                                    fontSize: 13,
-                                    color: T.txt,
-                                  }}
-                                >
-                                  {a.label || "—"}
-                                </span>
-                              )}
-                              <span
-                                style={{
-                                  fontSize: 13.5,
-                                  fontFamily: MONO,
-                                  color: T.txt,
-                                  textAlign: "right",
-                                }}
-                              >
-                                {(parseFloat(a.amount) || 0) < 0 ? <span className="ledger-neg">−{fmt(-(parseFloat(a.amount) || 0))} credit</span> : fmt(parseFloat(a.amount) || 0)}
-                              </span>
-                              <button
-                                onClick={() => startEdit(a)}
-                                title="Edit"
-                                style={{
-                                  background: "transparent",
-                                  border: "none",
-                                  cursor: "pointer",
-                                  fontSize: 13,
-                                  color: T.txtMute,
-                                  padding: "2px",
-                                }}
-                              >
-                                <Icon name="edit" size={14} />
-                              </button>
-                              <button
-                                onClick={() => {
-                                  setExpandedEntry(isExpanded ? null : a.id);
-                                  setLinkInputFor(null);
-                                }}
-                                title="Attachments"
-                                style={{
-                                  background: "transparent",
-                                  border: "none",
-                                  cursor: "pointer",
-                                  fontSize: 13,
-                                  padding: "2px",
-                                  color: fileCount > 0 ? T.teal : T.txtMute,
-                                  position: "relative",
-                                }}
-                              >
-                                <Icon name="clip" size={14} />
-                                {fileCount > 0 && (
-                                  <span
-                                    style={{
-                                      position: "absolute",
-                                      top: -3,
-                                      right: -3,
-                                      background: T.teal,
-                                      color: "#FFFFFF",
-                                      borderRadius: "50%",
-                                      width: 13,
-                                      height: 13,
-                                      fontSize: 8,
-                                      fontWeight: 800,
-                                      display: "flex",
-                                      alignItems: "center",
-                                      justifyContent: "center",
-                                    }}
-                                  >
-                                    {fileCount}
-                                  </span>
-                                )}
-                              </button>
-                              <button
-                                onClick={() => setActuals((p) => p.filter((x) => x.id !== a.id))}
-                                title="Delete entry"
-                                aria-label="Delete entry"
-                                style={{
-                                  background: "transparent",
-                                  border: "none",
-                                  color: T.txtMute,
-                                  cursor: "pointer",
-                                  fontSize: 15,
-                                }}
-                              >
-                                ×
-                              </button>
-                            </div>
-                          )}
-                          {Array.isArray(a.items) && a.items.length > 1 && openItems[a.id] && !isEditing && (
-                            <div className="ledger-items">
-                              {a.items.map((it, i) => (
-                                <div key={i} className="ledger-item">
-                                  <span>{it.label}</span>
-                                  <span className={it.amount < 0 ? "neg" : ""}>{fmt2(it.amount)}</span>
-                                </div>
-                              ))}
-                              <div className="ledger-item sum">
-                                <span>{a.items.length} items</span>
-                                <span>{fmt2(a.items.reduce((t, it) => t + (Number(it.amount) || 0), 0))}</span>
-                              </div>
-                            </div>
-                          )}
-                          {isExpanded && !isEditing && (
-                            <div
-                              style={{
-                                background: `${T.teal}08`,
-                                border: `1px solid ${T.teal}33`,
-                                borderRadius: "0 0 10px 10px",
-                                padding: "10px 12px",
-                                marginBottom: 6,
-                              }}
-                            >
-                              {(a.files || []).length === 0 ? (
-                                <div
-                                  style={{
-                                    fontSize: 12,
-                                    color: T.txtMute,
-                                    marginBottom: 8,
-                                  }}
-                                >
-                                  No attachments yet.
-                                </div>
-                              ) : (
-                                <div
-                                  style={{
-                                    marginBottom: 8,
-                                  }}
-                                >
-                                  {(a.files || []).map((f, fi) => (
-                                    <div
-                                      key={fi}
-                                      style={{
-                                        display: "flex",
-                                        alignItems: "center",
-                                        gap: 8,
-                                        padding: "5px 0",
-                                        borderBottom: `1px solid ${T.border}`,
-                                      }}
-                                    >
-                                      <span
-                                        style={{
-                                          fontSize: 12,
-                                        }}
-                                      >
-                                        <Icon name={f.type === "link" ? "link" : "file"} size={14} />
-                                      </span>
-                                      <span
-                                        style={{
-                                          flex: 1,
-                                          fontSize: 12,
-                                          color: T.txt,
-                                          overflow: "hidden",
-                                          textOverflow: "ellipsis",
-                                          whiteSpace: "nowrap",
-                                        }}
-                                      >
-                                        {f.name}
-                                      </span>
-                                      {f.size && (
-                                        <span
-                                          style={{
-                                            fontSize: 10,
-                                            color: T.txtMute,
-                                            fontFamily: MONO,
-                                          }}
-                                        >
-                                          {(f.size / 1024).toFixed(0)}KB
-                                        </span>
-                                      )}
-                                      <button
-                                        onClick={() => openAttachment(f)}
-                                        style={{
-                                          ...bs(`${T.teal}22`, T.tealLt),
-                                          fontSize: 11,
-                                          padding: "3px 8px",
-                                        }}
-                                      >
-                                        Open
-                                      </button>
-                                      <button
-                                        onClick={() => removeAttachment(a.id, f)}
-                                        style={{
-                                          background: "transparent",
-                                          border: "none",
-                                          color: T.red,
-                                          cursor: "pointer",
-                                          fontSize: 13,
-                                        }}
-                                      >
-                                        <Icon name="x" size={14} />
-                                      </button>
-                                    </div>
-                                  ))}
-                                </div>
-                              )}
-                              {linkInputFor === a.id ? (
-                                <div
-                                  style={{
-                                    background: T.inputBg,
-                                    borderRadius: 4,
-                                    padding: "9px",
-                                    marginBottom: 8,
-                                    border: `1px solid ${T.border}`,
-                                  }}
-                                >
-                                  <input
-                                    placeholder="Google Drive / Docs URL"
-                                    value={linkInputUrl}
-                                    onChange={(e) => setLinkInputUrl(e.target.value)}
-                                    style={{
-                                      ...ss,
-                                      marginBottom: 6,
-                                      fontSize: 12,
-                                    }}
-                                  />
-                                  <div
-                                    style={{
-                                      display: "flex",
-                                      gap: 6,
-                                    }}
-                                  >
-                                    <input
-                                      placeholder="Label (optional)"
-                                      value={linkInputName}
-                                      onChange={(e) => setLinkInputName(e.target.value)}
-                                      onKeyDown={(e) => {
-                                        if (e.key === "Enter") confirmLink(a.id);
-                                      }}
-                                      style={{
-                                        ...ss,
-                                        flex: 1,
-                                        fontSize: 12,
-                                      }}
-                                    />
-                                    <button onClick={() => confirmLink(a.id)} style={bs(T.teal, "#FFFFFF")}>
-                                      Add
-                                    </button>
-                                    <button onClick={() => setLinkInputFor(null)} style={bs(T.glass, T.txtDim)}>
-                                      <Icon name="x" size={14} />
-                                    </button>
-                                  </div>
-                                </div>
-                              ) : null}
-                              <div
-                                style={{
-                                  display: "flex",
-                                  gap: 8,
-                                  flexWrap: "wrap",
-                                }}
-                              >
-                                <button
-                                  disabled={isUploading}
-                                  onClick={() => {
-                                    pendingEntryId.current = a.id;
-                                    fileInputRef.current.click();
-                                  }}
-                                  style={{
-                                    ...bs(isUploading ? T.glass : T.teal, isUploading ? T.txtMute : "#FFFFFF"),
-                                    fontSize: 11,
-                                    padding: "6px 12px",
-                                  }}
-                                >
-                                  {isUploading ? "⏳ Uploading…" : "⬆ Upload File"}
-                                </button>
-                                <button
-                                  onClick={() => {
-                                    setLinkInputFor(linkInputFor === a.id ? null : a.id);
-                                    setLinkInputUrl("");
-                                    setLinkInputName("");
-                                  }}
-                                  style={{
-                                    ...bs(T.glass, T.txtDim),
-                                    fontSize: 11,
-                                    padding: "6px 12px",
-                                  }}
-                                >
-                                  Add link
-                                </button>
-                              </div>
-                              {!accessToken && (
-                                <div
-                                  style={{
-                                    fontSize: 10,
-                                    color: T.amber,
-                                    marginTop: 6,
-                                  }}
-                                >
-                                  Connect Google Drive to upload files
-                                </div>
-                              )}
-                            </div>
-                          )}
-                        </div>
-                      );
-                    })}
-                    <div
-                      style={{
-                        display: "flex",
-                        justifyContent: "space-between",
-                        padding: "12px 0 0",
-                        fontWeight: 800,
-                      }}
-                    >
-                      <span style={{ fontWeight: 600 }}>Total spent</span>
-                      <span
-                        style={{
-                          fontWeight: 600,
-                          color: T.txt,
-                          fontSize: 16,
-                        }}
-                      >
-                        {fmt(actualsTotal)}
-                      </span>
-                    </div>
-                  </div>
-                )}
-              </Panel>
-              <div>
-                <Panel title={"Sale & Result"} accent={T.green}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14, flexWrap: "wrap" }}>
-                    <Chip color={stageMeta(stage).color}>{stageMeta(stage).label}</Chip>
-                    <span style={{ flex: 1 }} />
-                    <button className="no-print" onClick={() => setImportSide("sell")} style={{ ...bs(T.glass, T.violet), fontSize: 11, padding: "5px 10px" }}>
-                      Import sale statement
-                    </button>
-                  </div>
-                  <Field label="Final Sale Price" value={actualSale} onChange={setActualSale} prefix="$" step={1000} accent={T.green} />
-                  <div
-                    style={{
-                      background: T.inputBg,
-                      borderRadius: 4,
-                      padding: "12px 14px",
-                    }}
-                  >
-                    <LR label="Sale price" value={fmt(actualSale)} />
-                    <LR label="Total spent" value={fmt(actualsTotal)} neg={true} />
-                    <LR
-                      label="Actual profit"
-                      value={salePending ? "Pending sale" : fmt(actualProfit)}
-                      strong={true}
-                      accent={salePending ? T.txtDim : actualProfit > 0 ? T.green : T.red}
-                    />
-                    <LR
-                      label={uwBaseline ? "vs. original underwriting" : "vs. underwritten"}
-                      value={salePending ? "Pending sale" : (variance >= 0 ? "+" : "") + fmt(variance)}
-                      accent={salePending ? T.txtDim : variance >= 0 ? T.green : T.red}
-                    />
-                  </div>
-                </Panel>
-                {catTotals.length > 0 && (
-                  <Panel title="Spend by Category" accent={T.amber}>
-                    {catTotals.map((c) => (
-                      <div
-                        key={c.cat}
-                        style={{
-                          marginBottom: 10,
-                        }}
-                      >
-                        <div
-                          style={{
-                            display: "flex",
-                            justifyContent: "space-between",
-                            fontSize: 12,
-                            marginBottom: 3,
-                          }}
-                        >
-                          <span
-                            style={{
-                              color: T.txtDim,
-                            }}
-                          >
-                            {c.cat}
-                          </span>
-                          <span
-                            style={{
-                              fontFamily: MONO,
-                              color: T.txt,
-                            }}
-                          >
-                            {fmt(c.total)}
-                          </span>
-                        </div>
-                        <div
-                          style={{
-                            height: 6,
-                            background: T.inputBg,
-                            borderRadius: 4,
-                            overflow: "hidden",
-                          }}
-                        >
-                          <div
-                            style={{
-                              width: `${(c.total / actualsTotal) * 100}%`,
-                              height: "100%",
-                              background: T.navy,
-                              borderRadius: 1,
-                            }}
-                          />
-                        </div>
-                      </div>
-                    ))}
-                  </Panel>
-                )}
-              </div>
-            </div>
-          </React.Fragment>
+              ) : null
+            }
+          />
         )}
         </React.Fragment>
         )}

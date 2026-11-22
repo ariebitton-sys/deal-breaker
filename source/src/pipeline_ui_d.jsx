@@ -284,9 +284,9 @@ const fmt2 = (v) => {
   return (n < 0 ? "−$" : "$") + s;
 };
 // ---------- Closing statement ----------
-function ClosingImportModal({ initialSide, apiKey, ctx, existing, onAnalyzed, onApply, onClose, onOpenSettings, driveApi }) {
+function ClosingImportModal({ initialSide, initialSource, apiKey, ctx, existing, onAnalyzed, onApply, onClose, onOpenSettings, driveApi }) {
   const [side, setSide] = useState((existing && existing.review && existing.review.side) || (existing && existing.side) || initialSide || "buy");
-  const [source, setSource] = useState(null);
+  const [source, setSource] = useState(initialSource || null);
   const [step, setStep] = useState("pick"); // pick | loading | review | error
   const [err, setErr] = useState("");
   const [out, setOut] = useState(null);
@@ -339,6 +339,8 @@ function ClosingImportModal({ initialSide, apiKey, ctx, existing, onAnalyzed, on
   };
   useEffect(() => {
     if (existing) openRecord(existing);
+    // a file dropped on Expenses & Documents: start reading straight away
+    else if (initialSource && apiKey) run();
   }, []);
   const run = async () => {
     if (!source) return;
@@ -724,8 +726,8 @@ function ClosingImportModal({ initialSide, apiKey, ctx, existing, onAnalyzed, on
 }
 
 // ---------- Scope of Work → milestones ----------
-function SowImportModal({ apiKey, ctx, existing, onAnalyzed, onApply, onClose, onOpenSettings, driveApi }) {
-  const [source, setSource] = useState(null);
+function SowImportModal({ apiKey, initialSource, ctx, existing, onAnalyzed, onApply, onClose, onOpenSettings, driveApi }) {
+  const [source, setSource] = useState(initialSource || null);
   const [step, setStep] = useState("pick");
   const [err, setErr] = useState("");
   const [out, setOut] = useState(null);
@@ -753,6 +755,8 @@ function SowImportModal({ apiKey, ctx, existing, onAnalyzed, onApply, onClose, o
   };
   useEffect(() => {
     if (existing) openRecord(existing);
+    // a file dropped on Expenses & Documents: start reading straight away
+    else if (initialSource && apiKey) run();
   }, []);
   const run = async () => {
     if (!source) return;

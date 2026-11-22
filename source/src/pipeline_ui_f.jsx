@@ -31,7 +31,8 @@ function HealthPill({ h }) {
 function StagePill({ st }) {
   const m = stageMeta(st);
   return (
-    <span className="sp" style={{ color: m.color, background: `${m.color}12`, borderColor: `${m.color}38` }}>
+    <span className="sp">
+      <i style={{ background: m.color }} />
       {m.label}
     </span>
   );
@@ -83,77 +84,85 @@ const DASH_EMPTY = {
 const normDash = (k) =>
   DASH_META[k] ? k : k === "analyzing" ? "leads" : ["contract", "rehab", "market"].includes(k) ? "active" : k === "sold" ? "portfolio" : "overview";
 const dashOfStage = (st) => (st === "analyzing" ? "leads" : st === "sold" ? "portfolio" : st === "dead" ? "dead" : "active");
+// Project tabs (inside a deal). v50 merges Budget vs actual, Expenses and Documents into one screen.
 const PROJECT_NAV = [
-  ["overview", "Project overview", "home", null],
-  ["underwrite", "Flip analysis", "calc", "Deal analysis"],
-  ["manage", "Stages and milestones", "cal", "Project management"],
-  ["budget", "Budget vs actual", "chart", "Accounting"],
-  ["actuals", "Expenses", "receipt", "Accounting"],
-  ["docs", "Documents", "folder", null],
+  ["overview", "Project overview", "home"],
+  ["underwrite", "Flip analysis", "calc"],
+  ["manage", "Stages and milestones", "cal"],
+  ["expenses", "Expenses & Documents", "receipt"],
 ];
-function Sidebar({ logo, view, filter, onFilter, counts, project, onNew, onSettings }) {
-  let lastGroup = null;
+// Older tab keys (saved history entries, links inside the app) land on the merged screen.
+const MODE_ALIAS = { budget: "expenses", actuals: "expenses", docs: "expenses" };
+const normMode = (k) => MODE_ALIAS[k] || (PROJECT_NAV.some((x) => x[0] === k) ? k : "overview");
+const RAIL_KEY = "kappa_rail_collapsed";
+const readRailCollapsed = () => {
+  try {
+    return localStorage.getItem(RAIL_KEY) === "1";
+  } catch (e) {
+    return false;
+  }
+};
+// The favicon set already carries Kappa's mark: reuse it for the collapsed rail.
+const kappaMark = () => {
+  try {
+    const l = document.querySelector('link[rel="apple-touch-icon"]');
+    return l ? l.href : null;
+  } catch (e) {
+    return null;
+  }
+};
+// Global rail: portfolio-level views only. A deal's own tools live in the header tabs.
+function Sidebar({ logo, view, filter, onFilter, counts, project, onNew, onSettings, collapsed, onToggle }) {
+  const mark = kappaMark();
   return (
-    <aside className="sidebar no-print">
-      <div className="sb-titleblock">
-        <img src={logo} alt="Kappa Real Estate Investments" />
-        <div className="sb-product">Deal Breaker</div>
+    <aside className={"sidebar no-print" + (collapsed ? " collapsed" : "")} aria-label="Main navigation">
+      <div className="sb-titleblock" title="Kappa Real Estate Investments, Deal Breaker">
+        <img className="sb-logo" src={logo} alt="Kappa Real Estate Investments" />
+        {mark && <img className="sb-mark" src={mark} alt="" aria-hidden="true" />}
+        {!collapsed && <div className="sb-product">Deal Breaker</div>}
       </div>
-      <div className="sb-sep">Dashboards</div>
-      <nav className="sb-nav" aria-label="Dashboards">
+      <nav className="sb-nav" aria-label="Portfolio views">
         {DASHBOARDS.map(([k, l, icn]) => (
-          <button key={k} onClick={() => onFilter(k)} className={"sb-item" + (view === "portfolio" && filter === k ? " on" : "")}>
-            <Icon name={icn} />
+          <button key={k} onClick={() => onFilter(k)} className={"sb-item" + (view === "portfolio" && filter === k ? " on" : "")} title={collapsed ? `${l} (${counts[k] || 0})` : undefined} aria-current={view === "portfolio" && filter === k ? "page" : undefined}>
+            <Icon name={icn} size={17} />
             <span className="sb-label">{l}</span>
             <em>{counts[k] || 0}</em>
           </button>
         ))}
-        <button onClick={() => onFilter("dead")} className={"sb-item sb-minor" + (view === "portfolio" && filter === "dead" ? " on" : "")}>
-          <Icon name="x" size={14} />
+        <button onClick={() => onFilter("dead")} className={"sb-item sb-minor" + (view === "portfolio" && filter === "dead" ? " on" : "")} title={collapsed ? `Dead deals (${counts.dead || 0})` : undefined}>
+          <Icon name="x" size={15} />
           <span className="sb-label">Dead deals</span>
           <em>{counts.dead || 0}</em>
         </button>
       </nav>
       {project && (
-        <React.Fragment>
-          <button className={"sb-project" + (view === "deal" ? " on" : "")} onClick={() => project.go(project.mode)} title={project.dirty ? "Unsaved changes" : "Open deal"}>
-            <span className="sb-project-k">Project</span>
+        <button className={"sb-project" + (view === "deal" ? " on" : "")} onClick={() => project.go(project.mode)} title={project.dirty ? `${project.name}: unsaved changes` : `Back to ${project.name}`}>
+          <Icon name="home" size={17} />
+          <span className="sb-project-txt">
+            <span className="sb-project-k">Open deal</span>
             <span className="sb-project-v">
               {project.name}
               {project.dirty && <span className="sb-dirty" />}
             </span>
-            {project.context && <span className="sb-project-k">{project.context}</span>}
-          </button>
-          <nav className="sb-nav" aria-label="Project tools">
-            {PROJECT_NAV.map(([k, l, icn, grp]) => {
-              const head = grp && grp !== lastGroup ? grp : null;
-              lastGroup = grp;
-              return (
-                <React.Fragment key={k}>
-                  {head && <div className="sb-group">{head}</div>}
-                  <button onClick={() => project.go(k)} className={"sb-item" + (grp ? " sub" : "") + (view === "deal" && project.mode === k ? " on" : "")}>
-                    {!grp && <Icon name={icn} />}
-                    <span className="sb-label">{l}</span>
-                    {k === "actuals" && project.ledgerCount ? <em>{project.ledgerCount}</em> : null}
-                  </button>
-                </React.Fragment>
-              );
-            })}
-          </nav>
-        </React.Fragment>
+          </span>
+        </button>
       )}
       <div className="sb-grow" />
-      <button className="sb-new" onClick={onNew}>
-        <Icon name="plus" size={16} stroke={2.2} /> New deal
+      <button className="sb-new" onClick={onNew} title={collapsed ? "New deal" : undefined}>
+        <Icon name="plus" size={16} stroke={2.2} /> <span className="sb-label">New deal</span>
       </button>
-      <button className="sb-link" onClick={onSettings} data-no-autoconnect="">
-        <Icon name="settings" /> Settings
+      <button className="sb-link" onClick={onSettings} data-no-autoconnect="" title={collapsed ? "Settings" : undefined}>
+        <Icon name="settings" size={17} /> <span className="sb-label">Settings</span>
+      </button>
+      <button className="sb-link sb-collapse" onClick={onToggle} aria-label={collapsed ? "Expand the menu" : "Collapse the menu"} title={collapsed ? "Expand" : "Collapse"}>
+        <Icon name={collapsed ? "chevron" : "back"} size={16} /> <span className="sb-label">Collapse</span>
       </button>
     </aside>
   );
 }
-function TopBar({ crumbs, connected, userEmail, onConnect, finder, onBack }) {
-  const [open, setOpen] = useState(false);
+// Sticky header: Back, breadcrumb with the property switcher, search, account; the deal's tabs below.
+function TopBar({ crumbs, connected, userEmail, onConnect, finder, onBack, tabs }) {
+  const [open, setOpen] = useState(null); // "search" | "switch" | null
   const initials = (userEmail || "")
     .split("@")[0]
     .split(/[._-]/)
@@ -161,51 +170,93 @@ function TopBar({ crumbs, connected, userEmail, onConnect, finder, onBack }) {
     .slice(0, 2)
     .map((x) => x[0].toUpperCase())
     .join("");
+  useEffect(() => {
+    if (!open) return;
+    const close = () => setOpen(null);
+    const t = setTimeout(() => document.addEventListener("click", close), 0);
+    return () => {
+      clearTimeout(t);
+      document.removeEventListener("click", close);
+    };
+  }, [open]);
   return (
-    <div className="topbar no-print">
-      {onBack && (
-        <button className="tb-back" onClick={onBack} title="Back to the previous screen (Alt+←)" aria-label="Back to the previous screen">
-          <Icon name="back" size={16} /> <span>Back</span>
-        </button>
-      )}
-      <div className="crumbs">
-        {crumbs.map((c, i) => (
-          <React.Fragment key={i}>
-            {i > 0 && <span className="crumb-sep">/</span>}
-            {c.onClick ? (
-              <button className="crumb" onClick={c.onClick}>
-                {c.label}
-              </button>
-            ) : (
-              <b>{c.label}</b>
-            )}
-          </React.Fragment>
-        ))}
+    <header className={"topbar no-print" + (tabs ? " has-tabs" : "")}>
+      <div className="tb-row">
+        {onBack && (
+          <button className="tb-back" onClick={onBack} title="Back to the previous screen (Alt+←)" aria-label="Back to the previous screen">
+            <Icon name="back" size={15} /> <span>Back</span>
+          </button>
+        )}
+        <nav className="crumbs" aria-label="Breadcrumb">
+          {crumbs.map((c, i) => (
+            <React.Fragment key={i}>
+              {i > 0 && <span className="crumb-sep">/</span>}
+              {c.switcher ? (
+                <span className="crumb-switch-wrap">
+                  <button
+                    className="crumb-switch"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      connected && setOpen(open === "switch" ? null : "switch");
+                    }}
+                    disabled={!connected}
+                    aria-haspopup="listbox"
+                    aria-expanded={open === "switch"}
+                    title={connected ? "Switch to another property" : c.label}
+                  >
+                    <b>{c.label}</b>
+                    {connected && <Icon name="down" size={14} />}
+                  </button>
+                  {open === "switch" && <DealFinder {...finder} onClose={() => setOpen(null)} />}
+                </span>
+              ) : c.onClick ? (
+                <button className="crumb" onClick={c.onClick}>
+                  {c.label}
+                </button>
+              ) : (
+                <b>{c.label}</b>
+              )}
+            </React.Fragment>
+          ))}
+        </nav>
+        <div className="tb-right">
+          <div style={{ position: "relative" }}>
+            <button
+              className="tb-search"
+              onClick={(e) => {
+                e.stopPropagation();
+                connected && setOpen(open === "search" ? null : "search");
+              }}
+              disabled={!connected}
+              title={connected ? "Search every saved deal" : "Connect Google first"}
+            >
+              <Icon name="search" size={15} /> <span>Search properties</span>
+            </button>
+            {open === "search" && <DealFinder {...finder} onClose={() => setOpen(null)} />}
+          </div>
+          {connected ? (
+            <span className="tb-avatar" title={userEmail || "Connected to Google"}>
+              {initials || "K"}
+            </span>
+          ) : (
+            <button className="tb-connect" onClick={onConnect}>
+              Connect Google
+            </button>
+          )}
+        </div>
       </div>
-      <div style={{ position: "relative", marginLeft: "auto" }}>
-        <button className="tb-search" onClick={() => connected && setOpen((o) => !o)} disabled={!connected} title={connected ? "Search every saved deal" : "Connect Google first"}>
-          <Icon name="search" size={15} /> Search properties
-        </button>
-        {open && <DealFinder {...finder} onClose={() => setOpen(false)} />}
-      </div>
-      {connected ? (
-        <span className="tb-avatar" title={userEmail || "Connected to Google"}>
-          {initials || "K"}
-        </span>
-      ) : (
-        <button className="tb-connect" onClick={onConnect}>
-          Connect Google
-        </button>
-      )}
-    </div>
+      {tabs}
+    </header>
   );
 }
-function ProjectTabs({ mode, go }) {
+function ProjectTabs({ mode, go, counts }) {
+  const cur = normMode(mode);
   return (
-    <div className="tabs ptabs no-print" role="tablist">
+    <div className="ptabs" role="tablist" aria-label="Project">
       {PROJECT_NAV.map(([k, l]) => (
-        <button key={k} role="tab" aria-selected={mode === k} className={"tab" + (mode === k ? " on" : "")} onClick={() => go(k)}>
-          {l.replace("Project overview", "Overview")}
+        <button key={k} role="tab" aria-selected={cur === k} className={"ptab" + (cur === k ? " on" : "")} onClick={() => go(k)}>
+          {l}
+          {counts && counts[k] ? <em>{counts[k]}</em> : null}
         </button>
       ))}
     </div>
@@ -479,21 +530,12 @@ function Dashboard({ filter: rawFilter, files, summaries, busy, connected, hasCl
         </div>
       )}
 
+      {meta.stages.length > 1 && <PipelineFunnel stages={meta.stages} deals={mine} value={stageF} onChange={setStageF} />}
       <div className="pf-tools no-print">
         <span className="pf-search">
           <Icon name="search" size={15} />
           <input placeholder="Search by address" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Search deals by address" />
         </span>
-        {meta.stages.length > 1 && lay === "table" && (
-          <div className="chips" role="group" aria-label="Stage">
-            {["all", ...meta.stages].map((k) => (
-              <button key={k} className={stageF === k ? "on" : ""} onClick={() => setStageF(k)}>
-                {k === "all" ? "All" : stageMeta(k).label}
-                <em>{k === "all" ? mine.length : mine.filter((d) => d.s && d.s.st === k).length}</em>
-              </button>
-            ))}
-          </div>
-        )}
         {lay === "table" && (
           <label className="pf-sort">
             Sort
@@ -523,11 +565,61 @@ function Dashboard({ filter: rawFilter, files, summaries, busy, connected, hasCl
           )}
         </div>
       ) : lay === "board" ? (
-        <Board stages={meta.stages} deals={shown} today={today} onOpen={onOpen} />
+        <Board stages={stageF === "all" ? meta.stages : [stageF]} deals={shown} today={today} onOpen={onOpen} />
       ) : (
         <DealTable filter={filter} deals={shown} today={today} onOpen={onOpen} />
       )}
     </div>
+  );
+}
+// The pipeline as one bar: how many deals sit in each stage and what they're worth. Click a stage to filter.
+function PipelineFunnel({ stages, deals, value, onChange }) {
+  const rows = stages.map((st) => {
+    const ds = deals.filter((d) => d.s && d.s.st === st);
+    return { st, n: ds.length, v: ds.reduce((t, d) => t + ((d.s.ap != null ? d.s.ap : d.s.np) || 0), 0) };
+  });
+  const total = rows.reduce((t, r) => t + r.n, 0);
+  const worth = rows.reduce((t, r) => t + r.v, 0);
+  const pick = (st) => onChange(value === st ? "all" : st);
+  return (
+    <section className={"fn no-print" + (value !== "all" ? " filtered" : "")} aria-label="Pipeline by stage">
+      <div className="fn-top">
+        <b>Pipeline</b>
+        <span>
+          {total} {total === 1 ? "deal" : "deals"}
+          {total ? `, ${fmtK(worth)} profit (forecast${stages.includes("sold") ? " and realized" : ""})` : ""}
+        </span>
+        <button className={"fn-all" + (value === "all" ? " on" : "")} onClick={() => onChange("all")}>
+          All {total}
+        </button>
+      </div>
+      <div className="fn-bar" role="group" aria-label="Filter by stage">
+        {rows.map((r) =>
+          r.n > 0 ? (
+            <button
+              key={r.st}
+              className={value === r.st ? "on" : ""}
+              style={{ flex: r.n, background: stageMeta(r.st).color }}
+              onClick={() => pick(r.st)}
+              title={`${stageMeta(r.st).label}: ${r.n} ${r.n === 1 ? "deal" : "deals"}`}
+              aria-label={`Show ${stageMeta(r.st).label}`}
+            />
+          ) : null,
+        )}
+      </div>
+      <div className="fn-steps" style={{ gridTemplateColumns: `repeat(${stages.length}, minmax(0,1fr))` }}>
+        {rows.map((r) => (
+          <button key={r.st} className={"fn-step" + (value === r.st ? " on" : "") + (r.n === 0 ? " zero" : "")} onClick={() => pick(r.st)} aria-pressed={value === r.st}>
+            <span className="fn-step-l">
+              <i style={{ background: stageMeta(r.st).color }} />
+              {stageMeta(r.st).label}
+            </span>
+            <b>{r.n}</b>
+            <em>{r.n ? `${fmtK(r.v)} ${r.st === "sold" ? "realized" : "forecast"}` : "none"}</em>
+          </button>
+        ))}
+      </div>
+    </section>
   );
 }
 function DashHead({ title, sub, right }) {
@@ -620,7 +712,7 @@ function Board({ stages, deals, today, onOpen }) {
 }
 function BudgetBar({ spent, budget, work, h = 6 }) {
   const pct = budget > 0 ? (spent / budget) * 100 : 0;
-  const color = pct > 110 ? T.red : pct > 100 || (work != null && pct - work > 25) ? "#C27C0E" : T.navy;
+  const color = pct > 110 ? "#DC2626" : pct > 100 ? "#F59E0B" : T.txt;
   return (
     <div className="bb" style={{ height: h }}>
       <i style={{ width: `${Math.min(100, pct)}%`, background: color }} />
@@ -635,15 +727,54 @@ function DealTable({ filter, deals, today, onOpen }) {
       <span>{d.city}</span>
     </div>
   );
-  const status = (d) =>
-    d.h ? (
-      <div className="dt-status">
-        <HealthPill h={d.h} />
-        {d.h.key !== "ok" && <span>{d.h.reason}</span>}
+  // one cell for spend against budget and the deal's health: a bar, the amounts, one variance pill
+  const isBudgetAlert = (a) => /budget/i.test(a.text);
+  const status = (d) => {
+    const s = d.s;
+    const other = (d.att || []).filter((a) => !isBudgetAlert(a));
+    const showBar = (s.st === "rehab" || s.st === "market") && s.rb > 0;
+    const spent = s.rsp || 0;
+    const overPct = showBar && spent > s.rb ? Math.round((spent / s.rb - 1) * 100) : 0;
+    const pill = overPct > 0 ? (
+      <span className={"vpill " + (overPct > 10 ? "red" : "amber")}>+{overPct}% over</span>
+    ) : d.h ? (
+      <span className={"vpill " + (d.h.key === "ok" ? "pos" : d.h.key === "risk" ? "red" : "amber")} title={d.h.all && d.h.all.length ? d.h.all.map((a) => a.text).join("\n") : d.h.reason}>
+        {d.h.label}
+      </span>
+    ) : null;
+    if (!showBar && !pill) return <span className="dt-mute">—</span>;
+    return (
+      <div className="dt-budget">
+        <div className="dt-budget-top">
+          <span>{showBar ? `${fmtK(spent)} / ${fmtK(s.rb)}` : s.st === "contract" && s.rb ? `${fmtK(s.rb)} rehab budget` : ""}</span>
+          {pill}
+        </div>
+        {showBar && <BudgetBar spent={spent} budget={s.rb} work={s.st === "rehab" ? s.mp : null} />}
+        {other.length > 0 && filter !== "active" && (
+          <div className={"dt-alert " + (other[0].lvl === "red" ? "red" : "amber")}>
+            <i />
+            {other[0].text}
+          </div>
+        )}
       </div>
-    ) : (
-      <span className="dt-mute">—</span>
     );
+  };
+  const docs = (s) => {
+    const ds = docsStatus(s);
+    if (!ds) return <span className="dt-docs na">—</span>;
+    if (ds.unknown) return <span className="dt-docs na">…</span>;
+    if (!ds.missing.length)
+      return (
+        <span className="dt-docs ok" title="Purchase HUD-1, SOW and sale HUD-1 as the stage needs">
+          <Icon name="check" size={13} stroke={2.4} /> {ds.have}/{ds.need} Docs
+        </span>
+      );
+    return (
+      <span className="dt-docs miss" title={`Missing: ${ds.missing.join(", ")}`}>
+        {ds.missing.length === 1 ? `Missing ${ds.missing[0]}` : `Missing ${ds.missing.length} docs`}
+      </span>
+    );
+  };
   const grade = (s) => <b className="dt-grade" style={{ color: s.gr === "REJECT" ? T.red : T.txt }}>{s.gr === "REJECT" ? "Reject" : s.gr}</b>;
   const money = (v) => (v == null ? <span className="dt-mute">—</span> : <span style={v < 0 ? { color: T.red } : undefined}>{fmt(v)}</span>);
   const timeline = (s) => {
@@ -688,23 +819,7 @@ function DealTable({ filter, deals, today, onOpen }) {
     }
     return "—";
   };
-  const budget = (s) =>
-    s.st === "contract" ? (
-      <span className="dt-mute">{s.rb ? `${fmtK(s.rb)} budget, not started` : "—"}</span>
-    ) : s.rb > 0 ? (
-      <div className="dt-budget">
-        <div>
-          <span>
-            {fmtK(s.rsp || 0)} of {fmtK(s.rb)}
-          </span>
-          <em>{Math.round(((s.rsp || 0) / s.rb) * 100)}%</em>
-        </div>
-        <BudgetBar spent={s.rsp || 0} budget={s.rb} work={s.st === "rehab" ? s.mp : null} />
-      </div>
-    ) : (
-      <span className="dt-mute">—</span>
-    );
-  const nextUp = (s) => {
+  const nextStep = (s) => {
     if (s.st === "contract") {
       const di = daysBetween(today, s.ied);
       return di != null && di >= 0 ? `Inspection ends ${relDays(di)}` : s.ecd ? `Closing ${relDays(daysBetween(today, s.ecd))}` : "Set a closing date";
@@ -712,6 +827,20 @@ function DealTable({ filter, deals, today, onOpen }) {
     if (s.st === "rehab") return s.nm || (s.mp >= 100 ? "Ready to list" : "—");
     if (s.st === "market") return s.bcd ? "Buyer under contract" : s.lp ? `Listed at ${fmt(s.lp)}` : "—";
     return "—";
+  };
+  // alerts other than the budget lead the Next up cell; the budget one is the pill
+  const nextUp = (d) => {
+    const other = (d.att || []).filter((a) => !isBudgetAlert(a));
+    if (!other.length) return <span className="dt-next">{nextStep(d.s)}</span>;
+    return (
+      <div>
+        <div className={"dt-alert " + (other[0].lvl === "red" ? "red" : "amber")}>
+          <i />
+          {other[0].text}
+        </div>
+        {other.length > 1 && <div className="dt-alert-more">+{other.length - 1} more</div>}
+      </div>
+    );
   };
   const updated = (d) => {
     const u = d.f.lastModifyingUser;
@@ -726,7 +855,8 @@ function DealTable({ filter, deals, today, onOpen }) {
     overview: [
       ["Property", (d) => prop(d)],
       ["Stage", (d) => <StagePill st={d.s.st} />],
-      ["Status", (d) => status(d)],
+      ["Budget & status", (d) => status(d)],
+      ["Docs", (d) => docs(d.s)],
       ["Grade", (d) => grade(d.s)],
       ["Profit", (d) => <div className="dt-two">{money(d.s.ap != null ? d.s.ap : d.s.np)}<em>{d.s.ap != null ? "actual" : "forecast"}</em></div>, "num"],
       ["Updated", (d) => updated(d)],
@@ -743,11 +873,11 @@ function DealTable({ filter, deals, today, onOpen }) {
     active: [
       ["Property", (d) => prop(d)],
       ["Stage", (d) => <StagePill st={d.s.st} />],
-      ["Status", (d) => status(d)],
       ["Timeline", (d) => timeline(d.s)],
-      ["Rehab budget vs actual", (d) => budget(d.s)],
+      ["Budget & status", (d) => status(d)],
+      ["Docs", (d) => docs(d.s)],
       ["Forecast profit", (d) => money(d.s.np), "num"],
-      ["Next up", (d) => <span className="dt-next">{nextUp(d.s)}</span>],
+      ["Next up", (d) => nextUp(d)],
     ],
     portfolio: [
       ["Property", (d) => prop(d)],
@@ -764,6 +894,7 @@ function DealTable({ filter, deals, today, onOpen }) {
         },
         "num",
       ],
+      ["Docs", (d) => docs(d.s)],
       ["Grade", (d) => grade(d.s)],
     ],
     dead: [
@@ -836,7 +967,114 @@ function OvStat({ k, v, h, tone, big }) {
     </div>
   );
 }
-function ProjectOverview({ address, mapsKey, folderId, photosUrl, setPhotosUrl, sqft, yearBuilt, arv, purchase, stage, mgmt, setMgmt, m, deal, mao, uwBaseline, actuals, actualSale, analysisDate, health, onGo }) {
+// Open tasks, milestones and utilities in one operational list.
+const CHECKLIST_OF = { contract: "contract", rehab: "rehab", market: "market", sold: "market" };
+function NextUp({ stage, mgmt, setMgmt, address, by, addLog, onGo, onUploadDoc, openAttachment, connected }) {
+  const ck = CHECKLIST_OF[stage];
+  const items = ck ? (mgmt.checklists && mgmt.checklists[ck]) || [] : [];
+  const tasks = items.filter((i) => !i.ut);
+  const open = tasks.filter((i) => !i.done);
+  const doneN = tasks.length - open.length;
+  const toggle = (id) =>
+    setMgmt((mg) => ({
+      ...mg,
+      checklists: {
+        ...mg.checklists,
+        [ck]: (mg.checklists[ck] || []).map((i) => (i.id === id ? { ...i, done: !i.done, doneAt: !i.done ? new Date().toISOString() : "", by: !i.done ? by : "" } : i)),
+      },
+    }));
+  const ms = mgmt.rehab.milestones || [];
+  const showMs = ["rehab", "market"].includes(stage) && ms.length > 0;
+  const doing = ms.filter((x) => x.status === "doing");
+  const next = ms.filter((x) => x.status === "todo").slice(0, Math.max(1, 3 - doing.length));
+  const msDone = ms.filter((x) => x.status === "done").length;
+  const cycleMs = (id) =>
+    setMgmt((mg) => ({
+      ...mg,
+      rehab: {
+        ...mg.rehab,
+        milestones: mg.rehab.milestones.map((x) => {
+          if (x.id !== id) return x;
+          const nx = x.status === "todo" ? "doing" : x.status === "doing" ? "done" : "todo";
+          if (nx === "done") setTimeout(() => addLog(`Milestone done: ${x.label}`), 0);
+          return { ...x, status: nx, doneAt: nx === "done" ? new Date().toISOString() : "", by: nx === "done" ? by : "" };
+        }),
+      },
+    }));
+  const MS_LABEL = { todo: "To do", doing: "In progress", done: "Done" };
+  const today = todayISO();
+  return (
+    <section className="dcard nx">
+      <div className="dcard-h">
+        <Icon name="check" /> Next up
+        <span className="dcard-r">{ck ? `${stageMeta(stage).label} checklist: ${doneN} of ${tasks.length} done` : stageMeta(stage).label}</span>
+        <button className="dcard-link" onClick={() => onGo("manage")}>
+          All tasks <Icon name="chevron" size={14} />
+        </button>
+      </div>
+      {stage === "analyzing" ? (
+        <div className="nx-sec">
+          <div className="nx-k">Deal</div>
+          <div className="nx-row">
+            <span className="nx-l">{(mgmt.offers || []).some((o) => o.status === "Accepted") ? "Offer accepted: mark the deal under contract" : (mgmt.offers || []).length ? "Follow up on the last offer" : "Make an offer"}</span>
+            <button className="link-btn" onClick={() => onGo("manage")}>
+              Offers
+            </button>
+          </div>
+        </div>
+      ) : (
+        ck && (
+          <div className="nx-sec">
+            <div className="nx-k">Tasks</div>
+            {open.length === 0 && <div className="nx-empty">Nothing open on the {stageMeta(stage).label.toLowerCase()} checklist.</div>}
+            {open.slice(0, 6).map((i) => (
+              <div key={i.id} className="nx-row">
+                <label>
+                  <input type="checkbox" checked={!!i.done} onChange={() => toggle(i.id)} />
+                  <span className="nx-l" title={i.note || i.label}>
+                    {i.label}
+                  </span>
+                </label>
+                {i.url && (
+                  <a href={i.url} target="_blank" rel="noopener noreferrer">
+                    Open
+                  </a>
+                )}
+              </div>
+            ))}
+            {open.length > 6 && (
+              <button className="link-btn nx-more" onClick={() => onGo("manage")}>
+                {open.length - 6} more on the checklist
+              </button>
+            )}
+          </div>
+        )
+      )}
+      {showMs && (
+        <div className="nx-sec">
+          <div className="nx-k">
+            Milestones
+            <span className="nx-count">
+              {msDone} of {ms.length} done
+            </span>
+          </div>
+          {[...doing, ...next].map((x) => (
+            <div key={x.id} className="nx-row">
+              <span className="nx-l">{x.label}</span>
+              {num(x.budget) > 0 && <span className="nx-due">{fmt(num(x.budget))}</span>}
+              <button className={"nx-ms-st " + x.status} onClick={() => cycleMs(x.id)} title="Click to move it on: To do → In progress → Done">
+                {MS_LABEL[x.status]}
+              </button>
+            </div>
+          ))}
+          {!doing.length && !next.length && <div className="nx-empty">Every milestone is done.</div>}
+        </div>
+      )}
+      {stage !== "dead" && <UtilitiesCard address={address} stage={stage} mgmt={mgmt} setMgmt={setMgmt} by={by} onUploadDoc={onUploadDoc} openAttachment={openAttachment} connected={connected} />}
+    </section>
+  );
+}
+function ProjectOverview({ address, mapsKey, folderId, photosUrl, setPhotosUrl, sqft, yearBuilt, arv, purchase, stage, mgmt, setMgmt, m, deal, mao, uwBaseline, actuals, actualSale, analysisDate, health, onGo, userEmail, addLog, onUploadDoc, openAttachment, connected }) {
   const today = todayISO();
   const [street, city] = splitAddress(address || "");
   const q = encodeURIComponent((address || "").trim());
@@ -930,7 +1168,7 @@ function ProjectOverview({ address, mapsKey, folderId, photosUrl, setPhotosUrl, 
           <OvStat k="Work complete" v={mp == null ? "—" : `${mp}%`} big />
         </div>
         <div className="bb" style={{ height: 6, marginTop: 4 }}>
-          <i style={{ width: `${mp || 0}%`, background: T.green }} />
+          <i style={{ width: `${mp || 0}%`, background: T.txt }} />
         </div>
         <div className="ov-list">
           {doing && (
@@ -958,7 +1196,7 @@ function ProjectOverview({ address, mapsKey, folderId, photosUrl, setPhotosUrl, 
     pm = (
       <React.Fragment>
         <div className="ov-pair">
-          <OvStat k="Days on market" v={dom == null ? "—" : String(dom)} h={mgmt.buyer.date ? "sale pending" : `listed ${fmtDateShort(mgmt.listing.date)}`} big />
+          <OvStat k="Days on market" v={dom == null ? "—" : String(dom)} h={mgmt.buyer.date ? "sale pending" : `listed ${fmtDate(mgmt.listing.date)}`} big />
           <OvStat k="List price" v={fmt(num(mgmt.listing.price))} h={mgmt.listing.prices.length > 1 ? `was ${fmt(num(mgmt.listing.prices[0].price))}` : ""} />
         </div>
         <div className="ov-list">
@@ -1004,6 +1242,7 @@ function ProjectOverview({ address, mapsKey, folderId, photosUrl, setPhotosUrl, 
   const rBudget = uwBaseline ? uwBaseline.m.repair : m.repair;
   const plan = uwBaseline ? uwBaseline.m.netProfit : m.netProfit;
   const actualProfit = actualSale - spent;
+  const rTone = rBudget > 0 && rSpent > rBudget ? (rSpent > rBudget * 1.1 ? "red" : "amber") : null;
   // ---- key dates ----
   const c = mgmt.contract;
   const tx = [
@@ -1031,91 +1270,104 @@ function ProjectOverview({ address, mapsKey, folderId, photosUrl, setPhotosUrl, 
     );
   };
   const log = (mgmt.log || []).slice(0, 4);
+  const upd = (path, val) => setMgmt((mm) => setIn(mm, path, val));
+  const specs = [
+    ["ARV", arv > 0 ? fmt(arv) : "—"],
+    ["Purchase", purchase > 0 ? fmt(purchase) : "—"],
+    [null, sqft ? `${Number(sqft).toLocaleString("en-US")} sq ft` : "— sq ft"],
+    ["Built", yearBuilt ? String(yearBuilt) : "—"],
+  ];
   return (
     <div className="ov">
-      <section className="dcard ov-prop">
+      <section className="dcard ov-hero">
         <div className="ov-map">
           {mapsKey && address.trim() ? (
             <iframe title="Property location" loading="lazy" src={`https://www.google.com/maps/embed/v1/place?key=${encodeURIComponent(mapsKey)}&q=${q}`} />
           ) : (
             <a href={address.trim() ? `https://www.google.com/maps/search/?api=1&query=${q}` : undefined} target="_blank" rel="noopener noreferrer" className="ov-map-ph">
-              <Icon name="map" size={26} />
+              <Icon name="map" size={22} />
               <span>{address.trim() ? "Open in Google Maps" : "Add an address"}</span>
             </a>
           )}
         </div>
-        <div className="ov-facts">
-          <div className="ov-city">{city || street || "No address yet"}</div>
-          <div className="ov-factrow">
-            <OvStat k="ARV" v={fmt(arv)} />
-            <OvStat k="Purchase" v={fmt(purchase)} />
-            <OvStat k="Size" v={sqft ? `${Number(sqft).toLocaleString("en-US")} sq ft` : "—"} />
-            <OvStat k="Built" v={yearBuilt ? String(yearBuilt) : "—"} />
-          </div>
-          {photoEdit !== null ? (
-            <div className="ov-photo-edit">
-              <input
-                autoFocus
-                value={photoEdit}
-                onChange={(e) => setPhotoEdit(e.target.value)}
-                onKeyDown={(e) => (e.key === "Enter" ? savePhotos() : e.key === "Escape" ? setPhotoEdit(null) : null)}
-                placeholder="Google Photos, Drive or Dropbox album link"
-                aria-label="Photos link"
-              />
-              <button onClick={savePhotos} style={btnPrimary()}>
-                Save
-              </button>
-              <button onClick={() => setPhotoEdit(null)} style={btnGhost()}>
-                Cancel
-              </button>
+        <div className="ov-hero-main">
+          <div className="ov-hero-top">
+            <div className="ov-hero-id">
+              <div className="ov-city">{[street, city].filter(Boolean).join(", ") || "No address yet"}</div>
+              <div className="ov-specs">
+                {specs.map(([k, v], i) => (
+                  <span key={i} className="ov-spec">
+                    {k && <span>{k}</span>}
+                    <b>{v}</b>
+                  </span>
+                ))}
+              </div>
             </div>
-          ) : (
-            <div className="ov-links">
-              {links.map(([l, href, icn]) => (
-                <a key={l} href={href} target="_blank" rel="noopener noreferrer">
-                  <Icon name={icn} size={14} /> {l}
-                </a>
-              ))}
-              {comps > 0 && (
-                <button className="ov-link-btn" onClick={() => onGo("docs")}>
-                  <Icon name="file" size={14} /> Comps ({comps})
+            {photoEdit !== null ? (
+              <div className="ov-photo-edit">
+                <input
+                  autoFocus
+                  value={photoEdit}
+                  onChange={(e) => setPhotoEdit(e.target.value)}
+                  onKeyDown={(e) => (e.key === "Enter" ? savePhotos() : e.key === "Escape" ? setPhotoEdit(null) : null)}
+                  placeholder="Google Photos, Drive or Dropbox album link"
+                  aria-label="Photos link"
+                />
+                <button onClick={savePhotos} style={btnPrimary()}>
+                  Save
                 </button>
-              )}
-              {setPhotosUrl && (
-                <button className="ov-link-btn quiet" onClick={() => setPhotoEdit(photosUrl || "")}>
-                  {photosUrl ? (
-                    "Change photos link"
-                  ) : (
-                    <>
-                      <Icon name="camera" size={14} /> Add photos link
-                    </>
-                  )}
+                <button onClick={() => setPhotoEdit(null)} style={btnGhost()}>
+                  Cancel
                 </button>
-              )}
+              </div>
+            ) : (
+              <div className="ov-links">
+                {links.map(([l, href, icn]) => (
+                  <a key={l} href={href} target="_blank" rel="noopener noreferrer">
+                    <Icon name={icn} size={13} /> {l}
+                  </a>
+                ))}
+                {comps > 0 && (
+                  <button className="ov-link-btn" onClick={() => onGo("expenses", "sec-docs")}>
+                    <Icon name="file" size={13} /> Comps ({comps})
+                  </button>
+                )}
+                {setPhotosUrl && (
+                  <button className="ov-link-btn quiet" onClick={() => setPhotoEdit(photosUrl || "")}>
+                    {photosUrl ? (
+                      "Change photos link"
+                    ) : (
+                      <>
+                        <Icon name="camera" size={13} /> Add photos link
+                      </>
+                    )}
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+          <div className="ov-track">
+            <ol className="trk" aria-label="Deal stage">
+              {STAGES.map((s, i) => {
+                const on = i <= curIdx;
+                const cur = i === curIdx && !dead && s.key !== "sold";
+                return (
+                  <li key={s.key} className={"trk-st" + (on ? " on" : "") + (cur ? " cur" : "")} aria-current={cur ? "step" : undefined}>
+                    <span className="trk-tick" />
+                    <span className="trk-l">{s.label}</span>
+                    <span className="trk-d">{on && dates[s.key] ? fmtDate(dates[s.key]) : ""}</span>
+                  </li>
+                );
+              })}
+            </ol>
+          </div>
+          {health && health.key !== "ok" && (
+            <div className="ov-health">
+              <HealthPill h={health} />
+              <span>{health.all.map((a) => a.text).join(". ")}.</span>
             </div>
           )}
         </div>
-      </section>
-      <section className="dcard ov-track">
-        <ol className="trk" aria-label="Deal stage">
-          {STAGES.map((s, i) => {
-            const on = i <= curIdx;
-            const cur = i === curIdx && !dead && s.key !== "sold";
-            return (
-              <li key={s.key} className={"trk-st" + (on ? " on" : "") + (cur ? " cur" : "")} aria-current={cur ? "step" : undefined}>
-                <span className="trk-tick" />
-                <span className="trk-l">{s.label}</span>
-                <span className="trk-d">{on && dates[s.key] ? fmtDateShort(dates[s.key]) : ""}</span>
-              </li>
-            );
-          })}
-        </ol>
-        {health && health.key !== "ok" && (
-          <div className="ov-health">
-            <HealthPill h={health} />
-            <span>{health.all.map((a) => a.text).join(". ")}.</span>
-          </div>
-        )}
       </section>
       <div className="ov-console">
         <OvCard icon="calc" title="Deal analysis" onOpen={() => onGo("underwrite")} openLabel="Flip analysis">
@@ -1135,7 +1387,7 @@ function ProjectOverview({ address, mapsKey, folderId, photosUrl, setPhotosUrl, 
         <OvCard icon="cal" title="Project management" onOpen={() => onGo("manage")} openLabel="Stages and milestones">
           {pm}
         </OvCard>
-        <OvCard icon="chart" title="Accounting" onOpen={() => onGo("budget")} openLabel="Budget vs actual">
+        <OvCard icon="chart" title="Accounting" onOpen={() => onGo("expenses")} openLabel="Expenses & Documents">
           {stage === "sold" ? (
             <React.Fragment>
               <div className="ov-pair">
@@ -1156,7 +1408,7 @@ function ProjectOverview({ address, mapsKey, folderId, photosUrl, setPhotosUrl, 
           ) : (
             <React.Fragment>
               <div className="ov-pair">
-                <OvStat k="Rehab spent" v={fmt(rSpent)} big />
+                <OvStat k="Rehab spent" v={fmt(rSpent)} tone={rTone === "red" ? T.red : rTone === "amber" ? T.amber : undefined} big />
                 <OvStat k="Rehab budget" v={fmt(rBudget)} />
               </div>
               <BudgetBar spent={rSpent} budget={rBudget} work={stage === "rehab" ? mp : null} />
@@ -1177,37 +1429,31 @@ function ProjectOverview({ address, mapsKey, folderId, photosUrl, setPhotosUrl, 
           )}
         </OvCard>
       </div>
-      {stage !== "dead" && <UtilitiesCard address={address} stage={stage} mgmt={mgmt} setMgmt={setMgmt} />}
-      <div className="ov-lower">
-        <OvCard icon="cal" title="Key dates">
-          <div className="ov-k">Transaction</div>
-          {tx.map(dateRow)}
-          <div className="ov-k" style={{ marginTop: 12 }}>
-            Construction
-          </div>
-          {cx.map(dateRow)}
-        </OvCard>
-        <OvCard icon="pulse" title="Recent activity" onOpen={() => onGo("manage")} openLabel="Activity log">
-          {log.length === 0 && <div className="dcard-empty">Stage changes and updates show up here.</div>}
-          {log.map((l) => (
-            <div key={l.id} className="ov-log">
-              <em>
-                {fmtTs(l.ts)}
-                {l.by ? `, ${nameOnly(l.by)}` : ""}
-              </em>
-              <span>{l.text}</span>
+      <div className="ov-ops">
+        <NextUp stage={stage} mgmt={mgmt} setMgmt={setMgmt} address={address} by={userEmail || ""} addLog={addLog || (() => {})} onGo={onGo} onUploadDoc={onUploadDoc} openAttachment={openAttachment} connected={connected} />
+        <div className="ov-side">
+          <OvCard icon="cal" title="Key dates">
+            <div className="ov-k">Transaction</div>
+            {tx.map(dateRow)}
+            <div className="ov-k" style={{ marginTop: 12 }}>
+              Construction
             </div>
-          ))}
-        </OvCard>
-        <OvCard icon="users" title="Contacts" onOpen={() => onGo("docs")} openLabel="Documents">
-          {(mgmt.contacts || []).length === 0 && <div className="dcard-empty">No contacts yet. Add the title company, lender and contractor.</div>}
-          {(mgmt.contacts || []).slice(0, 4).map((c) => (
-            <div key={c.id} className="ov-log">
-              <span style={{ fontWeight: 600 }}>{c.name || c.company || "—"}</span>
-              <em>{[c.role, c.company && c.name ? c.company : "", c.phone].filter(Boolean).join(", ")}</em>
-            </div>
-          ))}
-        </OvCard>
+            {cx.map(dateRow)}
+          </OvCard>
+          <ContactsPanel contacts={mgmt.contacts || []} upd={upd} />
+          <OvCard icon="pulse" title="Recent activity" onOpen={() => onGo("manage")} openLabel="Activity log">
+            {log.length === 0 && <div className="dcard-empty">Stage changes and updates show up here.</div>}
+            {log.map((l) => (
+              <div key={l.id} className="ov-log">
+                <em>
+                  {fmtTs(l.ts)}
+                  {l.by ? `, ${nameOnly(l.by)}` : ""}
+                </em>
+                <span>{l.text}</span>
+              </div>
+            ))}
+          </OvCard>
+        </div>
       </div>
     </div>
   );
@@ -1226,237 +1472,4 @@ function rehabBudgetLines({ milestones, repairs, useRepairBuilder, repairTotal }
     if (items.length) return { kind: "items", lines: items };
   }
   return { kind: "total", lines: [{ key: "rehab", label: "Rehab (one total)", budget: repairTotal }] };
-}
-function BudgetVsActual({ m, uwBaseline, actuals, setActuals, mgmt, repairs, useRepairBuilder, repairTotal, arv, actualSale, stage, onGo }) {
-  const [openLine, setOpenLine] = useState(null);
-  const P = uwBaseline ? uwBaseline.m : m;
-  const cats = [
-    ["Acquisition", (P.purchase || 0) + (P.totalBuying || 0), "purchase price and buying costs"],
-    ["Rehab / Construction", P.repair || 0, "rehab estimate"],
-    ["Financing", P.totalFinancing || 0, "interest, points, investor return"],
-    ["Holding", P.totalHolding || 0, "taxes, insurance, utilities"],
-    ["Selling", P.totalSelling || 0, "commission, title, transfer"],
-    ["Services", P.pmFee || 0, P.pmFee > 0 ? "project manager" : "not budgeted"],
-    ["Other", 0, "not budgeted"],
-  ].map(([cat, budget, note]) => {
-    const actual = sumActuals(actuals, cat);
-    return { cat, budget, note, actual, projected: Math.max(actual, budget) };
-  });
-  const totBudget = cats.reduce((t, c) => t + c.budget, 0);
-  const totActual = cats.reduce((t, c) => t + c.actual, 0);
-  const totProjected = cats.reduce((t, c) => t + c.projected, 0);
-  const saleBasis = actualSale > 0 ? actualSale : arv;
-  const projProfit = saleBasis - totProjected;
-  const planProfit = P.netProfit != null ? P.netProfit : (uwBaseline ? uwBaseline.inputs.arv : arv) - totBudget;
-  // rehab lines
-  const RL = rehabBudgetLines({ milestones: mgmt.rehab.milestones, repairs, useRepairBuilder, repairTotal });
-  const keys = new Set(RL.lines.map((l) => l.key));
-  const rehabEntries = actuals.filter((a) => a.cat === "Rehab / Construction");
-  const lineOf = (a) => (RL.lines.length === 1 && RL.kind === "total" ? "rehab" : a.bl && keys.has(a.bl) ? a.bl : RB_UNASSIGNED);
-  const lineRows = RL.lines.map((l) => {
-    const entries = rehabEntries.filter((a) => lineOf(a) === l.key);
-    return { ...l, entries, actual: entries.reduce((t, a) => t + (parseFloat(a.amount) || 0), 0) };
-  });
-  const unassigned = rehabEntries.filter((a) => lineOf(a) === RB_UNASSIGNED);
-  const unassignedTotal = unassigned.reduce((t, a) => t + (parseFloat(a.amount) || 0), 0);
-  const lineBudgetTotal = lineRows.reduce((t, l) => t + l.budget, 0);
-  const assign = (id, key) => setActuals((p) => p.map((a) => (a.id === id ? { ...a, bl: key || undefined } : a)));
-  const varCell = (budget, actual) => {
-    const v = budget - actual;
-    if (!budget && !actual) return <span className="dt-mute">—</span>;
-    return <span style={{ color: v < 0 ? T.red : T.txt }}>{v < 0 ? `${fmt(-v)} over` : `${fmt(v)} left`}</span>;
-  };
-  const entryRow = (a, current) => (
-    <div key={a.id} className="ba-entry">
-      <span className="ba-entry-d">{a.date ? fmtDateShort(a.date) : ""}</span>
-      <span className="ba-entry-l">{a.label || "—"}</span>
-      <span className="ba-entry-a">{fmt(parseFloat(a.amount) || 0)}</span>
-      {RL.kind !== "total" && (
-        <select value={current} onChange={(e) => assign(a.id, e.target.value)} aria-label={`Budget line for ${a.label || "expense"}`}>
-          <option value="">Unassigned</option>
-          {RL.lines.map((l) => (
-            <option key={l.key} value={l.key}>
-              {l.label}
-            </option>
-          ))}
-        </select>
-      )}
-    </div>
-  );
-  return (
-    <div className="ba">
-      <div className="pf-strip strip-4">
-        <div title={uwBaseline ? `Original underwriting, frozen ${fmtDate(uwBaseline.date)}` : "Current underwriting (no original snapshot yet)"}>
-          <span>Project budget</span>
-          <b>{fmt(totBudget)}</b>
-          <em>{uwBaseline ? `original plan, ${fmtDateShort(uwBaseline.date)}` : "current underwriting"}</em>
-        </div>
-        <div>
-          <span>Spent so far</span>
-          <b>{fmt(totActual)}</b>
-          <em>{totBudget > 0 ? `${Math.round((totActual / totBudget) * 100)}% of budget` : " "}</em>
-        </div>
-        <div>
-          <span>Projected final cost</span>
-          <b style={totProjected > totBudget ? { color: T.red } : undefined}>{fmt(totProjected)}</b>
-          <em>{totProjected > totBudget ? `${fmt(totProjected - totBudget)} over budget` : "on budget so far"}</em>
-        </div>
-        <div title="Sale price (actual, or ARV until it sells) minus the projected final cost. Each category counts at its budget, or at what's already spent if that's more.">
-          <span>Projected profit</span>
-          <b style={projProfit < 0 ? { color: T.red } : undefined}>{fmt(projProfit)}</b>
-          <em>
-            plan {fmt(planProfit)}, {actualSale > 0 ? "at the actual sale price" : "at the ARV"}
-          </em>
-        </div>
-      </div>
-
-      <section className="dcard">
-        <div className="dcard-h">
-          <Icon name="chart" /> Project budget by category
-          <button className="dcard-link" onClick={() => onGo("actuals")}>
-            Expenses <Icon name="chevron" size={14} />
-          </button>
-        </div>
-        <div className="dt-wrap flush">
-          <table className="dt ba-table">
-            <thead>
-              <tr>
-                <th>Category</th>
-                <th className="num">Budget</th>
-                <th className="num">Actual</th>
-                <th className="num">Remaining</th>
-                <th style={{ width: "26%" }}>Used</th>
-              </tr>
-            </thead>
-            <tbody>
-              {cats.map((c) => (
-                <tr key={c.cat}>
-                  <td>
-                    <div className="dt-prop">
-                      <b>{c.cat === "Rehab / Construction" ? "Rehab" : c.cat}</b>
-                      <span>{c.note}</span>
-                    </div>
-                  </td>
-                  <td className="num">{c.budget ? fmt(c.budget) : <span className="dt-mute">—</span>}</td>
-                  <td className="num">{c.actual ? fmt(c.actual) : <span className="dt-mute">—</span>}</td>
-                  <td className="num">{varCell(c.budget, c.actual)}</td>
-                  <td>
-                    {c.budget > 0 ? (
-                      <div className="dt-budget">
-                        <div>
-                          <span />
-                          <em>{Math.round((c.actual / c.budget) * 100)}%</em>
-                        </div>
-                        <BudgetBar spent={c.actual} budget={c.budget} />
-                      </div>
-                    ) : c.actual > 0 ? (
-                      <span style={{ fontSize: 12.5, color: "#9A5B05" }}>Not in the budget</span>
-                    ) : null}
-                  </td>
-                </tr>
-              ))}
-              <tr className="ba-total">
-                <td>Total</td>
-                <td className="num">{fmt(totBudget)}</td>
-                <td className="num">{fmt(totActual)}</td>
-                <td className="num">{varCell(totBudget, totActual)}</td>
-                <td />
-              </tr>
-            </tbody>
-          </table>
-        </div>
-      </section>
-
-      <section className="dcard">
-        <div className="dcard-h">
-          <Icon name="hammer" /> Rehab budget by line
-          <span className="dcard-r">
-            {RL.kind === "milestones" ? "from the milestones (SOW)" : RL.kind === "items" ? "from the itemized estimate" : "one total amount"}
-          </span>
-        </div>
-        {RL.kind === "total" && (
-          <div className="ba-hint">
-            Read a contractor's SOW or itemize the rehab estimate to track the budget line by line. <button className="link-btn" onClick={() => onGo("underwrite")}>Open the rehab estimate</button>
-          </div>
-        )}
-        <div className="dt-wrap flush">
-          <table className="dt ba-table">
-            <thead>
-              <tr>
-                <th>{RL.kind === "milestones" ? "Milestone" : "Line"}</th>
-                <th className="num">Budget</th>
-                <th className="num">Actual</th>
-                <th className="num">Remaining</th>
-                <th style={{ width: "26%" }}>Used</th>
-              </tr>
-            </thead>
-            <tbody>
-              {lineRows.map((l) => (
-                <React.Fragment key={l.key}>
-                  <tr className={"ba-line" + (l.entries.length ? " has" : "")} onClick={() => l.entries.length && setOpenLine(openLine === l.key ? null : l.key)}>
-                    <td>
-                      <div className="dt-prop">
-                        <b>
-                          {l.entries.length > 0 && <Icon name="chevron" size={13} style={{ transform: openLine === l.key ? "rotate(90deg)" : "none", marginRight: 4, verticalAlign: -2 }} />}
-                          {l.label}
-                        </b>
-                        <span>
-                          {[
-                            RL.kind === "milestones" ? (l.status === "done" ? "Done" : l.status === "doing" ? "In progress" : "To do") : l.group || "",
-                            l.entries.length ? `${l.entries.length} expense${l.entries.length === 1 ? "" : "s"}` : "",
-                          ]
-                            .filter(Boolean)
-                            .join(", ")}
-                        </span>
-                      </div>
-                    </td>
-                    <td className="num">{l.budget ? fmt(l.budget) : <span className="dt-mute">—</span>}</td>
-                    <td className="num">{l.actual ? fmt(l.actual) : <span className="dt-mute">—</span>}</td>
-                    <td className="num">{varCell(l.budget, l.actual)}</td>
-                    <td>{l.budget > 0 && <BudgetBar spent={l.actual} budget={l.budget} work={RL.kind === "milestones" ? (l.status === "done" ? 100 : l.status === "doing" ? 50 : 0) : null} />}</td>
-                  </tr>
-                  {openLine === l.key && (
-                    <tr className="ba-entries">
-                      <td colSpan={5}>{l.entries.map((a) => entryRow(a, l.key))}</td>
-                    </tr>
-                  )}
-                </React.Fragment>
-              ))}
-              {RL.kind !== "total" && (
-                <tr className="ba-un">
-                  <td>
-                    <div className="dt-prop">
-                      <b>Not assigned to a line</b>
-                      <span>{unassigned.length ? `${unassigned.length} rehab expense${unassigned.length === 1 ? "" : "s"}, assign each one below` : "every rehab expense is assigned"}</span>
-                    </div>
-                  </td>
-                  <td />
-                  <td className="num">{unassignedTotal ? fmt(unassignedTotal) : <span className="dt-mute">—</span>}</td>
-                  <td />
-                  <td />
-                </tr>
-              )}
-              {RL.kind !== "total" && unassigned.length > 0 && (
-                <tr className="ba-entries">
-                  <td colSpan={5}>{unassigned.map((a) => entryRow(a, ""))}</td>
-                </tr>
-              )}
-              <tr className="ba-total">
-                <td>Rehab total</td>
-                <td className="num">{fmt(lineBudgetTotal)}</td>
-                <td className="num">{fmt(sumActuals(actuals, "Rehab / Construction"))}</td>
-                <td className="num">{varCell(lineBudgetTotal, sumActuals(actuals, "Rehab / Construction"))}</td>
-                <td />
-              </tr>
-            </tbody>
-          </table>
-        </div>
-        {RL.kind !== "total" && Math.abs(lineBudgetTotal - (P.repair || 0)) >= 1 && (
-          <div className="ba-hint">
-            The lines add up to {fmt(lineBudgetTotal)}; the {uwBaseline ? "original" : "current"} rehab budget is {fmt(P.repair || 0)}.
-          </div>
-        )}
-      </section>
-    </div>
-  );
 }

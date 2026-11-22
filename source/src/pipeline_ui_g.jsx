@@ -777,15 +777,61 @@ const addedMessage = (added) => {
   const txt = parts.map(([n, st], i) => (i === 0 ? `${n} task${n === 1 ? "" : "s"} to ${st}` : `${n} to ${st}`));
   return "Added " + (txt.length === 1 ? txt[0] : txt.slice(0, -1).join(", ") + " and " + txt[txt.length - 1]) + ".";
 };
-const utilStatus = (mg, key) => {
-  const find = (list, ut) => (list || []).find((i) => i.ut === ut);
-  const b = find(mg.checklists.contract, `${key}:buy`) || find(mg.checklists.rehab, `${key}:buy`);
-  const s = find(mg.checklists.market, `${key}:sell`);
-  if (s && s.done) return { label: "Stopped", tone: "done" };
-  if (b && b.done) return { label: "Set up", tone: "done" };
-  if (b) return { label: "To do", tone: "todo" };
-  return { label: "No task", tone: "none" };
+// One status per service: To do → Confirmed (provider verified) → Active (started in the LLC's name),
+// and Stopped once the sale's stop task is done. Tasks live on the stage checklists.
+const UTIL_ST = {
+  todo: { label: "To do", tone: "todo", next: "Mark the provider confirmed" },
+  confirmed: { label: "Confirmed", tone: "confirmed", next: "Mark the service active in the LLC's name" },
+  active: { label: "Active", tone: "done", next: "Reset to To do" },
+  stopped: { label: "Stopped", tone: "done", next: "Undo the stop" },
 };
+const findTask = (mg, ut) => ["contract", "rehab", "market"].map((k) => (mg.checklists[k] || []).find((i) => i.ut === ut)).find(Boolean) || null;
+const utilState = (mg, it, key) => {
+  const b = key ? findTask(mg, `${key}:buy`) : null;
+  const s = key ? findTask(mg, `${key}:sell`) : null;
+  if (s && s.done) return "stopped";
+  if (b && b.done) return "active";
+  if (it && it.confirmed) return "confirmed";
+  return "todo";
+};
+const utilStatus = (mg, key, it) => UTIL_ST[utilState(mg, it, key)];
+const setTaskDone = (mg, ut, done, by) => {
+  const f = (list) => (list || []).map((i) => (i.ut === ut ? { ...i, done, doneAt: done ? new Date().toISOString() : "", by: done ? by || "" : "" } : i));
+  return { ...mg, checklists: { ...mg.checklists, contract: f(mg.checklists.contract), rehab: f(mg.checklists.rehab), market: f(mg.checklists.market) } };
+};
+const utilConfirmKind = (type) => `Utility confirmation: ${UTIL_LABEL[type]}`;
+function CopyPhone({ phone }) {
+  const [ok, setOk] = useState(false);
+  const copy = async () => {
+    let done = false;
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        await navigator.clipboard.writeText(phone);
+        done = true;
+      }
+    } catch (e) {}
+    if (!done) {
+      try {
+        const ta = document.createElement("textarea");
+        ta.value = phone;
+        ta.style.position = "fixed";
+        ta.style.opacity = "0";
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand && document.execCommand("copy");
+        ta.remove();
+      } catch (e) {}
+    }
+    setOk(true);
+    setTimeout(() => setOk(false), 1400);
+  };
+  return (
+    <button className={"util-phone" + (ok ? " copied" : "")} onClick={copy} title="Copy the phone number">
+      {phone}
+      <Icon name={ok ? "check" : "copy"} size={13} />
+    </button>
+  );
+}
 // "check near the county line" → "Check near the county line."
 const sentence = (s) => {
   const t = String(s || "").trim().replace(/\.+$/, "");
@@ -817,17 +863,17 @@ const readUtilOpen = () => {
 function UtilitySummary({ u, mgmt }) {
   const groups = utilGroups(u);
   const missing = u.items.filter((it) => !it.name).map((it) => UTIL_LABEL[it.type].toLowerCase());
-  const counts = { todo: 0, done: 0 };
-  groups.forEach((g) => {
-    const st = utilStatus(mgmt, g.key);
-    if (st.tone === "todo") counts.todo++;
-    else if (st.tone === "done") counts.done++;
+  const counts = { todo: 0, confirmed: 0, active: 0, stopped: 0 };
+  u.items.forEach((it) => {
+    if (!it.name) return;
+    const g = groups.find((x) => x.types.includes(it.type));
+    counts[utilState(mgmt, it, g && g.key)]++;
   });
-  const unconfirmed = u.items.filter((it) => it.name && !it.confirmed).length;
   const status = [
     counts.todo ? `${counts.todo} to do` : "",
-    counts.done ? `${counts.done} set up` : "",
-    unconfirmed ? `${unconfirmed} to verify` : "",
+    counts.confirmed ? `${counts.confirmed} confirmed` : "",
+    counts.active ? `${counts.active} active` : "",
+    counts.stopped ? `${counts.stopped} stopped` : "",
     missing.length ? `${missing.length} not found` : "",
   ].filter(Boolean);
   return (
@@ -848,7 +894,9 @@ function UtilitySummary({ u, mgmt }) {
     </div>
   );
 }
-function UtilitiesCard({ address, stage, mgmt, setMgmt }) {
+function UtilitiesCard({ address, stage, mgmt, setMgmt, by, onUploadDoc, openAttachment, connected }) {
+  const docRef = useRef(null);
+  const docFor = useRef(null);
   const [open, setOpenState] = useState(readUtilOpen);
   const setOpen = (v) => {
     setOpenState(v);
@@ -900,6 +948,22 @@ function UtilitiesCard({ address, stage, mgmt, setMgmt }) {
       true,
     );
   };
+  // the status pill moves a service along: To do → Confirmed → Active → To do (Active → Stopped once it's on the market)
+  const cycle = (it, key) => {
+    const cur = utilState(mgmt, it, key);
+    const selling = stage === "market" || stage === "sold";
+    setMgmt((mg) => {
+      const items = (nu) => ({ ...mg, utilities: { ...mg.utilities, items: mg.utilities.items.map((x) => (x.type === it.type ? { ...x, ...nu } : x)) } });
+      if (cur === "todo") return items({ confirmed: true });
+      if (cur === "confirmed") return key && findTask(mg, `${key}:buy`) ? setTaskDone(mg, `${key}:buy`, true, by) : items({ confirmed: false });
+      if (cur === "active") {
+        if (selling && key && findTask(mg, `${key}:sell`)) return setTaskDone(mg, `${key}:sell`, true, by);
+        return setTaskDone({ ...items({ confirmed: false }) }, `${key}:buy`, false, by);
+      }
+      return setTaskDone(mg, `${key}:sell`, false, by);
+    });
+  };
+  const confDocs = (type) => (mgmt.docs || []).filter((d) => d.kind === utilConfirmKind(type));
   const stale = u && u.address && address.trim() && u.address.trim().toLowerCase() !== address.trim().toLowerCase();
   const groupsByType = {};
   if (u) utilGroups(u).forEach((g) => g.types.forEach((t) => (groupsByType[t] = g)));
@@ -950,16 +1014,17 @@ function UtilitiesCard({ address, stage, mgmt, setMgmt }) {
                 <tr>
                   <th>Service</th>
                   <th>Provider</th>
-                  <th>Start or stop</th>
-                  <th>Task</th>
+                  <th>Contact</th>
                   <th>Account #</th>
+                  <th>Status</th>
                 </tr>
               </thead>
               <tbody>
                 {u.items.map((it) => {
                   const g = groupsByType[it.type];
                   const dir = g && g.dir;
-                  const st = g ? utilStatus(mgmt, g.key) : null;
+                  const st = it.name ? utilStatus(mgmt, g && g.key, it) : null;
+                  const cdocs = confDocs(it.type);
                   const isEdit = edit && edit.type === it.type;
                   return (
                     <tr key={it.type}>
@@ -993,10 +1058,11 @@ function UtilitiesCard({ address, stage, mgmt, setMgmt }) {
                             <b>{it.name || <span className="dt-mute">Not found</span>}</b>
                             <span>
                               {it.confirmed ? (
-                                <em className="util-ok">Confirmed</em>
+                                <em className="util-ok">Verified</em>
                               ) : it.name ? (
                                 <em className="util-src">{utilSourceLabel(it)}, verify</em>
                               ) : null}
+                              {it.detail ? <> {it.detail}.</> : null}
                               {it.alt && it.alt.length > 0 && (
                                 <>
                                   {" "}
@@ -1015,11 +1081,6 @@ function UtilitiesCard({ address, stage, mgmt, setMgmt }) {
                               {it.note && <> {sentence(it.note)}</>}
                             </span>
                             <span className="util-actions">
-                              {it.name && !it.confirmed && (
-                                <button className="link-btn" onClick={() => updItem(it.type, { confirmed: true })}>
-                                  Mark confirmed
-                                </button>
-                              )}
                               <button className="link-btn" onClick={() => setEdit({ type: it.type, name: it.name || "", phone: it.phone || "" })}>
                                 {it.name ? "Change" : "Add provider"}
                               </button>
@@ -1045,7 +1106,7 @@ function UtilitiesCard({ address, stage, mgmt, setMgmt }) {
                                   {l.label} <Icon name="link" size={12} />
                                 </a>
                               ))}
-                            {it.phone && <span>{it.phone}</span>}
+                            {it.phone && <CopyPhone phone={it.phone} />}
                           </div>
                         ) : (
                           <div className="util-links">
@@ -1055,10 +1116,35 @@ function UtilitiesCard({ address, stage, mgmt, setMgmt }) {
                           </div>
                         )}
                       </td>
-                      <td>{st ? <span className={"util-st " + st.tone}>{st.label}</span> : <span className="dt-mute">—</span>}</td>
                       <td>
                         {it.name && !(dir && dir.noAccount) ? (
                           <input className="util-acct" value={it.account || ""} onChange={(e) => updItem(it.type, { account: e.target.value })} placeholder="Account #" aria-label={`${UTIL_LABEL[it.type]} account number`} />
+                        ) : (
+                          <span className="dt-mute">—</span>
+                        )}
+                      </td>
+                      <td className="util-stc">
+                        {st ? (
+                          <div className="util-stcell">
+                            <button className={"util-st " + st.tone} onClick={() => cycle(it, g && g.key)} title={`Click: ${st.next}`}>
+                              {st.label}
+                            </button>
+                            {onUploadDoc && (
+                              <button
+                                className={"util-doc" + (cdocs.length ? " has" : "")}
+                                onClick={() => {
+                                  if (cdocs.length && openAttachment) return openAttachment(cdocs[cdocs.length - 1]);
+                                  docFor.current = it.type;
+                                  docRef.current && docRef.current.click();
+                                }}
+                                disabled={!cdocs.length && !connected}
+                                title={cdocs.length ? `Open the confirmation (${cdocs[cdocs.length - 1].name})` : connected ? "Attach the provider's confirmation" : "Connect Google Drive to attach a confirmation"}
+                                aria-label={cdocs.length ? "Open the confirmation" : "Attach a confirmation"}
+                              >
+                                <Icon name={cdocs.length ? "file" : "clip"} size={13} />
+                              </button>
+                            )}
+                          </div>
                         ) : (
                           <span className="dt-mute">—</span>
                         )}
@@ -1069,6 +1155,17 @@ function UtilitiesCard({ address, stage, mgmt, setMgmt }) {
               </tbody>
             </table>
           </div>
+          <input
+            ref={docRef}
+            type="file"
+            accept="image/*,.pdf"
+            style={{ display: "none" }}
+            onChange={(e) => {
+              const f = e.target.files && e.target.files[0];
+              if (f && docFor.current && onUploadDoc) onUploadDoc(f, utilConfirmKind(docFor.current));
+              e.target.value = "";
+            }}
+          />
           <div className="util-foot">
             <span>
               {u.matched ? `Matched ${u.matched}` : `Address ${u.address}`}

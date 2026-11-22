@@ -36,19 +36,20 @@ const addMonthsISO = (s, n) => {
   t.setDate(t.getDate() + Math.round((n - whole) * 30.4375));
   return isoOf(t);
 };
+// Dates read MM/DD/YYYY everywhere (MM/DD in compact rows)
 const fmtDate = (s) => {
   const d = parseISO(s);
-  return d ? d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "—";
+  return d ? `${pad2(d.getMonth() + 1)}/${pad2(d.getDate())}/${d.getFullYear()}` : "—";
 };
 const fmtDateShort = (s) => {
   const d = parseISO(s);
-  return d ? d.toLocaleDateString("en-US", { month: "short", day: "numeric" }) : "—";
+  return d ? `${pad2(d.getMonth() + 1)}/${pad2(d.getDate())}` : "—";
 };
 const fmtTs = (ts) => {
   if (!ts) return "";
   const d = new Date(ts);
   if (isNaN(d)) return "";
-  return d.toLocaleDateString("en-US", { month: "short", day: "numeric" }) + ", " + d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
+  return `${pad2(d.getMonth() + 1)}/${pad2(d.getDate())}/${d.getFullYear()}, ` + d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
 };
 const relDays = (n) => {
   if (n == null) return "";
@@ -89,13 +90,14 @@ const splitAddress = (name) => {
 
 // ---------- stages ----------
 const STAGES = [
-  { key: "analyzing", label: "Analyzing", color: "#7D8BA3", dateLabel: "Analyzed" },
-  { key: "contract", label: "Under contract", color: "#23508F", dateLabel: "Contract" },
-  { key: "rehab", label: "Rehab", color: "#C27C0E", dateLabel: "Closed" },
-  { key: "market", label: "On market", color: "#5B4FB0", dateLabel: "Listed" },
-  { key: "sold", label: "Sold", color: "#1B7F4C", dateLabel: "Sold" },
+  // one blue-violet ramp, light to deep, so a stage never borrows a semantic color (emerald / amber / crimson)
+  { key: "analyzing", label: "Analyzing", color: "#94A3B8", dateLabel: "Analyzed" },
+  { key: "contract", label: "Under contract", color: "#818CF8", dateLabel: "Contract" },
+  { key: "rehab", label: "Rehab", color: "#6366F1", dateLabel: "Closed" },
+  { key: "market", label: "On market", color: "#4F46E5", dateLabel: "Listed" },
+  { key: "sold", label: "Sold", color: "#312E81", dateLabel: "Sold" },
 ];
-const DEAD_STAGE = { key: "dead", label: "Dead", color: "#A3AEBF", dateLabel: "Dead" };
+const DEAD_STAGE = { key: "dead", label: "Dead", color: "#D1D5DB", dateLabel: "Dead" };
 const stageIdx = (k) => STAGES.findIndex((s) => s.key === k);
 const stageMeta = (k) => STAGES.find((s) => s.key === k) || DEAD_STAGE;
 const ACTIVE_STAGES = ["contract", "rehab", "market"];
@@ -539,6 +541,16 @@ function summarizeDeal(d) {
       if (!(fee > 0)) return undefined;
       return R0(pmPlan(mg, acts, fee).dueTotal) || undefined;
     })(),
+    // paperwork on file: P purchase HUD-1, S scope of work, L sale HUD-1 ("-" none); powers the Docs column
+    dk: (() => {
+      const an = mg.analyses || [];
+      const side = (a) => (a.review && a.review.side) || a.side;
+      const kinds = (mg.docs || []).map((d) => String(d.kind || ""));
+      const buy = an.some((a) => a.kind === "closing" && side(a) === "buy" && a.appliedAt) || kinds.some((k) => /purchase closing/i.test(k));
+      const sow = an.some((a) => a.kind === "sow" && a.appliedAt) || kinds.some((k) => /scope of work/i.test(k));
+      const sale = an.some((a) => a.kind === "closing" && side(a) === "sell" && a.appliedAt) || kinds.some((k) => /sale closing/i.test(k));
+      return (buy ? "P" : "") + (sow ? "S" : "") + (sale ? "L" : "") || "-";
+    })(),
     rb: R0(base ? base.m.repair : m.repair),
     rsp: R0(sumActuals(acts, "Rehab / Construction")),
     ld: mg.listing.date || undefined,
@@ -586,6 +598,17 @@ function propsToSummary(ap) {
   } catch {
     return null;
   }
+}
+
+// ---------- paperwork each stage should have on file ----------
+const DOC_NEEDS = { rehab: ["P", "S"], market: ["P", "S"], sold: ["P", "S", "L"] };
+const DOC_NAMES = { P: "Purchase HUD", S: "SOW", L: "Sale HUD" };
+function docsStatus(s) {
+  const need = s && DOC_NEEDS[s.st];
+  if (!need) return null;
+  if (s.dk === undefined) return { unknown: true };
+  const have = need.filter((k) => s.dk.includes(k));
+  return { need: need.length, have: have.length, missing: need.filter((k) => !s.dk.includes(k)).map((k) => DOC_NAMES[k]) };
 }
 
 // ---------- needs-attention rules ----------

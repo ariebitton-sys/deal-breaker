@@ -52,6 +52,7 @@ const ICONS = {
   edit: "M4 20h4L19 9l-4-4L4 16zM13 7l4 4",
   clip: "M20 11.5l-8.2 8.2a5 5 0 0 1-7.1-7.1l8.5-8.5a3.3 3.3 0 0 1 4.7 4.7l-8.5 8.5a1.7 1.7 0 0 1-2.4-2.4l7.8-7.8",
   camera: "M4 8h3l2-3h6l2 3h3v11H4zM12 17a4 4 0 1 0 0-8 4 4 0 0 0 0 8z",
+  copy: "M9 9h10v11H9zM5 15V4h10",
 };
 function Icon({ name, size = 16, stroke = 1.8, style }) {
   return (
@@ -170,13 +171,13 @@ function ResultsRail({ deal, m, mao, purchase, arv, investorAmount, sqft, gradeR
   const [more, setMore] = useState(false);
   const inc = deal.incomplete;
   const parts = [
-    ["Purchase", m.purchase, "#15284B"],
-    ["Rehab", m.repair, "#3B5A8F"],
-    ...(m.pmFee > 0 ? [["Project manager", m.pmFee, "#5D78A6"]] : []),
-    ["Financing", m.totalFinancing, "#7E96BD"],
-    ["Selling", m.totalSelling, "#A9BAD3"],
-    ["Buying", m.totalBuying, "#CDD7E5"],
-    ["Holding", m.totalHolding, "#E3E9F1"],
+    ["Purchase", m.purchase, "#111827"],
+    ["Rehab", m.repair, "#374151"],
+    ...(m.pmFee > 0 ? [["Project manager", m.pmFee, "#4B5563"]] : []),
+    ["Financing", m.totalFinancing, "#6B7280"],
+    ["Selling", m.totalSelling, "#9CA3AF"],
+    ["Buying", m.totalBuying, "#C7CCD3"],
+    ["Holding", m.totalHolding, "#E2E5E9"],
   ];
   const profit = Math.max(0, m.netProfit || 0);
   const total = parts.reduce((s, p) => s + Math.max(0, p[1] || 0), 0) + profit;
@@ -233,7 +234,7 @@ function ResultsRail({ deal, m, mao, purchase, arv, investorAmount, sqft, gradeR
             {parts.map(([n, v, c]) =>
               v > 0 ? <span key={n} className="keep-color" title={`${n}: ${fmt(v)}`} style={{ width: `${(v / total) * 100}%`, background: c }} /> : null,
             )}
-            {profit > 0 && <span className="keep-color" title={`Profit: ${fmt(profit)}`} style={{ width: `${(profit / total) * 100}%`, background: T.marker }} />}
+            {profit > 0 && <span className="keep-color" title={`Profit: ${fmt(profit)}`} style={{ width: `${(profit / total) * 100}%`, background: "#10B981" }} />}
           </div>
           <div className="rail-legend">
             {parts.map(([n, v, c]) => (
@@ -244,7 +245,7 @@ function ResultsRail({ deal, m, mao, purchase, arv, investorAmount, sqft, gradeR
               </div>
             ))}
             <div>
-              <i className="keep-color" style={{ background: T.marker }} />
+              <i className="keep-color" style={{ background: "#10B981" }} />
               <span>Profit</span>
               <b style={{ color: m.netProfit < 0 ? T.red : undefined }}>{fmt(m.netProfit)}</b>
             </div>
@@ -268,39 +269,5 @@ function ResultsRail({ deal, m, mao, purchase, arv, investorAmount, sqft, gradeR
         </div>
       )}
     </aside>
-  );
-}
-
-// ---------- Documents tab ----------
-function DocumentsTab({ mgmt, upd, analyses, onImport, onImportSow, onOpenAnalysis, onDeleteAnalysis, onUploadDoc, openAttachment, connected, uploading, stage }) {
-  return (
-    <div className="actuals-two-col" style={{ display: "grid", gap: 20, alignItems: "start" }}>
-      <div>
-        <Panel title="Read a document with AI" kicker="closing statements, SOW" accent={T.violet}>
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: (analyses || []).length ? 14 : 0 }}>
-            <button onClick={() => onImport("buy")} style={btnGhost()}>
-              <Icon name="file" /> Purchase closing statement
-            </button>
-            <button onClick={() => onImport("sell")} style={btnGhost()}>
-              <Icon name="file" /> Sale closing statement
-            </button>
-            <button onClick={onImportSow} style={btnGhost()}>
-              <Icon name="file" /> Scope of work
-            </button>
-          </div>
-          <AnalysesList
-            analyses={analyses}
-            onOpen={onOpenAnalysis}
-            onView={(a) => openAttachment({ type: "drive_file", driveFileId: a.driveFileId })}
-            onDelete={onDeleteAnalysis}
-            empty="Pick a PDF or photo from your computer or Google Drive. Claude reads it and you approve each line before anything changes. Every analysis is saved here."
-          />
-        </Panel>
-        <DocsPanel docs={mgmt.docs} upd={upd} onUploadDoc={onUploadDoc} openAttachment={openAttachment} connected={connected} uploading={uploading} stage={stage} plain />
-      </div>
-      <div>
-        <ContactsPanel contacts={mgmt.contacts} upd={upd} />
-      </div>
-    </div>
   );
 }

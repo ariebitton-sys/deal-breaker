@@ -37,9 +37,9 @@ const mk = (address, stage, extra) => ({
   const back = async () => { H.back(); await t.sleep(30); await t.settle(10); };
   const fwd = async () => { H.forward(); await t.sleep(30); await t.settle(10); };
   const addr = () => (t.doc.querySelector(".dh-addr") ? t.doc.querySelector(".dh-addr").value : null);
-  const activeNav = () => { const b = t.doc.querySelector(".sidebar .sb-sub.on, .sidebar button.on, .sidebar [aria-current='page']"); return b ? b.textContent.trim() : ""; };
+  const activeNav = () => { const b = t.doc.querySelector(".ptabs .ptab.on, .sidebar button.on, .sidebar [aria-current='page']"); return b ? b.textContent.trim() : ""; };
   const backBtn = () => t.doc.querySelector(".tb-back");
-  const nav = (re) => t.btn(re, t.doc.querySelector(".sidebar"));
+  const nav = t.nav;
   const openRow = async (txt) => { await t.click([...t.doc.querySelectorAll("tr.dt-row")].find((r) => r.textContent.includes(txt))); await t.sleep(20); await t.settle(10); };
 
   console.log("1. Start on the dashboard: no Back button yet");
@@ -50,8 +50,8 @@ const mk = (address, stage, extra) => ({
   console.log("2. Open a deal, switch tab, go back step by step");
   await openRow("100 Alpha St");
   assert(addr() === "100 Alpha St, Cleveland, OH 44102" && backBtn(), "deal opened; Back button appears");
-  await t.click(nav(/^Budget vs actual$/));
-  assert(H.state.v === "deal" && H.state.m === "budget" && H.length >= 3, "tab change is its own entry");
+  await t.click(nav(/^Expenses & Documents/));
+  assert(H.state.v === "deal" && H.state.m === "expenses" && H.length >= 3 && /Expenses & Documents/.test(activeNav()), "tab change is its own entry");
   await back();
   assert(addr() === "100 Alpha St, Cleveland, OH 44102" && H.state.m === "overview" && /Project overview/.test(t.text()), "Back → the deal's overview");
   await t.click(backBtn());
