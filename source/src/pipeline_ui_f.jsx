@@ -659,9 +659,17 @@ function DealTable({ filter, deals, today, onOpen }) {
       );
     }
     if (s.st === "rehab") {
-      const st = s.rs || s.acd;
-      const day = daysBetween(st, today);
-      const plan = daysBetween(st, s.rte);
+      if (!s.rs) {
+        const w = daysBetween(s.acd, today);
+        return (
+          <div className="dt-two">
+            <span>Not started</span>
+            <em style={w > 14 ? { color: w > 30 ? T.red : T.amber } : undefined}>{w != null ? `${Math.max(0, w)} days since closing` : ""}</em>
+          </div>
+        );
+      }
+      const day = daysBetween(s.rs, today);
+      const plan = daysBetween(s.rs, s.rte);
       return (
         <div className="dt-two">
           <span>{day != null ? `Day ${Math.max(0, day)}${plan ? ` of ${plan}` : ""}` : "Not started"}</span>
@@ -863,9 +871,9 @@ function ProjectOverview({ address, mapsKey, folderId, photosUrl, setPhotosUrl, 
     const items = (mgmt.checklists && mgmt.checklists[k]) || [];
     return items.length ? `${items.filter((i) => i.done).length} of ${items.length} done` : "—";
   };
-  const rehabStart = mgmt.rehab.startDate || mgmt.closing.date;
-  const rDay = daysBetween(rehabStart, today);
-  const rPlan = daysBetween(rehabStart, mgmt.rehab.targetEnd);
+  const rc = rehabClock(mgmt, today);
+  const rDay = rc.day;
+  const rPlan = rc.plan;
   let pm;
   if (stage === "analyzing") {
     const lo = mgmt.offers[mgmt.offers.length - 1];
@@ -908,7 +916,17 @@ function ProjectOverview({ address, mapsKey, folderId, photosUrl, setPhotosUrl, 
     pm = (
       <React.Fragment>
         <div className="ov-pair">
-          <OvStat k="Rehab day" v={rDay == null ? "—" : String(Math.max(0, rDay))} h={rPlan ? `of ${rPlan} planned` : ""} tone={rPlan != null && rDay > rPlan ? T.red : undefined} big />
+          {rc.waiting ? (
+            <OvStat k="Rehab" v="Not started" h={rc.gap != null ? `${rc.gap} day${rc.gap === 1 ? "" : "s"} since closing` : ""} tone={rc.gap > 30 ? T.red : rc.gap > 14 ? T.amber : undefined} big />
+          ) : (
+            <OvStat
+              k="Rehab day"
+              v={rDay == null ? "—" : String(rDay)}
+              h={(rPlan ? `of ${rPlan} planned, ` : "") + (rc.gap != null ? `started ${rc.gap} day${rc.gap === 1 ? "" : "s"} after closing` : "")}
+              tone={rPlan != null && rDay > rPlan ? T.red : undefined}
+              big
+            />
+          )}
           <OvStat k="Work complete" v={mp == null ? "—" : `${mp}%`} big />
         </div>
         <div className="bb" style={{ height: 6, marginTop: 4 }}>
@@ -963,7 +981,12 @@ function ProjectOverview({ address, mapsKey, folderId, photosUrl, setPhotosUrl, 
     const hold = monthsBetween(mgmt.closing.date, mgmt.sale.date);
     pm = (
       <div className="ov-pair">
-        <OvStat k="Hold time" v={hold == null ? "—" : `${hold.toFixed(1)} mo`} h={uwBaseline ? `planned ${uwBaseline.inputs.holdMonths} mo` : ""} big />
+        <OvStat
+          k="Hold time"
+          v={hold == null ? "—" : `${hold.toFixed(1)} mo`}
+          h={(uwBaseline ? `planned ${uwBaseline.inputs.holdMonths} mo` : "") + (rc.gap != null && mgmt.rehab.startDate ? `${uwBaseline ? ", " : ""}${rc.gap} days to start the rehab` : "")}
+          big
+        />
         <OvStat k="Sold" v={fmtDate(mgmt.sale.date)} h={actualSale > 0 ? fmt(actualSale) : ""} />
       </div>
     );
@@ -1213,7 +1236,7 @@ function BudgetVsActual({ m, uwBaseline, actuals, setActuals, mgmt, repairs, use
     ["Financing", P.totalFinancing || 0, "interest, points, investor return"],
     ["Holding", P.totalHolding || 0, "taxes, insurance, utilities"],
     ["Selling", P.totalSelling || 0, "commission, title, transfer"],
-    ["Services", 0, "not budgeted"],
+    ["Services", P.pmFee || 0, P.pmFee > 0 ? "project manager" : "not budgeted"],
     ["Other", 0, "not budgeted"],
   ].map(([cat, budget, note]) => {
     const actual = sumActuals(actuals, cat);

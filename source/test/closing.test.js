@@ -67,7 +67,7 @@ const acq = (actuals) => Math.round(actuals.reduce((t, a) => t + (["Acquisition"
   await sleep(20); await settle(10);
 
   console.log("1. Closing: the purchase price entry doesn't count the EMD twice");
-  await click(btn("Mark closed, start rehab"));
+  await click(btn("Mark purchase closed"));
   let md = modal();
   assert(/\$142,500 at closing, since the \$2,500 EMD is already logged/.test(md.textContent), "closing window explains the EMD");
   await click(btn("Move to rehab", md));
@@ -208,7 +208,7 @@ const acq = (actuals) => Math.round(actuals.reduce((t, a) => t + (["Acquisition"
   await t4.sleep(30); await t4.settle(10);
   await t4.click([...t4.doc.querySelectorAll("tr.dt-row")].find((r) => r.textContent.includes("4623 Carrollton")));
   await t4.sleep(20); await t4.settle(10);
-  await t4.click(t4.btn("Mark closed, start rehab"));
+  await t4.click(t4.btn("Mark purchase closed"));
   let m4 = t4.modal();
   await t4.setVal(t4.field("Final purchase price", m4), "150000");
   await t4.click([...m4.querySelectorAll("label")].find((l) => /Next, read the purchase closing statement/.test(l.textContent)).querySelector("input"));

@@ -1823,6 +1823,11 @@ function ProfitBar({ m, arv }) {
       c: "#7a8893",
     },
     {
+      l: "PM",
+      v: Math.max(0, m.pmFee || 0),
+      c: "#94a3b8",
+    },
+    {
       l: "Txn",
       v: Math.max(0, m.totalBuying + m.totalSelling),
       c: "#566069",
@@ -2004,9 +2009,12 @@ function calcDeal(i) {
     (i.utilElec || 0) +
     (i.miscHold || 0);
   const totalHolding = totalMonthlyHold * h;
-  const totalCosts = purchase + repair + totalFinancing + totalHolding + totalBuying + totalSelling;
+  // project manager: not part of the rehab budget (so it doesn't move the deal's size class);
+  // paid out of pocket in installments, no interest
+  const pmFee = pmFeeOf(i.pm, repair);
+  const totalCosts = purchase + repair + totalFinancing + totalHolding + totalBuying + totalSelling + pmFee;
   const netProfit = arv - totalCosts;
-  const cashIn = Math.max(0, purchase + repair + totalBuying + points - loanAmount - investorAmount) + interest + drawFees + totalHolding;
+  const cashIn = Math.max(0, purchase + repair + totalBuying + points - loanAmount - investorAmount) + interest + drawFees + totalHolding + pmFee;
   const roi = totalCosts > 0 ? netProfit / totalCosts : NaN;
   return {
     purchase,
@@ -2026,6 +2034,7 @@ function calcDeal(i) {
     totalFinancing,
     totalMonthlyHold,
     totalHolding,
+    pmFee,
     totalBuying,
     totalSelling,
     totalCosts,
@@ -2229,6 +2238,7 @@ function App() {
   const [drawCount, setDrawCount] = useState(DEFAULTS.drawCount);
   const [drawMonths, setDrawMonths] = useState(DEFAULTS.drawMonths);
   const [drawFee, setDrawFee] = useState(DEFAULTS.drawFee);
+  const [pm, setPm] = useState(DEFAULTS.pm);
   const [transition, setTransition] = useState(null);
   const [aiModal, setAiModal] = useState(null); // {kind:'closing'|'sow', side, origin, existing}
   const setImportSide = (sd, origin) => setAiModal(sd ? { kind: "closing", side: sd, origin: origin || "" } : null);
@@ -2763,6 +2773,7 @@ function App() {
     setDrawCount(DEFAULTS.drawCount);
     setDrawMonths(DEFAULTS.drawMonths);
     setDrawFee(DEFAULTS.drawFee);
+    setPm(DEFAULTS.pm);
   };
   const resetDeal = () => {
     resetFields();
@@ -2874,6 +2885,7 @@ function App() {
     drawCount,
     drawMonths,
     drawFee,
+    pm,
     schema: 2,
     savedBy: userEmail || "",
     savedAt: new Date().toISOString(),
@@ -2922,6 +2934,7 @@ function App() {
     setDrawCount(d.drawCount !== undefined ? d.drawCount : DEFAULTS.drawCount);
     setDrawMonths(d.drawMonths !== undefined ? d.drawMonths : DEFAULTS.drawMonths);
     setDrawFee(d.drawFee !== undefined ? d.drawFee : DEFAULTS.drawFee);
+    setPm(d.pm && typeof d.pm === "object" ? d.pm : DEFAULTS.pm);
   };
   const dealKey = JSON.stringify({
     ...getState(),
@@ -3092,6 +3105,7 @@ function App() {
     drawCount,
     drawMonths,
     drawFee,
+    pm,
     arv,
     purchase,
     repair: repairTotal,
@@ -3144,6 +3158,7 @@ function App() {
       drawCount,
       drawMonths,
       drawFee,
+      pm,
     ],
   );
   useEffect(() => {
@@ -3180,10 +3195,9 @@ function App() {
       return d != null && d >= 0 ? `On market, ${d} day${d === 1 ? "" : "s"}` : "On market";
     }
     if (stage === "rehab") {
-      const start = mgmt.rehab.startDate || mgmt.closing.date;
-      const d = daysBetween(start, t);
-      const total = daysBetween(start, mgmt.rehab.targetEnd);
-      if (d != null && d >= 0) return total ? `Rehab, day ${d} of ${total}` : `Rehab, day ${d}`;
+      const rc = rehabClock(mgmt, t);
+      if (rc.waiting) return rc.gap != null ? `Closed ${rc.gap} day${rc.gap === 1 ? "" : "s"} ago, rehab not started` : "Rehab not started";
+      if (rc.day != null) return rc.plan ? `Rehab, day ${rc.day} of ${rc.plan}` : `Rehab, day ${rc.day}`;
       return "Rehab";
     }
     if (stage === "contract") {
@@ -3296,7 +3310,7 @@ function App() {
       setMgmt((mm) => ({
         ...mm,
         closing: { date: f.closingDate, price: f.price },
-        rehab: { ...mm.rehab, startDate: f.startDate, targetEnd: f.targetEnd },
+        rehab: { ...mm.rehab, startDate: f.started ? f.startDate : "", targetEnd: f.targetEnd },
       }));
       if (f.logPurchase) {
         const emd = ledgerEmd(actuals);
@@ -3312,11 +3326,14 @@ function App() {
       }
       setStage("rehab");
       hist("rehab", f.closingDate);
-      addLogEntry(`Closed on ${fmtDate(f.closingDate)} at ${fmt(f.price)} — rehab started`);
+      addLogEntry(
+        `Closed on ${fmtDate(f.closingDate)} at ${fmt(f.price)}` +
+          (f.started && f.startDate ? `, rehab started ${fmtDate(f.startDate)}` : ", rehab not started yet"),
+      );
     } else if (kind === "market") {
       setMgmt((mm) => ({
         ...mm,
-        rehab: { ...mm.rehab, endDate: mm.rehab.endDate || f.rehabEnd },
+        rehab: { ...mm.rehab, startDate: mm.rehab.startDate || f.rehabStart || "", endDate: mm.rehab.endDate || f.rehabEnd },
         listing: {
           ...mm.listing,
           date: f.listDate,
@@ -3929,6 +3946,7 @@ function App() {
       ["Repairs", n(-m.repair)],
       ["Financing", n(-m.totalFinancing), "interest", n(m.interest), "investor return", n(m.investorInterest), "points", n(points)],
       ["Holding", n(-m.totalHolding), "per month", n(m.totalMonthlyHold)],
+      ["Project manager", n(-(m.pmFee || 0)), pm.type === "flat" ? "fixed amount" : `${pm.val || 0}% of rehab`],
       ["Buying costs", n(-m.totalBuying)],
       ["Selling costs", n(-m.totalSelling)],
       ["NET PROFIT", n(m.netProfit)],
@@ -4562,6 +4580,39 @@ function App() {
                     </div>
                   )}
                                 </Group>
+                <Group
+                  id="pm"
+                  title="Project manager"
+                  sub={!(m.pmFee > 0) ? "No fee" : pm.type === "flat" ? "Fixed amount, paid out of pocket" : `${+(pm.val || 0)}% of the rehab estimate, paid out of pocket`}
+                  total={fmt(m.pmFee || 0)}
+                >
+                  <div className="pm-row">
+                    <div className="seg" role="group" aria-label="How the fee is set">
+                      <button className={pm.type !== "flat" ? "on" : ""} onClick={() => setPm({ type: "pct", val: pm.type === "flat" ? 0 : pm.val })}>
+                        % of rehab
+                      </button>
+                      <button className={pm.type === "flat" ? "on" : ""} onClick={() => setPm({ type: "flat", val: pm.type === "flat" ? pm.val : 0 })}>
+                        Fixed amount
+                      </button>
+                    </div>
+                    {pm.type === "flat" ? (
+                      <Field label="Fee for this project" value={pm.val || 0} onChange={(v) => setPm({ type: "flat", val: v })} prefix="$" step={500} />
+                    ) : (
+                      <Field
+                        label="Fee"
+                        value={pm.val || 0}
+                        onChange={(v) => setPm({ type: "pct", val: v })}
+                        suffix="% of rehab"
+                        step={1}
+                        hint={`${fmt(m.pmFee || 0)} on a ${fmt(m.repair || 0)} rehab`}
+                      />
+                    )}
+                  </div>
+                  <p className="pm-note">
+                    Paid out of pocket in installments as the flip moves along (set them on the Expenses page), so no interest. It isn't part of the rehab
+                    budget, so it doesn't change the deal's size class; it does lower the profit, ROI and grade.
+                  </p>
+                </Group>
                 <Group id="financing" title="Financing" sub={financingSub} total={fmt(m.totalFinancing)}>
                   <div
                     className="field-grid-2"
@@ -4994,6 +5045,28 @@ function App() {
                 </button>
               )}
             </div>
+            {((m.pmFee || 0) > 0 || actuals.some((a) => a.tag === "pm_fee")) && (
+              <PmPayments
+                mgmt={mgmt}
+                upd={(path, val) => setMgmt((mm) => setIn(mm, path, val))}
+                actuals={actuals}
+                pushActuals={pushActuals}
+                fee={m.pmFee || 0}
+                feeNote={pm.type === "flat" ? "fixed amount" : `${+(pm.val || 0)}% of the ${fmt(m.repair || 0)} rehab estimate`}
+                addLog={addLogEntry}
+                onEditFee={() => {
+                  // open the Project manager group in Flip analysis and bring it into view
+                  try {
+                    localStorage.setItem(GROUPS_KEY, JSON.stringify({ ...loadGroups(), pm: true }));
+                  } catch (e) {}
+                  setMode("underwrite");
+                  setTimeout(() => {
+                    const el = document.getElementById("grp-pm");
+                    if (el && el.scrollIntoView) el.scrollIntoView({ block: "start", behavior: "smooth" });
+                  }, 60);
+                }}
+              />
+            )}
             <div
               className="actuals-two-col"
               style={{

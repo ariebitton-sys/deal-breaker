@@ -56,8 +56,10 @@ function DealCard({ d, today, onOpen }) {
   const meta = stageMeta(s.st);
   const att = d.att;
   const spentPct = s.rb > 0 ? Math.round(((s.rsp || 0) / s.rb) * 100) : null;
-  const rehabDay = s.st === "rehab" ? daysBetween(s.rs || s.acd, today) : null;
-  const rehabPlan = s.st === "rehab" ? daysBetween(s.rs || s.acd, s.rte) : null;
+  // rehab time counts from the actual start; before that, the days since closing are waiting time
+  const rehabWait = s.st === "rehab" && !s.rs ? daysBetween(s.acd, today) : null;
+  const rehabDay = s.st === "rehab" && s.rs ? daysBetween(s.rs, today) : null;
+  const rehabPlan = s.st === "rehab" && s.rs ? daysBetween(s.rs, s.rte) : null;
   const u = d.f.lastModifyingUser;
   const red = att.some((a) => a.lvl === "red");
   return (
@@ -100,8 +102,12 @@ function DealCard({ d, today, onOpen }) {
           </div>
           <div className="dc-row">
             <span>Schedule</span>
-            <b style={{ color: rehabPlan != null && rehabDay > rehabPlan ? T.red : undefined }}>
-              {rehabDay != null ? `Day ${Math.max(0, rehabDay)}${rehabPlan ? ` of ${rehabPlan}` : ""}` : "—"}
+            <b style={{ color: (rehabPlan != null && rehabDay > rehabPlan) || rehabWait > 30 ? T.red : rehabWait > 14 ? T.amber : undefined }}>
+              {rehabDay != null
+                ? `Day ${Math.max(0, rehabDay)}${rehabPlan ? ` of ${rehabPlan}` : ""}`
+                : rehabWait != null
+                  ? `Not started, ${Math.max(0, rehabWait)}d since closing`
+                  : "Not started"}
             </b>
           </div>
         </div>

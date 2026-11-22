@@ -153,6 +153,63 @@ const CHECKLIST_TEMPLATES = {
   rehab: ["Utilities transferred", "Locks changed / lockbox", "Contractor agreement signed", "Permits pulled", "Before photos taken"],
   market: ["Listing agent signed", "Professional photos", "Listing live on MLS", "Disclosures prepared"],
 };
+// ---------- project manager fee and its installments ----------
+const pmFeeOf = (pm, repair) => {
+  if (!pm) return 0;
+  const v = Math.max(0, parseFloat(pm.val) || 0);
+  return pm.type === "flat" ? v : ((repair || 0) * v) / 100;
+};
+// when an installment falls due: a step of the flip
+const PM_WHEN = [
+  ["closing", "At the purchase closing"],
+  ["rehabStart", "When the rehab starts"],
+  ["rehabDone", "When the rehab is done"],
+  ["listed", "When it's listed"],
+  ["sold", "At the sale"],
+];
+const pmWhenLabel = (w) => (PM_WHEN.find((x) => x[0] === w) || [w, w])[1];
+const PM_DEFAULT_PLAN = () => [
+  { id: "pm1", when: "rehabStart", pct: 40 },
+  { id: "pm2", when: "rehabDone", pct: 40 },
+  { id: "pm3", when: "sold", pct: 20 },
+];
+const pmDueDate = (mg, when) =>
+  ({
+    closing: mg.closing.date,
+    rehabStart: mg.rehab.startDate,
+    rehabDone: mg.rehab.endDate,
+    listed: mg.listing.date,
+    sold: mg.sale.date,
+  })[when] || "";
+// each installment: its share of the fee, when it's due, and the ledger entry that paid it
+function pmPlan(mg, actuals, fee, today) {
+  const t = today || todayISO();
+  const list = (mg.pm && mg.pm.installments) || [];
+  const rows = list.map((inst, i) => {
+    const amount = Math.round((fee * (parseFloat(inst.pct) || 0)) / 100);
+    const paid = (actuals || []).find((a) => a.tag === "pm_fee" && a.pmInst === inst.id) || null;
+    const due = pmDueDate(mg, inst.when);
+    const status = paid ? "paid" : due && due <= t ? "due" : "later";
+    return { inst, i, amount, due, paid, status };
+  });
+  const paidTotal = (actuals || []).filter((a) => a.tag === "pm_fee").reduce((s, a) => s + (parseFloat(a.amount) || 0), 0);
+  const dueTotal = rows.filter((r) => r.status === "due").reduce((s, r) => s + r.amount, 0);
+  const pctTotal = list.reduce((s, x) => s + (parseFloat(x.pct) || 0), 0);
+  return { rows, paidTotal, dueTotal, pctTotal };
+}
+
+// ---------- rehab clock ----------
+// Rehab time runs from the day work actually starts. The days between the purchase closing and that
+// start are measured on their own and are not rehab time (they are hold time).
+function rehabClock(mg, today) {
+  const t = today || todayISO();
+  const cd = mg.closing.date,
+    st = mg.rehab.startDate;
+  const gap = cd ? daysBetween(cd, st || t) : null;
+  const day = st ? daysBetween(st, mg.rehab.endDate || t) : null;
+  const plan = st && mg.rehab.targetEnd ? daysBetween(st, mg.rehab.targetEnd) : null;
+  return { waiting: !st, gap: gap != null ? Math.max(0, gap) : null, day: day != null ? Math.max(0, day) : null, plan };
+}
 const mkItems = (labels) => labels.map((label) => ({ id: uid(), label, done: false }));
 const emptyMgmt = () => ({
   source: "",
@@ -181,6 +238,7 @@ const emptyMgmt = () => ({
   lessons: "",
   analyses: [],
   utilities: null,
+  pm: { installments: PM_DEFAULT_PLAN() },
 });
 function mergeMgmt(x) {
   const e = emptyMgmt();
@@ -208,6 +266,7 @@ function mergeMgmt(x) {
     lessons: x.lessons || "",
     analyses: Array.isArray(x.analyses) ? x.analyses : [],
     credits: Array.isArray(x.credits) ? x.credits : [],
+    pm: x.pm && Array.isArray(x.pm.installments) ? x.pm : e.pm,
     utilities: x.utilities && Array.isArray(x.utilities.items) ? x.utilities : null,
     dead: x.dead || null,
   };
@@ -257,6 +316,8 @@ const DEFAULTS = {
   drawCount: 4,
   drawMonths: 3,
   drawFee: 0,
+  // project manager: a % of the rehab estimate or a fixed amount; paid out of pocket, no interest
+  pm: { type: "pct", val: 0 },
 };
 const repairTotalOf = (d) => {
   if (!d.useRepairBuilder) return d.manualRepair || 0;
@@ -291,6 +352,7 @@ function inputsFromState(d) {
     drawCount: g("drawCount"),
     drawMonths: g("drawMonths"),
     drawFee: g("drawFee"),
+    pm: d.pm && typeof d.pm === "object" ? d.pm : DEFAULTS.pm,
   };
 }
 
@@ -401,6 +463,7 @@ function makeUwSnapshot(inputs, by, date) {
     "totalFinancing",
     "totalMonthlyHold",
     "totalHolding",
+    "pmFee",
     "totalBuying",
     "totalSelling",
     "totalCosts",
@@ -471,6 +534,11 @@ function summarizeDeal(d) {
       const x = ms.find((y) => y.status === "doing") || ms.find((y) => y.status !== "done");
       return inferStage(d) === "rehab" && x ? String(x.label || "").slice(0, 40) : undefined;
     })(),
+    pmd: (() => {
+      const fee = m.pmFee || 0;
+      if (!(fee > 0)) return undefined;
+      return R0(pmPlan(mg, acts, fee).dueTotal) || undefined;
+    })(),
     rb: R0(base ? base.m.repair : m.repair),
     rsp: R0(sumActuals(acts, "Rehab / Construction")),
     ld: mg.listing.date || undefined,
@@ -534,6 +602,12 @@ function attentionFor(s, today) {
     if (di != null && di >= 0 && di <= 3) out.push({ lvl: "amber", text: `Inspection period ends ${relDays(di)}` });
     if (s.uo && dc != null && dc <= 7) out.push({ lvl: "amber", text: `${s.uo} utility task${s.uo === 1 ? "" : "s"} still open before closing` });
   }
+  if (st === "rehab" && !s.rs && s.acd) {
+    const w = daysBetween(s.acd, t);
+    if (w != null && w > 30) out.push({ lvl: "red", text: `Rehab not started, ${w} days after closing` });
+    else if (w != null && w > 14) out.push({ lvl: "amber", text: `Rehab not started, ${w} days after closing` });
+  }
+  if (s.pmd > 0 && ACTIVE_STAGES.concat(["sold"]).includes(st)) out.push({ lvl: "amber", text: `Project manager payment due: $${Math.round(s.pmd).toLocaleString("en-US")}` });
   if (st === "rehab") {
     if (s.rb > 0 && s.rsp > s.rb * 1.1) out.push({ lvl: "red", text: `Rehab over budget by ${Math.round((s.rsp / s.rb - 1) * 100)}%` });
     else if (s.rb > 0 && s.rsp > s.rb) out.push({ lvl: "amber", text: `Rehab at ${Math.round((s.rsp / s.rb) * 100)}% of budget` });

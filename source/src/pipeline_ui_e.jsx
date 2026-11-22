@@ -140,7 +140,7 @@ function Group({ id, title, sub, total, totalTone, actions, children }) {
     } catch {}
   };
   return (
-    <section className={"grp" + (open ? " open" : "")}>
+    <section className={"grp" + (open ? " open" : "")} id={"grp-" + id}>
       <div className="grp-head" onClick={toggle} role="button" tabIndex={0} aria-expanded={open} onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && (e.preventDefault(), toggle())}>
         <div style={{ minWidth: 0 }}>
           <div className="grp-title">{title}</div>
@@ -172,6 +172,7 @@ function ResultsRail({ deal, m, mao, purchase, arv, investorAmount, sqft, gradeR
   const parts = [
     ["Purchase", m.purchase, "#15284B"],
     ["Rehab", m.repair, "#3B5A8F"],
+    ...(m.pmFee > 0 ? [["Project manager", m.pmFee, "#5D78A6"]] : []),
     ["Financing", m.totalFinancing, "#7E96BD"],
     ["Selling", m.totalSelling, "#A9BAD3"],
     ["Buying", m.totalBuying, "#CDD7E5"],
@@ -217,7 +218,7 @@ function ResultsRail({ deal, m, mao, purchase, arv, investorAmount, sqft, gradeR
           <b style={{ color: maoTone }}>{inc ? "—" : mao.target == null ? "None" : fmt(mao.target)}</b>
           <em>{inc ? "" : mao.walk != null ? `walk away above ${fmtK(mao.walk)}` : "no price works"}</em>
         </div>
-        <div title="Kappa's own out-of-pocket cash: interest, draw fees, holding and any closing gap the investor doesn't cover.">
+        <div title="Kappa's own out-of-pocket cash: interest, draw fees, holding, the project manager and any closing gap the investor doesn't cover.">
           <span>Kappa cash</span>
           <b>{inc ? "—" : fmt(m.cashIn)}</b>
           <em>out of pocket</em>

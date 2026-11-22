@@ -244,10 +244,10 @@ const STMT = {
   await settle(10);
   assert(addr().value === v25Deal.address, "Elm St reopened");
   assert(headStage() === "Under contract" && doc.querySelector(".trk-st.cur").textContent.startsWith("Under contract"), "stage persisted as Under contract (header + overview track)");
-  await click(btn("Mark closed, start rehab"));
+  await click(btn("Mark purchase closed"));
   md = modal();
   await setVal(field("Actual closing date", md), "2026-11-20");
-  await setVal(field("Rehab start", md), "2026-11-21");
+  assert(!/Rehab started on/.test(md.textContent) && /Work has already started/.test(md.textContent) && /The rehab clock starts when work does/.test(md.textContent), "closing doesn't assume the rehab started that day");
   await setVal(field("Target completion", md), "2027-02-21");
   assert([...md.querySelectorAll("label")].find((l) => /Next, read the purchase closing statement \(HUD-1/.test(l.textContent)).querySelector("input").checked, "closing offers to read the HUD-1 next (on by default)");
   await click(btn("Move to rehab", md));
@@ -256,7 +256,12 @@ const STMT = {
   assert(md && /Import a closing statement/.test(md.textContent) && /Use the final statement after closing/.test(md.textContent), "after closing, the statement reader opens");
   await click(btn("Cancel", md));
   await settle(4);
-  assert(text().includes("Milestones") && text().includes("Rehab day"), "rehab section + KPIs");
+  assert(text().includes("Milestones") && /The rehab hasn't started/.test(text()) && !text().includes("Rehab day"), "rehab section: waiting for the start, no rehab day yet");
+  const wait = doc.querySelector(".rehab-wait");
+  await setVal(wait.querySelector('input[type="date"]'), "2026-11-24");
+  await click(btn("Mark rehab started", wait));
+  await settle(6);
+  assert(/Started 4 days after closing/.test(text()) && text().includes("Rehab day") && !doc.querySelector(".rehab-wait"), "marked started: 4 days after closing, the rehab clock runs from the start");
 
   console.log("9. Import the purchase closing statement (PDF → Claude → review → ledger; the estimate stays)");
   await click(nav(/^Flip analysis$/));

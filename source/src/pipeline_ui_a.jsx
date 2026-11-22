@@ -187,7 +187,7 @@ const grid2 = { display: "grid", gap: 12 };
 // ---------- Stage bar (deal workspace) ----------
 const NEXT_ACTION_LABEL = {
   contract: "Mark under contract",
-  rehab: "Mark closed, start rehab",
+  rehab: "Mark purchase closed",
   market: "List on market",
   sold: "Mark as sold",
 };
@@ -262,6 +262,7 @@ function TransitionModal({ kind, ctx, onConfirm, onClose }) {
         return {
           closingDate: cd,
           price: num(mgmt.contract.price) || purchase || 0,
+          started: false,
           startDate: cd,
           targetEnd: addMonthsISO(cd, Math.max(1, (holdMonths || 4) - 2)),
           logPurchase: !hasTag("purchase_price"),
@@ -269,7 +270,7 @@ function TransitionModal({ kind, ctx, onConfirm, onClose }) {
         };
       }
       case "market":
-        return { listDate: t, listPrice: num(mgmt.listing.price) || arv || 0, agent: mgmt.listing.agent || "", rehabEnd: mgmt.rehab.endDate || t };
+        return { listDate: t, listPrice: num(mgmt.listing.price) || arv || 0, agent: mgmt.listing.agent || "", rehabEnd: mgmt.rehab.endDate || t, rehabStart: mgmt.rehab.startDate || "" };
       case "sold": {
         const be = mgmt.buyer.expectedClosing;
         return {
@@ -330,16 +331,25 @@ function TransitionModal({ kind, ctx, onConfirm, onClose }) {
     );
   } else if (kind === "rehab") {
     valid = !!f.closingDate && f.price > 0;
-    title = "Closed: start the rehab";
+    title = "Closed on the purchase";
     cta = "Move to rehab";
     body = (
       <React.Fragment>
         <div className="field-grid-2" style={grid2}>
           <TextIn label="Actual closing date" type="date" value={f.closingDate} onChange={set("closingDate")} />
           <Field label="Final purchase price" value={f.price} onChange={set("price")} prefix="$" step={1000} accent={meta.color} />
-          <TextIn label="Rehab start" type="date" value={f.startDate} onChange={set("startDate")} />
           <TextIn label="Target completion" type="date" value={f.targetEnd} onChange={set("targetEnd")} />
+          {f.started && <TextIn label="Rehab started on" type="date" value={f.startDate} onChange={set("startDate")} />}
         </div>
+        <CheckRow checked={f.started} onChange={set("started")}>
+          Work has already started
+        </CheckRow>
+        {!f.started && (
+          <Note>
+            The rehab clock starts when work does. Until then the deal shows the days since closing as waiting time; mark the start in the Rehab
+            section when the crew begins.
+          </Note>
+        )}
         <CheckRow checked={f.logPurchase} onChange={set("logPurchase")} disabled={hasTag("purchase_price")}>
           Log the purchase price ({fmt(f.price)}) in the Actuals Ledger as Acquisition
           {ledgerEmd(actuals) > 0 && !hasTag("purchase_price") ? `: ${fmt(f.price - ledgerEmd(actuals))} at closing, since the ${fmt(ledgerEmd(actuals))} EMD is already logged` : ""}
@@ -360,6 +370,9 @@ function TransitionModal({ kind, ctx, onConfirm, onClose }) {
       <div className="field-grid-2" style={grid2}>
         <TextIn label="List date" type="date" value={f.listDate} onChange={set("listDate")} />
         <Field label="List price" value={f.listPrice} onChange={set("listPrice")} prefix="$" step={1000} accent={meta.color} />
+        {!mgmt.rehab.startDate && (
+          <TextIn label="Rehab started on" type="date" value={f.rehabStart} onChange={set("rehabStart")} hint="not marked yet: needed to measure the rehab time" />
+        )}
         <TextIn label="Rehab completed on" type="date" value={f.rehabEnd} onChange={set("rehabEnd")} />
         <TextIn label="Listing agent" value={f.agent} onChange={set("agent")} placeholder="Name / brokerage" />
       </div>

@@ -223,6 +223,113 @@ function DrawsPanel({ draws, upd, m, drawFee, addLog }) {
   );
 }
 
+// ----- Project manager payments (Expenses page) -----
+// The fee comes from Flip analysis; it's paid in installments tied to steps of the flip. Paying one
+// logs it in the ledger under Services.
+function PmPayments({ mgmt, upd, actuals, pushActuals, fee, feeNote, addLog, onEditFee }) {
+  const today = todayISO();
+  const plan = pmPlan(mgmt, actuals, fee, today);
+  const list = (mgmt.pm && mgmt.pm.installments) || [];
+  const [pay, setPay] = useState(null); // { id, date, amount }
+  const setList = (next) => upd("pm", { ...(mgmt.pm || {}), installments: next });
+  const edit = (id, patch) => setList(list.map((x) => (x.id === id ? { ...x, ...patch } : x)));
+  const n = list.length;
+  const doPay = (r) => {
+    const amt = Math.round((parseFloat(pay.amount) || 0) * 100) / 100;
+    if (!(amt > 0)) return;
+    pushActuals([
+      {
+        cat: "Services",
+        label: `Project manager: installment ${r.i + 1} of ${n} (${pmWhenLabel(r.inst.when).toLowerCase()})`,
+        amount: amt,
+        date: pay.date || today,
+        tag: "pm_fee",
+        pmInst: r.inst.id,
+      },
+    ]);
+    addLog(`Project manager paid ${fmt(amt)}: installment ${r.i + 1} of ${n}`);
+    setPay(null);
+  };
+  return (
+    <section className="pm-pay">
+      <div className="pm-pay-head">
+        <div>
+          <h3>Project manager payments</h3>
+          <p>
+            Fee {fmt(fee)} ({feeNote}), paid out of pocket.{" "}
+            <button className="pm-link" onClick={onEditFee}>
+              Change the fee
+            </button>
+          </p>
+        </div>
+        <div className="pm-pay-sum">
+          <b>{fmt(plan.paidTotal)}</b>
+          <span>paid of {fmt(fee)}</span>
+        </div>
+      </div>
+      <div className="pm-inst-list">
+        {plan.rows.map((r) => (
+          <div key={r.inst.id} className={"pm-inst is-" + r.status}>
+            <span className="pm-inst-n">{r.i + 1}</span>
+            <select value={r.inst.when} onChange={(e) => edit(r.inst.id, { when: e.target.value })} aria-label={`Installment ${r.i + 1}: when it's due`} disabled={!!r.paid}>
+              {PM_WHEN.map(([k, l]) => (
+                <option key={k} value={k}>
+                  {l}
+                </option>
+              ))}
+            </select>
+            <label className="pm-inst-pct">
+              <input
+                type="number"
+                min="0"
+                max="100"
+                value={r.inst.pct}
+                onChange={(e) => edit(r.inst.id, { pct: e.target.value === "" ? "" : Math.max(0, parseFloat(e.target.value) || 0) })}
+                aria-label={`Installment ${r.i + 1}: share of the fee`}
+                disabled={!!r.paid}
+              />
+              %
+            </label>
+            <span className="pm-inst-amt">{fmt(r.paid ? parseFloat(r.paid.amount) || 0 : r.amount)}</span>
+            <span className="pm-inst-st">
+              {r.status === "paid" ? `Paid ${fmtDateShort(r.paid.date)}` : r.status === "due" ? `Due since ${fmtDateShort(r.due)}` : "Not due yet"}
+            </span>
+            {r.paid ? (
+              <span className="pm-inst-act" />
+            ) : pay && pay.id === r.inst.id ? (
+              <span className="pm-inst-act pm-pay-form">
+                <input type="date" value={pay.date} onChange={(e) => setPay({ ...pay, date: e.target.value })} aria-label="Payment date" />
+                <input type="number" value={pay.amount} onChange={(e) => setPay({ ...pay, amount: e.target.value })} aria-label="Amount paid" />
+                <button onClick={() => doPay(r)} style={smallBtn(T.green, "#fff")}>
+                  Log
+                </button>
+                <button onClick={() => setPay(null)} style={smallBtn(T.glass, T.txtDim)}>
+                  Cancel
+                </button>
+              </span>
+            ) : (
+              <span className="pm-inst-act">
+                <button onClick={() => setPay({ id: r.inst.id, date: today, amount: r.amount })} style={smallBtn(r.status === "due" ? T.green : T.glass, r.status === "due" ? "#fff" : T.txtDim)}>
+                  Log payment
+                </button>
+                <button className="pm-x" onClick={() => setList(list.filter((x) => x.id !== r.inst.id))} title="Remove installment" aria-label={`Remove installment ${r.i + 1}`}>
+                  ×
+                </button>
+              </span>
+            )}
+          </div>
+        ))}
+      </div>
+      <div className="pm-pay-foot">
+        <button onClick={() => setList([...list, { id: uid(), when: "sold", pct: Math.max(0, 100 - plan.pctTotal) }])} style={smallBtn(T.glass, T.blue)}>
+          + Add installment
+        </button>
+        {Math.abs(plan.pctTotal - 100) > 0.01 && <span className="pm-warn">Installments add up to {+plan.pctTotal.toFixed(2)}% of the fee, not 100%.</span>}
+      </div>
+    </section>
+  );
+}
+
 // ----- Rehab section -----
 function RehabSection({ mgmt, upd, m, uwBaseline, actuals, rehabFunding, drawFee, addLog, by, onImportSow }) {
   const today = todayISO();
@@ -232,10 +339,11 @@ function RehabSection({ mgmt, upd, m, uwBaseline, actuals, rehabFunding, drawFee
   const spentPct = budget > 0 ? (spent / budget) * 100 : null;
   const mp = milestonePct(r.milestones);
   const msBudget = r.milestones.reduce((t, x) => t + (num(x.budget) || 0), 0);
-  const start = r.startDate || mgmt.closing.date;
-  const plan = daysBetween(start, r.targetEnd);
-  const elapsed = daysBetween(start, r.endDate || today);
+  const rc = rehabClock(mgmt, today);
+  const plan = rc.plan;
+  const elapsed = rc.day;
   const [ms, setMs] = useState("");
+  const [startOn, setStartOn] = useState(today);
   const cycle = (id) =>
     upd(
       "rehab.milestones",
@@ -260,12 +368,41 @@ function RehabSection({ mgmt, upd, m, uwBaseline, actuals, rehabFunding, drawFee
         <TextIn label="Target completion" type="date" value={r.targetEnd} onChange={(v) => upd("rehab.targetEnd", v)} />
         <TextIn label="Actual completion" type="date" value={r.endDate} onChange={(v) => upd("rehab.endDate", v)} hint={r.endDate ? "" : "set when work is done"} />
       </div>
+      {rc.waiting ? (
+        <div className="rehab-wait">
+          <div>
+            <b>The rehab hasn't started.</b>{" "}
+            {rc.gap != null ? `${rc.gap} day${rc.gap === 1 ? "" : "s"} since closing. ` : ""}
+            These days are measured on their own: they count as hold time, not rehab time.
+          </div>
+          <span className="rehab-wait-act">
+            <input type="date" value={startOn} onChange={(e) => setStartOn(e.target.value)} aria-label="Rehab start date" />
+            <button
+              onClick={() => {
+                const d = startOn || today;
+                const g = mgmt.closing.date ? Math.max(0, daysBetween(mgmt.closing.date, d)) : null;
+                upd("rehab.startDate", d);
+                addLog(`Rehab started on ${fmtDate(d)}${g != null ? `, ${g} day${g === 1 ? "" : "s"} after closing` : ""}`);
+              }}
+              style={smallBtn("#d97706", "#fff")}
+            >
+              Mark rehab started
+            </button>
+          </span>
+        </div>
+      ) : (
+        rc.gap != null && (
+          <div className="rehab-gap">
+            Started {rc.gap} day{rc.gap === 1 ? "" : "s"} after closing{rc.day != null ? `; ${rc.day} day${rc.day === 1 ? "" : "s"} of rehab${r.endDate ? "" : " so far"}` : ""}.
+          </div>
+        )
+      )}
       <div className="field-grid-2" style={{ ...grid2, marginTop: 4, marginBottom: 6 }}>
         <div>
           <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, color: T.txtDim, marginBottom: 4 }}>
             <span>Schedule</span>
             <span style={{ fontFamily: MONO, color: plan != null && elapsed > plan ? T.red : T.txt }}>
-              {elapsed != null ? `day ${Math.max(0, elapsed)}` : "—"}
+              {elapsed != null ? `day ${Math.max(0, elapsed)}` : "not started"}
               {plan != null ? ` of ${plan}` : ""}
             </span>
           </div>
@@ -536,7 +673,7 @@ function SoldSection({ mgmt, upd, m, uwBaseline, actuals, actualSale, setActualS
     ["Financing", plan.totalFinancing, cat("Financing"), -1],
     ["Holding", plan.totalHolding, cat("Holding"), -1],
     ["Selling", plan.totalSelling, cat("Selling"), -1],
-    ["Services & other", 0, cat("Services") + cat("Other"), -1],
+    ["Services & other", plan.pmFee || 0, cat("Services") + cat("Other"), -1],
   ];
   const cell = { fontFamily: MONO, fontSize: 12.5, textAlign: "right", padding: "6px 4px" };
   return (
@@ -584,6 +721,30 @@ function SoldSection({ mgmt, upd, m, uwBaseline, actuals, actualSale, setActualS
                 {actualHold != null ? (actualHold - planHold > 0 ? "+" : "") + (actualHold - planHold).toFixed(1) + " mo" : ""}
               </td>
             </tr>
+            {(() => {
+              // the hold split: waiting for the rehab to start, then the rehab itself
+              const g = mgmt.closing.date && mgmt.rehab.startDate ? Math.max(0, daysBetween(mgmt.closing.date, mgmt.rehab.startDate)) : null;
+              const rd = mgmt.rehab.startDate && mgmt.rehab.endDate ? Math.max(0, daysBetween(mgmt.rehab.startDate, mgmt.rehab.endDate)) : null;
+              const rp = mgmt.rehab.startDate && mgmt.rehab.targetEnd ? daysBetween(mgmt.rehab.startDate, mgmt.rehab.targetEnd) : null;
+              return (
+                <React.Fragment>
+                  <tr style={{ borderTop: `1px solid ${T.border}` }}>
+                    <td style={{ fontSize: 12.5, color: T.txtDim, padding: "6px 4px" }}>Closing to rehab start</td>
+                    <td style={cell}>—</td>
+                    <td style={cell}>{g != null ? `${g} days` : "—"}</td>
+                    <td style={cell}></td>
+                  </tr>
+                  <tr style={{ borderTop: `1px solid ${T.border}` }}>
+                    <td style={{ fontSize: 12.5, color: T.txtDim, padding: "6px 4px" }}>Rehab time, start to completion</td>
+                    <td style={cell}>{rp != null ? `${rp} days` : "—"}</td>
+                    <td style={cell}>{rd != null ? `${rd} days` : "—"}</td>
+                    <td style={{ ...cell, color: rd != null && rp != null ? (rd <= rp ? T.green : T.red) : T.txtMute }}>
+                      {rd != null && rp != null ? (rd - rp > 0 ? "+" : "") + (rd - rp) + " days" : ""}
+                    </td>
+                  </tr>
+                </React.Fragment>
+              );
+            })()}
             <tr style={{ borderTop: `1px solid ${T.border}` }}>
               <td style={{ fontSize: 12.5, color: T.txtDim, padding: "6px 4px" }}>Grade</td>
               <td style={{ ...cell, fontWeight: 800, color: gradeColorOf(uwBaseline ? uwBaseline.grade : null) }}>{uwBaseline ? uwBaseline.grade : "—"}</td>
@@ -917,12 +1078,14 @@ function ManagementTab(p) {
       ];
     }
     if (stage === "rehab") {
-      const start = mgmt.rehab.startDate || mgmt.closing.date;
-      const el = daysBetween(start, today);
-      const plan = daysBetween(start, mgmt.rehab.targetEnd);
+      const rc = rehabClock(mgmt, today);
+      const el = rc.day;
+      const plan = rc.plan;
       const sp = budget > 0 ? Math.round((rehabSpent / budget) * 100) : null;
       return [
-        ["Rehab day", el == null ? "—" : String(Math.max(0, el)), plan != null && el > plan ? T.red : T.txt, plan != null ? `of ${plan} planned` : ""],
+        rc.waiting
+          ? ["Rehab", "Not started", rc.gap > 30 ? T.red : rc.gap > 14 ? T.amber : T.txt, rc.gap != null ? `${rc.gap} days since closing` : ""]
+          : ["Rehab day", el == null ? "—" : String(el), plan != null && el > plan ? T.red : T.txt, (plan != null ? `of ${plan} planned` : "") + (rc.gap != null ? `${plan != null ? ", " : ""}started ${rc.gap}d after closing` : "")],
         ["Budget used", sp == null ? "—" : `${sp}%`, sp > 110 ? T.red : sp > 100 ? T.amber : T.txt, `${fmt(rehabSpent)} of ${fmt(budget)}`],
         ["Work complete", mp == null ? "—" : `${mp}%`, T.green],
         ["Forecast profit", fmt(m.netProfit), m.netProfit > 0 ? T.green : T.red, uwBaseline ? `original ${fmt(uwBaseline.m.netProfit)}` : ""],

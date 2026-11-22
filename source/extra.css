@@ -586,3 +586,44 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
 .set-invite input{flex:1 1 100%;font-size:11.5px;padding:6px 8px;border:1px solid var(--line2);border-radius:4px;color:var(--ink);font-family:ui-monospace,Menlo,monospace}
 /* v48: credits in the ledger */
 .ledger-neg{color:#1F7A55;white-space:nowrap}
+/* ---- v49: project manager fee + payments; rehab waiting time ---- */
+.pm-row{display:flex;flex-wrap:wrap;gap:14px;align-items:flex-end}
+.pm-row > .seg{margin-bottom:2px}
+.pm-row > label,.pm-row > div:not(.seg){flex:1 1 200px}
+.pm-note{font-size:12px;line-height:1.5;color:var(--mut);margin:10px 0 0}
+.pm-pay{background:#fff;border:1px solid var(--line);border-radius:6px;padding:14px 16px;margin:0 0 16px}
+.pm-pay-head{display:flex;justify-content:space-between;gap:12px;align-items:flex-start;flex-wrap:wrap}
+.pm-pay-head h3{font-size:14px;font-weight:700;color:var(--ink);margin:0}
+.pm-pay-head p{font-size:12px;color:var(--mut);margin:3px 0 0}
+.pm-link{background:none;border:0;padding:0;color:var(--blue);font:inherit;font-weight:600;cursor:pointer;text-decoration:underline;text-underline-offset:2px}
+.pm-pay-sum{text-align:right}
+.pm-pay-sum b{display:block;font-size:18px;font-variant-numeric:tabular-nums;color:var(--ink)}
+.pm-pay-sum span{font-size:11.5px;color:var(--mut)}
+.pm-inst-list{margin-top:10px;border-top:1px solid var(--line)}
+.pm-inst{display:grid;grid-template-columns:22px minmax(150px,1.3fr) 78px 90px minmax(110px,1fr) auto;gap:10px;align-items:center;padding:8px 0;border-bottom:1px solid var(--line);font-size:12.5px}
+.pm-inst-n{width:20px;height:20px;border-radius:50%;background:#EEF2F7;color:var(--mut);font-size:11px;font-weight:700;display:grid;place-items:center}
+.pm-inst.is-paid .pm-inst-n{background:#1F7A55;color:#fff}
+.pm-inst.is-due .pm-inst-n{background:#d97706;color:#fff}
+.pm-inst select,.pm-inst input{font:inherit;font-size:12.5px;padding:5px 6px;border:1px solid var(--line2);border-radius:4px;background:#fff;color:var(--ink);min-width:0}
+.pm-inst-pct{display:flex;align-items:center;gap:4px;color:var(--mut)}
+.pm-inst-pct input{width:56px}
+.pm-inst-amt{font-variant-numeric:tabular-nums;font-weight:700;text-align:right;color:var(--ink)}
+.pm-inst-st{color:var(--mut)}
+.pm-inst.is-due .pm-inst-st{color:#B45309;font-weight:600}
+.pm-inst.is-paid .pm-inst-st{color:#1F7A55;font-weight:600}
+.pm-inst-act{display:flex;gap:6px;align-items:center;justify-content:flex-end;flex-wrap:wrap}
+.pm-pay-form input[type=date]{width:132px}
+.pm-pay-form input[type=number]{width:90px}
+.pm-x{background:none;border:0;color:var(--faint);font-size:16px;cursor:pointer;padding:0 4px}
+.pm-pay-foot{display:flex;gap:12px;align-items:center;margin-top:10px;flex-wrap:wrap}
+.pm-warn{font-size:12px;color:#B45309;font-weight:600}
+@media (max-width:760px){
+  .pm-inst{grid-template-columns:22px 1fr 78px;row-gap:6px}
+  .pm-inst-amt{grid-column:2;text-align:left}
+  .pm-inst-st{grid-column:3}
+  .pm-inst-act{grid-column:1 / -1;justify-content:flex-start}
+}
+.rehab-wait{display:flex;justify-content:space-between;gap:12px;align-items:center;flex-wrap:wrap;background:#FFF8EC;border:1px solid #F3D9A8;border-radius:6px;padding:10px 12px;margin:4px 0 12px;font-size:12.5px;line-height:1.5;color:var(--ink)}
+.rehab-wait-act{display:flex;gap:8px;align-items:center}
+.rehab-wait-act input{font:inherit;font-size:12.5px;padding:5px 6px;border:1px solid var(--line2);border-radius:4px}
+.rehab-gap{font-size:12px;color:var(--mut);margin:2px 0 10px}
