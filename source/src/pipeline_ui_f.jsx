@@ -1443,7 +1443,7 @@ function ProjectOverview({ address, mapsKey, folderId, photosUrl, setPhotosUrl, 
             </React.Fragment>
           )}
         </OvCard>
-        <FinancingCard L={finL} investors={finInv} pos={finPos} soldOn={soldOn} onOpen={() => setFinOpen(true)} />
+        <FinancingCard L={finL} investors={finInv} pos={finPos} soldOn={soldOn} asOf={soldOn && soldOn < today ? soldOn : today} onOpen={() => setFinOpen(true)} />
       </div>
       {finOpen && (
         <FinancingWindow

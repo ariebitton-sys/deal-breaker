@@ -12,7 +12,11 @@ const day = (n) => {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 };
 const mmdd = (iso) => `${iso.slice(5, 7)}/${iso.slice(8, 10)}/${iso.slice(0, 4)}`;
-const money = (v, c) => "$" + v.toLocaleString("en-US", { minimumFractionDigits: c ? 2 : 0, maximumFractionDigits: c ? 2 : 0 });
+// like the app: cents only when there are any
+const money = (v, c) => {
+  const cents = c && Math.abs(v - Math.round(v)) >= 0.005;
+  return "$" + v.toLocaleString("en-US", { minimumFractionDigits: cents ? 2 : 0, maximumFractionDigits: cents ? 2 : 0 });
+};
 const txn = () => {
   const b = {};
   ["escrow", "recording", "realtor", "transfer", "warranty", "staging", "marketing", "misc"].forEach((k) => (b[k] = { on: false, val: 0 }));
@@ -26,7 +30,17 @@ const deal = {
   actuals: [{ id: 1, cat: "Acquisition", label: "Purchase price $100,000", amount: 100000, date: day(-174), tag: "purchase_price", files: [] }],
   mgmt: { closing: { date: day(-174), price: 100000 }, rehab: { startDate: day(-170) } },
 };
-const close = (a, b) => Math.abs(a - b) < 0.011;
+const addM = (iso, n) => {
+  const [y, m, d] = iso.split("-").map(Number);
+  const t = new Date(y, m - 1 + n, d);
+  return `${t.getFullYear()}-${pad(t.getMonth() + 1)}-${pad(t.getDate())}`;
+};
+// 1.5% for each full month, the days after the last full month ÷ 30
+const monthly = (amt, from, to) => {
+  let n = 0;
+  while (addM(from, n + 1) <= to) n++;
+  return amt * 0.015 * (n + Math.round((new Date(to) - new Date(addM(from, n))) / 864e5) / 30);
+};
 
 (async () => {
   const drive = makeDrive();
@@ -56,7 +70,9 @@ const close = (a, b) => Math.abs(a - b) < 0.011;
   assert(card() && /Financing/.test(card().querySelector(".dcard-h").textContent), "a Financing card sits beside the other three");
   // plan: $80,000 at closing, the $10,000 rehab draw not received; investors (auto) $20,000 + 9% flat
   const i80 = (80000 * 0.18 * 174) / 365;
-  assert(/Received\$100,000/.test(card().textContent.replace(/\s/g, "")) && card().textContent.includes(money(80000 + i80 + 20000 + 1800)), "derived: $80,000 loan + $20,000 investors received; owed = principal, interest, investors with return");
+  assert(/Interest owed today/.test(card().textContent) && card().querySelector(".ov-stat.big b").textContent === money(i80), "derived: interest owed today on the $80,000 released at closing");
+  assert(card().textContent.includes(`$80,000 since ${mmdd(day(-174))}, 174 days`) && /Investors, \$20,000 in\$1,800 return/.test(card().textContent), "one line per loan amount with its days; investors in and their return");
+  assert(/Owed today, lender and investors/.test(card().textContent) && card().textContent.includes(money(80000 + i80 + 20000 + 1800)), "and the total owed today");
   assert(/From the Flip analysis/.test(card().textContent), "and it says the terms are from the Flip analysis");
 
   console.log("2. Enter the real loan in the details window");
@@ -81,12 +97,18 @@ const close = (a, b) => Math.abs(a - b) < 0.011;
   await settle(3);
   assert(!/These terms come from the Flip analysis/.test(w().textContent), "the first edit saved the deal's own terms");
   const i90 = (90000 * 0.18 * 174) / 365; // the full note, from closing
-  assert(hero("Owed today") === money(90000 + i90 + 900 + 32700, true), `owed today ${hero("Owed today")} = $90,000 + interest ${money(i90, true)} + $900 fee + $32,700 investors`);
-  assert(hero("Received") === "$120,000" && hero("Accruing") === "$1,350/mo", "received $120,000 (80k + 10k release + 30k investors); $1,350 a month");
+  assert(hero("Interest owed today") === money(i90, true) && hero("Lender payoff today") === money(90000 + i90 + 900, true), `interest today ${hero("Interest owed today")}; payoff = $90,000 + interest + $900 fee`);
+  assert(/^\$32,700(\.00)?$/.test(hero("Owed to investors")) && hero("Interest grows") === money((90000 * 0.18) / 365, true) + "/day", "investors $32,700; interest grows $44.38 a day");
   assert(/Matures/.test(w().querySelector(".xw-sec-h em").textContent) && w().querySelector(".xw-sec-h em.warn"), "maturity in 8 days is flagged");
   await setVal(inp("Interest is charged on"), "funded");
   const iFunded = (80000 * 0.18 * 174) / 365 + (10000 * 0.18 * 93) / 365;
-  assert(hero("Owed today") === money(90000 + iFunded + 900 + 32700, true), "charged only on what was released: the $10,000 accrues from its release date");
+  assert(hero("Interest owed today") === money(iFunded, true), "charged only on what was released: the $10,000 accrues from its release date");
+  const rows = [...w().querySelectorAll(".fin-row")].map((r) => r.textContent);
+  assert(rows.some((r) => r.startsWith(`Interest on $80,000 from ${mmdd(day(-174))}, 174 days at 1.5% a month`)) && rows.some((r) => r.startsWith(`Interest on $10,000 from ${mmdd(day(-93))}, 93 days`)), "the window lists the interest on each amount, with its days");
+  await setVal(inp("Interest is counted"), "month");
+  const iMonth = monthly(80000, day(-174), day(0)) + monthly(10000, day(-93), day(0));
+  assert(hero("Interest owed today") === money(iMonth, true), `by month: 1.5% per full month, part months ÷ 30 → ${money(iMonth, true)}`);
+  await setVal(inp("Interest is counted"), "365");
   await setVal(inp("Interest is charged on"), "full");
   await setVal(inp("Payoff date"), day(29));
   const at = [...w().querySelectorAll(".xw-sec")].pop().textContent;
@@ -97,7 +119,8 @@ const close = (a, b) => Math.abs(a - b) < 0.011;
 
   console.log("3. The card shows where things stand, and it is saved");
   assert(card().textContent.includes("Matures " + mmdd(day(8)) + ", in 8 days") && card().querySelector(".ov-note.warn"), "card: matures in 8 days, amber");
-  assert(/Lender, Bridgeit LLC\$90,000/.test(card().textContent) && /Lender fees due\$900/.test(card().textContent) && /\$30,000 \+ \$2,700/.test(card().textContent), "card rows: lender principal, fees due, investors in + return");
+  assert(card().textContent.includes(`$90,000 since ${mmdd(day(-174))}, 174 days`) && /Lender fees due at payoff\$900/.test(card().textContent) && /Investors, \$30,000 in\$2,700 return/.test(card().textContent), "card rows: the note's interest line, fees due, investors in + return");
+  assert(card().textContent.includes("Owed today, lender and investors" + money(90000 + i90 + 900 + 32700)), "and the total owed today");
   await sleep(1700);
   await settle(6);
   let s = saved();
@@ -112,16 +135,16 @@ const close = (a, b) => Math.abs(a - b) < 0.011;
   await click(card().querySelector(".dcard-link"));
   await setVal(inp("Maturity date"), day(-4));
   const iPast = (90000 * 0.18 * 170) / 365 + (90000 * 0.3 * 4) / 365;
-  assert(hero("Owed today") === money(90000 + iPast + 900 + 32700, true), "interest at 18% to maturity, then 30%");
-  assert(hero("Accruing") === "$2,250/mo", "accruing at the default rate now: $2,250 a month");
+  assert(hero("Interest owed today") === money(iPast, true) && w().querySelector(".xw-hero b.neg"), "interest at 18% to maturity, then 30%, in red");
+  assert(hero("Interest grows") === money((90000 * 0.3) / 365, true) + "/day" && /\$2,250 a month, at the default rate/.test(w().textContent), "growing at the default rate now: $2,250 a month");
   await click(btn("Done", w()));
   assert(card().querySelector(".ov-note.neg") && /Past maturity \(.+\) by 4 days, default rate 2\.5%\/mo/.test(card().textContent), "card: past maturity by 4 days, red");
-  assert(/Interest to date \(incl\. default\)/.test(card().textContent), "and the interest row says it includes default interest");
+  assert(card().querySelector(".fin-lines em.neg"), "and the interest line turns red");
 
   console.log("5. An investor paid back stops counting");
   await click(card().querySelector(".dcard-link"));
   await setVal(w().querySelector('.fin-inv-r [aria-label="Paid back on"]'), day(0));
-  assert(hero("Owed today") === money(90000 + iPast + 900, true), "owed today drops the investor's $32,700");
+  assert(/^\$0(\.00)?$/.test(hero("Owed to investors")), "nothing owed to the investor once paid back");
   await click(btn("Done", w()));
   assert(!t.errors.length, "no errors " + t.errors.join(" | "));
   console.log("\nALL FINANCING TESTS PASSED");

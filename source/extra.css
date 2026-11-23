@@ -1065,3 +1065,9 @@ mark{background:#DBEAFE;color:inherit;border-radius:2px;padding:0 1px}
 .fin-inv-r>b{text-align:left}
 .xw-form{grid-template-columns:1fr 1fr}
 }
+.xw-hero b.neg{color:var(--neg)}
+.xw-item.fin-row.sub{background:var(--subtle)}
+.xw-item.fin-row.sub .xw-item-l{color:var(--ink);font-weight:600}
+.xw-item.fin-row.sub .xw-item-a{font-weight:700}
+.ov-list .fin-total{border-top:1px solid var(--line);margin-top:4px;padding-top:8px!important;font-weight:600}
+.ov-list .fin-total em{color:var(--ink)}

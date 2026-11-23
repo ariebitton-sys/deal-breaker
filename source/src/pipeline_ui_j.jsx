@@ -6,7 +6,12 @@
 // Lender releases after closing (holdbacks, rehab draws) are mgmt.draws rows, the same rows as the draws panel.
 const FIN_ACCRUAL = [
   ["full", "The full note, from closing"],
-  ["funded", "Only what was released, from each release"],
+  ["funded", "Released amounts only"],
+];
+const FIN_DAYCOUNT = [
+  ["month", "By month (part months ÷ 30)", "Monthly rate for each full month; the days after the last full month as a share of 30"],
+  ["365", "Daily (days ÷ 365)", "Daily: the yearly rate × actual days ÷ 365"],
+  ["360", "Daily (days ÷ 360)", "Daily: the yearly rate × actual days ÷ 360"],
 ];
 const FIN_BASIS = [
   ["flat", "Flat"],
@@ -24,6 +29,7 @@ function finLenderOf(fin, uw, m, mgmt) {
     start: (mgmt.closing && mgmt.closing.date) || "",
     rate: uw.intRatePurchase || 0,
     accrual: draws ? "funded" : "full",
+    dayCount: "365",
     maturity: "",
     defaultRate: 0,
     paidInterest: 0,
@@ -35,6 +41,18 @@ function finInvestorsOf(fin, uw, m, mgmt) {
   return m.investorAmount > 0 ? [{ id: "inv", name: "Investors", amount: Math.round(m.investorAmount), date: (mgmt.closing && mgmt.closing.date) || "", rate: uw.investorRate || 0, basis: "flat", paidBack: "" }] : [];
 }
 const finDays = (a, b) => Math.max(0, daysBetween(a, b) || 0);
+// Interest on `amount` from `from` to `to`. "month": the monthly rate for each full month, plus the days
+// after the last full month as a share of a 30-day month; "365" / "360": actual days over that year.
+function finInterest(amount, rate, from, to, dayCount) {
+  if (!from || !to || to <= from || !(amount > 0) || !(rate > 0)) return 0;
+  if (dayCount === "month") {
+    let n = 0;
+    while (n < 600 && addMonthsISO(from, n + 1) <= to) n++;
+    return ((amount * rate) / 12) * (n + finDays(addMonthsISO(from, n), to) / 30);
+  }
+  return (amount * rate * finDays(from, to)) / (dayCount === "360" ? 360 : 365);
+}
+const finPerDay = (amount, rate, dayCount) => (dayCount === "month" ? (amount * rate) / 12 / 30 : (amount * rate) / (dayCount === "360" ? 360 : 365));
 
 // Where the deal stands on `asOf`: principal received, interest accrued (at the default rate past maturity),
 // fees, what the lender is owed, and each investor's return.
@@ -51,15 +69,14 @@ function finPosition(L, investors, draws, asOf) {
     defRate = num(L.defaultRate);
   const mat = L.maturity || "";
   const pastMaturity = started && !!mat && asOf > mat;
-  let interest = 0,
-    defInterest = 0;
-  base.forEach((t) => {
-    if (pastMaturity && defRate > 0) {
-      const split = mat > t.date ? mat : t.date;
-      interest += (t.amount * rate * finDays(t.date, split)) / 365;
-      defInterest += (t.amount * defRate * finDays(split, asOf)) / 365;
-    } else interest += (t.amount * rate * finDays(t.date, asOf)) / 365;
+  const dc = L.dayCount || "365";
+  // one line per amount accruing: the note from closing, or each release from its own date
+  const lines = base.map((t) => {
+    const split = pastMaturity && defRate > 0 ? (mat > t.date ? mat : t.date) : asOf;
+    return { ...t, days: finDays(t.date, asOf), interest: finInterest(t.amount, rate, t.date, split, dc), defInterest: split < asOf ? finInterest(t.amount, defRate, split, asOf, dc) : 0 };
   });
+  const interest = lines.reduce((s, x) => s + x.interest, 0);
+  const defInterest = lines.reduce((s, x) => s + x.defInterest, 0);
   const accrued = interest + defInterest;
   const paidInterest = Math.min(num(L.paidInterest), accrued);
   const interestDue = accrued - paidInterest;
@@ -68,7 +85,9 @@ function finPosition(L, investors, draws, asOf) {
   const feesPaid = fees.filter((f) => f.paid).reduce((s, f) => s + num(f.amount), 0) + drawFees;
   const feesDue = fees.filter((f) => !f.paid).reduce((s, f) => s + num(f.amount), 0);
   const curRate = pastMaturity && defRate > 0 ? defRate : rate;
-  const perMonth = (base.reduce((s, t) => s + t.amount, 0) * curRate) / 12;
+  const accruingOn = base.reduce((s, t) => s + t.amount, 0);
+  const perMonth = (accruingOn * curRate) / 12;
+  const perDay = finPerDay(accruingOn, curRate, dc);
   const inv = (investors || []).map((x) => {
     const isIn = !x.date || x.date <= asOf;
     const end = x.paidBack && x.paidBack < asOf ? x.paidBack : asOf;
@@ -82,7 +101,7 @@ function finPosition(L, investors, draws, asOf) {
   const invPerMonth = inv.filter((x) => x.open && x.basis === "annual").reduce((s, x) => s + (num(x.amount) * num(x.rate)) / 12, 0);
   const lenderPayoff = started ? principal + interestDue + feesDue : 0;
   return {
-    started, releases, tranches, principal, undrawn: Math.max(0, num(L.note) - principal), interest, defInterest, accrued, paidInterest, interestDue,
+    started, releases, tranches, lines, perDay, principal, undrawn: Math.max(0, num(L.note) - principal), interest, defInterest, accrued, paidInterest, interestDue,
     feesPaid, feesDue, lenderPayoff, pastMaturity, curRate, perMonth, daysToMaturity: mat ? daysBetween(asOf, mat) : null,
     inv, invIn, invReturn, invDue, invPerMonth,
     received: principal + invIn,
@@ -109,7 +128,7 @@ function finMaturityLine(L, pos) {
 }
 
 // ---------- the overview card ----------
-function FinancingCard({ L, investors, pos, onOpen, soldOn }) {
+function FinancingCard({ L, investors, pos, onOpen, soldOn, asOf }) {
   const none = !(num(L.note) > 0) && !investors.length;
   if (soldOn != null && !none)
     return (
@@ -160,34 +179,50 @@ function FinancingCard({ L, investors, pos, onOpen, soldOn }) {
       ) : (
         <React.Fragment>
           <div className="ov-pair">
-            <OvStat k="Owed today" v={fmt(pos.owed)} big />
-            <OvStat k="Received" v={fmt(pos.received)} />
+            <OvStat k="Interest owed today" v={fmt(pos.interestDue)} h={`+${fmt2(pos.perDay)} a day`} tone={pos.defInterest > 0 ? T.red : undefined} big />
+            <OvStat k="Lender payoff today" v={fmt(pos.lenderPayoff)} />
           </div>
           {term > 0 && <BudgetBar spent={gone} budget={term} />}
-          <div className={"ov-note" + (mat && mat.tone ? " " + mat.tone : "")}>{mat ? mat.text : `Accruing ${fmt(pos.accruing)} a month`}</div>
-          <div className="ov-list">
-            <div>
-              <span>Lender{L.name ? `, ${L.name}` : ""}</span>
-              <em>{fmt(pos.principal)}</em>
-            </div>
-            <div>
-              <span>Interest to date{pos.defInterest > 0 ? " (incl. default)" : ""}</span>
-              <em className={pos.defInterest > 0 ? "neg" : ""}>{fmt(pos.interestDue)}</em>
-            </div>
+          <div className={"ov-note" + (mat && mat.tone ? " " + mat.tone : "")}>{mat ? mat.text : `As of ${fmtDate(asOf)}, ${fmt(pos.accruing)} a month`}</div>
+          <div className="ov-list fin-lines">
+            {pos.lines.slice(0, 3).map((x, i) => (
+              <div key={i}>
+                <span>
+                  {fmt(x.amount)} since {fmtDate(x.date)}, {x.days} days
+                </span>
+                <em className={x.defInterest > 0 ? "neg" : ""}>{fmt(x.interest + x.defInterest)}</em>
+              </div>
+            ))}
+            {pos.lines.length > 3 && (
+              <div>
+                <span>{pos.lines.length - 3} more releases</span>
+                <em>{fmt(pos.lines.slice(3).reduce((a, x) => a + x.interest + x.defInterest, 0))}</em>
+              </div>
+            )}
+            {pos.paidInterest > 0 && (
+              <div>
+                <span>Interest already paid</span>
+                <em>−{fmt(pos.paidInterest)}</em>
+              </div>
+            )}
             {pos.feesDue > 0 && (
               <div>
-                <span>Lender fees due</span>
+                <span>Lender fees due at payoff</span>
                 <em>{fmt(pos.feesDue)}</em>
               </div>
             )}
-            {investors.length > 0 && (
+            {pos.inv.filter((x) => x.open).length > 0 && (
               <div>
-                <span>Investors, in + return</span>
-                <em>
-                  {fmt(pos.invIn)} + {fmt(pos.invReturn)}
-                </em>
+                <span>
+                  Investors, {fmt(pos.inv.filter((x) => x.open).reduce((a, x) => a + num(x.amount), 0))} in
+                </span>
+                <em>{fmt(pos.inv.filter((x) => x.open).reduce((a, x) => a + x.ret, 0))} return</em>
               </div>
             )}
+            <div className="fin-total">
+              <span>Owed today, lender and investors</span>
+              <em>{fmt(pos.owed)}</em>
+            </div>
           </div>
         </React.Fragment>
       )}
@@ -282,7 +317,7 @@ function FinancingWindow({ L, investors, draws, today, payoffDate, setFinancing,
           <div className="xw-h-txt">
             <span className="xw-k">Financing</span>
             <h3>Lender and investors</h3>
-            <p className="xw-sub">{L.real ? "Interest accrues daily on the terms below. Change any field and it saves with the deal." : "These terms come from the Flip analysis. Change any field to record this deal's real loan; it saves with the deal."}</p>
+            <p className="xw-sub">{L.real ? "Interest is worked out from the terms below. Change any field and it saves with the deal." : "These terms come from the Flip analysis. Change any field to record this deal's real loan; it saves with the deal."}</p>
           </div>
           <button className="dv-x" onClick={onClose} aria-label="Close">
             <Icon name="x" size={18} />
@@ -290,20 +325,20 @@ function FinancingWindow({ L, investors, draws, today, payoffDate, setFinancing,
         </header>
         <div className="xw-hero">
           <div>
-            <span>Owed today</span>
-            <b>{fmt2(pos.owed)}</b>
+            <span>Interest owed today</span>
+            <b className={pos.defInterest > 0 ? "neg" : ""}>{fmt2(pos.interestDue)}</b>
           </div>
           <div>
-            <span>Received</span>
-            <b>{fmt(pos.received)}</b>
+            <span>Lender payoff today</span>
+            <b>{fmt2(pos.lenderPayoff)}</b>
           </div>
           <div>
-            <span>Cost so far</span>
-            <b>{fmt(pos.cost)}</b>
+            <span>Owed to investors</span>
+            <b>{fmt2(pos.invDue)}</b>
           </div>
           <div>
-            <span>Accruing</span>
-            <b>{fmt(pos.accruing)}/mo</b>
+            <span>Interest grows</span>
+            <b>{fmt2(pos.perDay)}/day</b>
           </div>
         </div>
         <div className="xw-body">
@@ -333,10 +368,20 @@ function FinancingWindow({ L, investors, draws, today, payoffDate, setFinancing,
                 <FinNum value={L.rate} onCommit={(v) => setL({ rate: v })} pct suffix="% / yr" label="Interest rate" />
                 <span className="fin-hint">{finPctLabel(num(L.rate) / 12)} a month</span>
               </label>
-              <label>
+              <label title="Released amounts only: each release accrues from its own date">
                 Interest is charged on
                 <select value={L.accrual || "full"} onChange={(e) => setL({ accrual: e.target.value })} aria-label="Interest is charged on">
                   {FIN_ACCRUAL.map(([k, l]) => (
+                    <option key={k} value={k}>
+                      {l}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                Interest is counted
+                <select value={L.dayCount || "365"} onChange={(e) => setL({ dayCount: e.target.value })} aria-label="Interest is counted">
+                  {FIN_DAYCOUNT.map(([k, l]) => (
                     <option key={k} value={k}>
                       {l}
                     </option>
@@ -426,14 +471,22 @@ function FinancingWindow({ L, investors, draws, today, payoffDate, setFinancing,
               </button>
             </div>
 
-            <div className="fin-sub">Owed to the lender today</div>
+            <div className="fin-sub">Owed to the lender today, {fmtDate(today)}</div>
             <div className="xw-items">
-              {sumRow("Principal received", pos.principal)}
-              {sumRow(`Interest at ${finPctLabel(L.rate)} a year${L.accrual === "full" && pos.undrawn > 0 ? ", on the full note" : ""}`, pos.interest)}
-              {pos.defInterest > 0 && sumRow(`Default interest since ${fmtDate(L.maturity)}`, pos.defInterest, "neg")}
+              {pos.lines.map((x, i) => (
+                <React.Fragment key={i}>
+                  {sumRow(`Interest on ${fmt(x.amount)}${L.accrual === "full" && pos.undrawn > 0 ? " (the full note)" : ""} from ${fmtDate(x.date)}, ${x.days} days at ${finPctLabel(num(L.rate) / 12)} a month`, x.interest)}
+                  {x.defInterest > 0 && sumRow(`Default interest on it since ${fmtDate(L.maturity)}, at ${finPctLabel(num(L.defaultRate) / 12)} a month`, x.defInterest, "neg")}
+                </React.Fragment>
+              ))}
               {pos.paidInterest > 0 && sumRow("Interest already paid", pos.paidInterest, "", "−")}
+              {sumRow("Interest owed", pos.interestDue, "sub")}
+              {sumRow("Principal received", pos.principal)}
               {pos.feesDue > 0 && sumRow("Fees due at payoff", pos.feesDue)}
               {sumRow("Payoff today", pos.lenderPayoff, "sum")}
+            </div>
+            <div className="xw-hint">
+              Interest grows {fmt2(pos.perDay)} a day, {fmt(pos.perMonth)} a month{pos.pastMaturity && num(L.defaultRate) > 0 ? ", at the default rate" : ""}.
             </div>
           </section>
 
@@ -503,7 +556,7 @@ function FinancingWindow({ L, investors, draws, today, payoffDate, setFinancing,
           </section>
         </div>
         <footer className="xw-f">
-          <span className="fin-foot">Interest accrues daily: annual rate ÷ 365.</span>
+          <span className="fin-foot">{(FIN_DAYCOUNT.find((x) => x[0] === (L.dayCount || "365")) || FIN_DAYCOUNT[1])[2]}.</span>
           <button style={btnPrimary()} onClick={onClose}>
             Done
           </button>
