@@ -23,6 +23,7 @@ const ICONS = {
   funnel: "M4 5h16l-6 8v6l-4-2v-4z",
   hammer: "M14 4l6 6-3 3-6-6zM11 7l-8 8 3 3 8-8",
   home: "M4 11l8-7 8 7v9H4zM10 20v-5h4v5",
+  bank: "M3 9.5L12 4l9 5.5M5 10v8M9.7 10v8M14.3 10v8M19 10v8M3 20h18",
   calc: "M6 3h12v18H6zM9 7h6M9 11h.01M12 11h.01M15 11h.01M9 15h.01M12 15h.01M15 15h.01",
   cal: "M4 6h16v14H4zM4 10h16M9 3v4M15 3v4",
   chart: "M4 20V10M10 20V4M16 20v-7M22 20H2",

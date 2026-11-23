@@ -1080,8 +1080,17 @@ function NextUp({ stage, mgmt, setMgmt, address, by, addLog, onGo, onUploadDoc, 
     </section>
   );
 }
-function ProjectOverview({ address, mapsKey, folderId, photosUrl, setPhotosUrl, sqft, yearBuilt, arv, purchase, stage, mgmt, setMgmt, m, deal, mao, uwBaseline, actuals, actualSale, analysisDate, health, onGo, userEmail, addLog, onUploadDoc, openAttachment, connected }) {
+function ProjectOverview({ address, mapsKey, folderId, photosUrl, setPhotosUrl, sqft, yearBuilt, arv, purchase, stage, mgmt, setMgmt, m, deal, mao, uwBaseline, actuals, actualSale, analysisDate, health, onGo, userEmail, addLog, onUploadDoc, openAttachment, connected, uw }) {
   const today = todayISO();
+  // financing: the lender and investor positions, as entered or derived from the Flip analysis
+  const [finOpen, setFinOpen] = useState(false);
+  const fin = mgmt.financing || {};
+  const finL = finLenderOf(fin, uw || {}, m, mgmt);
+  const finInv = finInvestorsOf(fin, uw || {}, m, mgmt);
+  const soldOn = stage === "sold" ? (mgmt.sale && mgmt.sale.date) || "" : null;
+  const finPos = finPosition(finL, finInv, mgmt.draws, soldOn && soldOn < today ? soldOn : today);
+  const setFinancing = (fn) => setMgmt((mm) => ({ ...mm, financing: fn(mm.financing || {}) }));
+  const setDraws = (fn) => setMgmt((mm) => ({ ...mm, draws: fn(mm.draws || []) }));
   const [street, city] = splitAddress(address || "");
   const q = encodeURIComponent((address || "").trim());
   const links = [
@@ -1434,7 +1443,21 @@ function ProjectOverview({ address, mapsKey, folderId, photosUrl, setPhotosUrl, 
             </React.Fragment>
           )}
         </OvCard>
+        <FinancingCard L={finL} investors={finInv} pos={finPos} soldOn={soldOn} onOpen={() => setFinOpen(true)} />
       </div>
+      {finOpen && (
+        <FinancingWindow
+          L={finL}
+          investors={finInv}
+          draws={mgmt.draws}
+          today={soldOn && soldOn < today ? soldOn : today}
+          payoffDate={finPayoffDefault(fin, mgmt, uw || {}, today)}
+          setFinancing={setFinancing}
+          setDraws={setDraws}
+          addLog={addLog || (() => {})}
+          onClose={() => setFinOpen(false)}
+        />
+      )}
       <div className="ov-ops">
         <NextUp stage={stage} mgmt={mgmt} setMgmt={setMgmt} address={address} by={userEmail || ""} addLog={addLog || (() => {})} onGo={onGo} onUploadDoc={onUploadDoc} openAttachment={openAttachment} connected={connected} />
         <div className="ov-side">

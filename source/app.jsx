@@ -4425,6 +4425,7 @@ function App() {
             onUploadDoc={(f, kind) => uploadDealDoc(f, kind)}
             openAttachment={openAttachment}
             connected={!!accessToken && !!settings.folderId}
+            uw={{ intRatePurchase, intRateRehab, rehabFunding, investorRate, points, holdMonths }}
           />
         ) : mode === "underwrite" ? (
           <React.Fragment>

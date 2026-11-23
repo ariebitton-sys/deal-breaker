@@ -4,7 +4,7 @@
   "description": "Build and test tooling for Deal Breaker (Kappa Real Estate Investments)",
   "scripts": {
     "build": "python3 build.py",
-    "test": "node test/calc.test.js && node test/flow.test.js && node test/draft.test.js && node test/key.test.js && node test/utilities.test.js && node test/nav.test.js && node test/auth.test.js && node test/closing.test.js && node test/team.test.js && node test/pm.test.js && node test/expenses.test.js && node test/credits.test.js"
+    "test": "node test/calc.test.js && node test/flow.test.js && node test/draft.test.js && node test/key.test.js && node test/utilities.test.js && node test/nav.test.js && node test/auth.test.js && node test/closing.test.js && node test/team.test.js && node test/pm.test.js && node test/expenses.test.js && node test/credits.test.js && node test/financing.test.js"
   },
   "devDependencies": {
     "@babel/core": "^8.1.2",

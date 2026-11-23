@@ -275,11 +275,15 @@ function TransitionModal({ kind, ctx, onConfirm, onClose }) {
         return { listDate: t, listPrice: num(mgmt.listing.price) || arv || 0, agent: mgmt.listing.agent || "", rehabEnd: mgmt.rehab.endDate || t, rehabStart: mgmt.rehab.startDate || "" };
       case "sold": {
         const be = mgmt.buyer.expectedClosing;
+        const saleDate = be && be <= t ? be : t;
+        // the investors' return from the deal's financing terms when they were entered, else the plan's
+        const realInv = mgmt.financing && Array.isArray(mgmt.financing.investors) ? mgmt.financing.investors : null;
+        const invRet = realInv ? finPosition({}, realInv, [], saleDate).inv.filter((x) => !x.paidBack).reduce((s, x) => s + x.ret, 0) : m.investorInterest || 0;
         return {
-          saleDate: be && be <= t ? be : t,
+          saleDate,
           salePrice: num(mgmt.buyer.price) || num(mgmt.listing.price) || arv || 0,
-          addInvestor: !hasTag("investor_return") && m.investorInterest > 0,
-          investorAmt: Math.round(m.investorInterest || 0),
+          addInvestor: !hasTag("investor_return") && invRet > 0,
+          investorAmt: Math.round(invRet),
           addRehabInt: rehabFunding !== "draws" && !hasTag("rehab_loan_interest") && m.loanAmountRehab > 0,
           rehabIntAmt: null,
           addPurchInt: false,

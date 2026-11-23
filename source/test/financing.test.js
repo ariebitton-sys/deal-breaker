@@ -1,0 +1,132 @@
+// v54: the Financing card on the project overview and its details window: money received from the lender
+// and investors, interest accrued (default rate past maturity), fees, what is owed today and on a payoff date.
+const { boot, makeDrive } = require("./harness");
+const assert = (c, msg) => {
+  if (!c) throw new Error("ASSERT: " + msg);
+  console.log("  ✓ " + msg);
+};
+const pad = (n) => String(n).padStart(2, "0");
+const day = (n) => {
+  const d = new Date();
+  d.setDate(d.getDate() + n);
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+};
+const mmdd = (iso) => `${iso.slice(5, 7)}/${iso.slice(8, 10)}/${iso.slice(0, 4)}`;
+const money = (v, c) => "$" + v.toLocaleString("en-US", { minimumFractionDigits: c ? 2 : 0, maximumFractionDigits: c ? 2 : 0 });
+const txn = () => {
+  const b = {};
+  ["escrow", "recording", "realtor", "transfer", "warranty", "staging", "marketing", "misc"].forEach((k) => (b[k] = { on: false, val: 0 }));
+  return b;
+};
+const deal = {
+  address: "88 Loan Way, Willoughby, OH 44094", sqft: 1000, holdMonths: 3, arv: 160000, yearBuilt: 1946, purchase: 100000, repairs: [], useRepairBuilder: false, manualRepair: 10000,
+  loanOnPurchasePct: 0.8, loanOnRehabPct: 1, intRatePurchase: 0.18, intRateRehab: 0.18, points: 0, investorAmount: null, investorAuto: true, investorRate: 0.09,
+  analysisDate: day(-200), taxAnnual: 2129, insMonthly: 225, utilGas: 75, utilWater: 75, utilElec: 50, hoaMonthly: 0, miscHold: 0,
+  buyTxn: txn(), sellTxn: txn(), actualSale: 0, stage: "rehab", uwBaseline: null, rehabFunding: "draws", drawCount: 1, drawMonths: 6, drawFee: 0,
+  actuals: [{ id: 1, cat: "Acquisition", label: "Purchase price $100,000", amount: 100000, date: day(-174), tag: "purchase_price", files: [] }],
+  mgmt: { closing: { date: day(-174), price: 100000 }, rehab: { startDate: day(-170) } },
+};
+const close = (a, b) => Math.abs(a - b) < 0.011;
+
+(async () => {
+  const drive = makeDrive();
+  const fid = drive.add("88 Loan Way, Willoughby, OH 44094.json", deal);
+  const t = await boot({ drive, settings: { clientId: "c", folderId: "f" } });
+  const { doc, click, btn, setVal, settle, sleep, nav } = t;
+  const saved = () => JSON.parse(drive.files[fid].content);
+  const card = () => doc.querySelector(".fin-card");
+  const w = () => doc.querySelector(".fin-w");
+  const inp = (label) => w().querySelector(`[aria-label="${label}"]`);
+  const commit = async (label, v) => {
+    const el = inp(label);
+    await setVal(el, v);
+    el.dispatchEvent(new t.win.FocusEvent("focusout", { bubbles: true }));
+    await settle(3);
+  };
+  const hero = (k) => [...w().querySelectorAll(".xw-hero > div")].find((d) => d.querySelector("span").textContent === k).querySelector("b").textContent;
+
+  console.log("1. The card, from the Flip analysis until real terms are entered");
+  await click(btn("Connect Google", doc.querySelector(".pf-empty")));
+  await sleep(40);
+  await settle(10);
+  await click(nav(/^Active projects/));
+  await click([...doc.querySelectorAll("tr.dt-row")].find((r) => r.textContent.includes("88 Loan Way")));
+  await sleep(30);
+  await settle(10);
+  assert(card() && /Financing/.test(card().querySelector(".dcard-h").textContent), "a Financing card sits beside the other three");
+  // plan: $80,000 at closing, the $10,000 rehab draw not received; investors (auto) $20,000 + 9% flat
+  const i80 = (80000 * 0.18 * 174) / 365;
+  assert(/Received\$100,000/.test(card().textContent.replace(/\s/g, "")) && card().textContent.includes(money(80000 + i80 + 20000 + 1800)), "derived: $80,000 loan + $20,000 investors received; owed = principal, interest, investors with return");
+  assert(/From the Flip analysis/.test(card().textContent), "and it says the terms are from the Flip analysis");
+
+  console.log("2. Enter the real loan in the details window");
+  await click(card().querySelector(".dcard-link"));
+  assert(w() && /These terms come from the Flip analysis/.test(w().textContent), "the window opens on the derived terms");
+  await commit("Lender name", "Bridgeit LLC");
+  await commit("Note amount", "90,000");
+  await commit("Interest rate", 18);
+  await setVal(inp("Interest is charged on"), "full");
+  await setVal(inp("Maturity date"), day(8));
+  await commit("Default rate", 30);
+  await setVal(inp("Release date"), day(-93));
+  await setVal(inp("Release amount"), "10000");
+  await click(btn("Add release", w()));
+  await setVal(inp("Fee name"), "Extension fee (1 point)");
+  await setVal(inp("Fee amount"), "900");
+  await click(btn("Add fee", w()));
+  const inv = w().querySelector(".fin-inv-r");
+  const ia = inv.querySelector('[aria-label="Investor amount"]');
+  await setVal(ia, "30000");
+  ia.dispatchEvent(new t.win.FocusEvent("focusout", { bubbles: true }));
+  await settle(3);
+  assert(!/These terms come from the Flip analysis/.test(w().textContent), "the first edit saved the deal's own terms");
+  const i90 = (90000 * 0.18 * 174) / 365; // the full note, from closing
+  assert(hero("Owed today") === money(90000 + i90 + 900 + 32700, true), `owed today ${hero("Owed today")} = $90,000 + interest ${money(i90, true)} + $900 fee + $32,700 investors`);
+  assert(hero("Received") === "$120,000" && hero("Accruing") === "$1,350/mo", "received $120,000 (80k + 10k release + 30k investors); $1,350 a month");
+  assert(/Matures/.test(w().querySelector(".xw-sec-h em").textContent) && w().querySelector(".xw-sec-h em.warn"), "maturity in 8 days is flagged");
+  await setVal(inp("Interest is charged on"), "funded");
+  const iFunded = (80000 * 0.18 * 174) / 365 + (10000 * 0.18 * 93) / 365;
+  assert(hero("Owed today") === money(90000 + iFunded + 900 + 32700, true), "charged only on what was released: the $10,000 accrues from its release date");
+  await setVal(inp("Interest is charged on"), "full");
+  await setVal(inp("Payoff date"), day(29));
+  const at = [...w().querySelectorAll(".xw-sec")].pop().textContent;
+  const def = (90000 * 0.3 * 21) / 365;
+  assert(at.includes("of which default interest after " + mmdd(day(8))) && at.includes(money(def, true)), "paying off 21 days past maturity shows the default interest");
+  await click(btn("Done", w()));
+  assert(!w(), "Done closes the window");
+
+  console.log("3. The card shows where things stand, and it is saved");
+  assert(card().textContent.includes("Matures " + mmdd(day(8)) + ", in 8 days") && card().querySelector(".ov-note.warn"), "card: matures in 8 days, amber");
+  assert(/Lender, Bridgeit LLC\$90,000/.test(card().textContent) && /Lender fees due\$900/.test(card().textContent) && /\$30,000 \+ \$2,700/.test(card().textContent), "card rows: lender principal, fees due, investors in + return");
+  await sleep(1700);
+  await settle(6);
+  let s = saved();
+  const L = s.mgmt.financing.lender;
+  assert(L.name === "Bridgeit LLC" && L.note === 90000 && L.funded === 80000 && L.rate === 0.18 && L.defaultRate === 0.3 && L.maturity === day(8) && L.accrual === "full", "lender terms saved with the deal");
+  assert(L.fees.some((f) => f.label === "Extension fee (1 point)" && f.amount === 900 && !f.paid), "the $900 fee saved as due at payoff");
+  assert(s.mgmt.draws.length === 1 && s.mgmt.draws[0].amount === 10000 && s.mgmt.draws[0].received === day(-93), "the release saved as a received lender draw");
+  assert(s.mgmt.financing.investors[0].amount === 30000 && s.mgmt.financing.investors[0].basis === "flat", "investor saved");
+  assert(s.mgmt.log.some((l) => /Lender released \$10,000/.test(l.text)), "the release is in the activity log");
+
+  console.log("4. Past maturity: default interest, in red");
+  await click(card().querySelector(".dcard-link"));
+  await setVal(inp("Maturity date"), day(-4));
+  const iPast = (90000 * 0.18 * 170) / 365 + (90000 * 0.3 * 4) / 365;
+  assert(hero("Owed today") === money(90000 + iPast + 900 + 32700, true), "interest at 18% to maturity, then 30%");
+  assert(hero("Accruing") === "$2,250/mo", "accruing at the default rate now: $2,250 a month");
+  await click(btn("Done", w()));
+  assert(card().querySelector(".ov-note.neg") && /Past maturity \(.+\) by 4 days, default rate 2\.5%\/mo/.test(card().textContent), "card: past maturity by 4 days, red");
+  assert(/Interest to date \(incl\. default\)/.test(card().textContent), "and the interest row says it includes default interest");
+
+  console.log("5. An investor paid back stops counting");
+  await click(card().querySelector(".dcard-link"));
+  await setVal(w().querySelector('.fin-inv-r [aria-label="Paid back on"]'), day(0));
+  assert(hero("Owed today") === money(90000 + iPast + 900, true), "owed today drops the investor's $32,700");
+  await click(btn("Done", w()));
+  assert(!t.errors.length, "no errors " + t.errors.join(" | "));
+  console.log("\nALL FINANCING TESTS PASSED");
+  process.exit(0);
+})().catch((e) => {
+  console.error(e);
+  process.exit(1);
+});
