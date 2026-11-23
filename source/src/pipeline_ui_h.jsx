@@ -453,6 +453,7 @@ function EntryRow({ a, src, child, itemsOpen, toks, onOpen, onDelete, onToggleIt
           <span className="lg-meta">
             <span>{a.date ? fmtDate(a.date) : "No date"}</span>
             <span>{catShort(a.cat)}</span>
+            {a.unpaid && <span className="lg-unpaid">Not paid</span>}
             {items && (
               <button className={"ledger-items-btn" + (itemsOpen ? " open" : "")} onClick={stop(onToggleItems)} aria-expanded={itemsOpen} title={itemsOpen ? "Hide the breakdown" : `Show the ${items.length} items`}>
                 <Icon name="down" size={12} />
@@ -675,7 +676,14 @@ function ExpenseWindow({ a, group, src, budgetLines, focusItem, onPatch, onDelet
                   onKeyDown={fieldKeys("amount")}
                 />
               </label>
-              <label className="wide">
+              <label>
+                <span>Status</span>
+                <select value={a.unpaid ? "unpaid" : "paid"} onChange={(e) => onPatch(a.id, { unpaid: e.target.value === "unpaid" ? true : undefined })} aria-label="Paid or not">
+                  <option value="paid">Paid</option>
+                  <option value="unpaid">Not paid yet</option>
+                </select>
+              </label>
+              <label className="span2">
                 <span>Description</span>
                 <input className="xw-label" data-xw="text" value={d.label} onChange={(e) => setD({ ...d, label: e.target.value })} onBlur={commit} onKeyDown={fieldKeys("label")} />
               </label>
@@ -824,12 +832,12 @@ function ExpenseWindow({ a, group, src, budgetLines, focusItem, onPatch, onDelet
   );
 }
 function AddExpenseRow({ onAdd, defaultCat }) {
-  const blank = (cat) => ({ date: todayISO(), cat: cat || "Rehab / Construction", label: "", amount: "" });
+  const blank = (cat, unpaid) => ({ date: todayISO(), cat: cat || "Rehab / Construction", label: "", amount: "", unpaid: !!unpaid });
   const [d, setD] = useState(() => blank(defaultCat));
   const add = () => {
     const amount = parseFloat(d.amount) || 0;
     if (!d.label.trim() && !amount) return;
-    onAdd({ date: d.date || todayISO(), cat: d.cat, label: d.label.trim(), amount });
+    onAdd({ date: d.date || todayISO(), cat: d.cat, label: d.label.trim(), amount, ...(d.unpaid ? { unpaid: true } : {}) });
     setD(blank(d.cat));
   };
   const enter = (e) => e.key === "Enter" && add();
@@ -848,6 +856,9 @@ function AddExpenseRow({ onAdd, defaultCat }) {
       </select>
       <input placeholder="Description" value={d.label} onChange={(e) => setD({ ...d, label: e.target.value })} onKeyDown={enter} />
       <input type="number" step="0.01" placeholder="$ amount" value={d.amount} onFocus={(e) => e.target.select()} onChange={(e) => setD({ ...d, amount: e.target.value })} onKeyDown={enter} />
+      <button className={"lg-paid-tog" + (d.unpaid ? " unpaid" : "")} onClick={() => setD({ ...d, unpaid: !d.unpaid })} aria-pressed={!!d.unpaid} title="Switch between paid and not paid yet">
+        {d.unpaid ? "Not paid" : "Paid"}
+      </button>
     </div>
   );
 }
@@ -1132,6 +1143,8 @@ function ExpensesDocs(p) {
   const [openGroups, setOpenGroups] = useState({});
   const [viewer, setViewer] = useState(null); // source document slide-over: { kind: "buy" | "sell" | "sow" }
   const [win, setWin] = useState(null); // expense window: { id, back } | { group: true }
+  const [unpaidOnly, setUnpaidOnly] = useState(false);
+  const [posOpen, setPosOpen] = useState(false);
   const P = uwBaseline ? uwBaseline.m : m;
   const cats = budgetCats(P, actuals);
   const src = docSources(mgmt);
@@ -1145,8 +1158,11 @@ function ExpensesDocs(p) {
   const eff = filter && actuals.some((a) => a.cat === filter) ? filter : filter && cats.some((c) => c.cat === filter) ? filter : null;
   const toks = searchTokens(q);
   const matches = toks.length ? new Map(actuals.map((a) => [a.id, matchEntry(a, toks)])) : null;
-  const byCat = eff ? sorted.filter((a) => a.cat === eff) : sorted;
+  const unpaidN = actuals.filter((a) => a.unpaid).length;
+  const onlyUnpaid = unpaidOnly && unpaidN > 0;
+  const byCat = (eff ? sorted.filter((a) => a.cat === eff) : sorted).filter((a) => !onlyUnpaid || a.unpaid);
   const list = matches ? byCat.filter((a) => matches.get(a.id).hit) : byCat;
+  const unpaidTotal = actuals.filter((a) => a.unpaid).reduce((t, a) => t + amtOf(a), 0);
   // the category chips count what the search leaves
   const chipBase = matches ? sorted.filter((a) => matches.get(a.id).hit) : sorted;
   const presentCats = ACTUAL_CATS.filter((c) => actuals.some((a) => a.cat === c));
@@ -1247,6 +1263,11 @@ function ExpensesDocs(p) {
         <section className="dcard xd-ledger">
           <div className="dcard-h">
             <Icon name="receipt" /> Ledger
+            {p.position && (
+              <button className="link-btn xd-pos" onClick={() => setPosOpen(true)}>
+                Position today <Icon name="chevron" size={13} />
+              </button>
+            )}
             <span className="dcard-r">
               {list.length !== actuals.length ? `${list.length} of ` : ""}
               {actuals.length} {actuals.length === 1 ? "entry" : "entries"}
@@ -1280,6 +1301,11 @@ function ExpensesDocs(p) {
                     </button>
                   );
                 })}
+                {unpaidN > 0 && (
+                  <button className={"lg-chip unpaid" + (onlyUnpaid ? " on" : "")} onClick={() => setUnpaidOnly(!onlyUnpaid)} aria-pressed={onlyUnpaid} title={`Not paid yet: ${fmt(unpaidTotal)}`}>
+                    Not paid <em>{chipBase.filter((a) => a.unpaid).length}</em>
+                  </button>
+                )}
               </div>
             </div>
           )}
@@ -1338,8 +1364,14 @@ function ExpensesDocs(p) {
           )}
           {actuals.length > 0 && (
             <div className="lg-total">
-              <span>{toks.length ? `${list.length} matching ${list.length === 1 ? "entry" : "entries"}` : eff ? `${catShort(eff)} total` : "Total spent"}</span>
-              <b>{fmt(eff || toks.length ? listTotal : actualsTotal)}</b>
+              <span>{toks.length ? `${list.length} matching ${list.length === 1 ? "entry" : "entries"}` : onlyUnpaid ? "Not paid yet" : eff ? `${catShort(eff)} total` : unpaidN > 0 ? "Total recorded" : "Total spent"}</span>
+              <b>{fmt(eff || toks.length || onlyUnpaid ? listTotal : actualsTotal)}</b>
+            </div>
+          )}
+          {actuals.length > 0 && unpaidN > 0 && !onlyUnpaid && !eff && !toks.length && (
+            <div className="lg-total sub">
+              <span>of which not paid yet</span>
+              <b>{fmt(unpaidTotal)}</b>
             </div>
           )}
         </section>
@@ -1384,6 +1416,7 @@ function ExpensesDocs(p) {
         setActualSale={setActualSale}
         onReadSale={() => p.onImportClosing("sell")}
       />
+      {posOpen && p.position && <PositionWindow {...p.position} actuals={actuals} mgmt={mgmt} m={m} stage={stage} setActuals={setActuals} setMgmt={p.setMgmt} onClose={() => setPosOpen(false)} />}
       {view && <DocViewer key={JSON.stringify(viewer)} view={view} onClose={() => setViewer(null)} onOpenAnalysis={(a) => (setViewer(null), p.onOpenAnalysis(a))} />}
       {win && win.group && purchaseGroup && <ExpenseWindow key="grp" group={purchaseGroup} onClose={() => setWin(null)} onOpenEntry={(id) => setWin({ id, back: "group" })} />}
       {winEntry && (

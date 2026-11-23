@@ -1080,8 +1080,10 @@ function NextUp({ stage, mgmt, setMgmt, address, by, addLog, onGo, onUploadDoc, 
     </section>
   );
 }
-function ProjectOverview({ address, mapsKey, folderId, photosUrl, setPhotosUrl, sqft, yearBuilt, arv, purchase, stage, mgmt, setMgmt, m, deal, mao, uwBaseline, actuals, actualSale, analysisDate, health, onGo, userEmail, addLog, onUploadDoc, openAttachment, connected, uw }) {
+function ProjectOverview({ address, mapsKey, folderId, photosUrl, setPhotosUrl, sqft, yearBuilt, arv, purchase, stage, mgmt, setMgmt, m, deal, mao, uwBaseline, actuals, actualSale, analysisDate, health, onGo, userEmail, addLog, onUploadDoc, openAttachment, connected, uw, setActuals, position }) {
   const today = todayISO();
+  const [posOpen, setPosOpen] = useState(false);
+  const pos = positionToday({ actuals, mgmt, uw: uw || {}, m, stage, today });
   // financing: the lender and investor positions, as entered or derived from the Flip analysis
   const [finOpen, setFinOpen] = useState(false);
   const fin = mgmt.financing || {};
@@ -1432,19 +1434,35 @@ function ProjectOverview({ address, mapsKey, folderId, photosUrl, setPhotosUrl, 
               </div>
               <div className="ov-list">
                 <div>
-                  <span>Total spent</span>
-                  <em>{fmt(spent)}</em>
+                  <span>Paid so far</span>
+                  <em>{fmt(pos.paid)}</em>
                 </div>
                 <div>
-                  <span>Ledger entries</span>
-                  <em>{actuals.length}</em>
+                  <span>Owed, not paid yet</span>
+                  <em>{fmt(pos.owedTotal)}</em>
+                </div>
+                {pos.estTotal > 0 && (
+                  <div>
+                    <span>Estimated, not recorded</span>
+                    <em>{fmt(pos.estTotal)}</em>
+                  </div>
+                )}
+                <div className="fin-total">
+                  <span>Committed to date</span>
+                  <em>{fmt(pos.committed)}</em>
                 </div>
               </div>
+              {position && (
+                <button className="link-btn ov-more" onClick={() => setPosOpen(true)}>
+                  Position today <Icon name="chevron" size={13} />
+                </button>
+              )}
             </React.Fragment>
           )}
         </OvCard>
         <FinancingCard L={finL} investors={finInv} pos={finPos} soldOn={soldOn} asOf={soldOn && soldOn < today ? soldOn : today} onOpen={() => setFinOpen(true)} />
       </div>
+      {posOpen && position && <PositionWindow {...position} actuals={actuals} mgmt={mgmt} m={m} stage={stage} setActuals={setActuals || (() => {})} setMgmt={setMgmt} onClose={() => setPosOpen(false)} />}
       {finOpen && (
         <FinancingWindow
           L={finL}

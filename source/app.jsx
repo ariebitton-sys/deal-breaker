@@ -3171,6 +3171,13 @@ function App() {
     [m, deal.threshold],
   );
   const pctNum = (x) => `${+((x || 0) * 100).toFixed(2)}%`;
+  // the terms the Financing card and the Position today statement read
+  const posUw = { intRatePurchase, intRateRehab, rehabFunding, investorRate, points, holdMonths, taxAnnual, insMonthly, utilGas, utilWater, utilElec, hoaMonthly };
+  const positionProps = {
+    uw: posUw,
+    sellingAt: (price) => calcDeal({ ...dealInputs, arv: price }).totalSelling,
+    defaultPrice: num(mgmt.buyer && mgmt.buyer.price) || num(mgmt.listing && mgmt.listing.price) || arv,
+  };
   // Health of the open deal, from the same summary the dashboards use (so the two always agree).
   const liveHealth = useMemo(() => (view === "deal" ? healthOf(summarizeDeal(getState()), todayISO()) : null), [dealKey, view]);
   const financingSub = `${pctNum(loanOnPurchasePct)} purchase loan, rehab ${rehabFunding === "draws" ? `in ${drawCount} lender draws` : `on Kappa loan at ${pctNum(intRateRehab)}`}`;
@@ -4425,7 +4432,9 @@ function App() {
             onUploadDoc={(f, kind) => uploadDealDoc(f, kind)}
             openAttachment={openAttachment}
             connected={!!accessToken && !!settings.folderId}
-            uw={{ intRatePurchase, intRateRehab, rehabFunding, investorRate, points, holdMonths }}
+            uw={posUw}
+            setActuals={setActuals}
+            position={positionProps}
           />
         ) : mode === "underwrite" ? (
           <React.Fragment>
@@ -5052,6 +5061,8 @@ function App() {
             entryTools={{ upload: uploadEntryFiles, addLink: addEntryLink, remove: removeAttachment, uploading: fileUploading, connected: !!accessToken && !!settings.folderId }}
             focus={ledgerFocus}
             onFocused={() => setLedgerFocus(null)}
+            position={positionProps}
+            setMgmt={setMgmt}
             onSearchAll={accessToken ? searchAllProjects : null}
             pmPanel={
               (m.pmFee || 0) > 0 || actuals.some((a) => a.tag === "pm_fee") ? (
