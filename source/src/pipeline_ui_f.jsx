@@ -1296,6 +1296,7 @@ function ProjectOverview({ address, mapsKey, folderId, photosUrl, setPhotosUrl, 
   ];
   return (
     <div className="ov">
+      <KpiStrip P={pos} uw={uw || {}} m={m} uwBaseline={uwBaseline} grade={deal.grade} actuals={actuals} position={position} mgmt={mgmt} actualSale={actualSale} stage={stage} today={today} />
       <section className="dcard ov-hero">
         <div className="ov-map">
           {mapsKey && address.trim() ? (

@@ -101,7 +101,7 @@ function finPosition(L, investors, draws, asOf) {
   const invPerMonth = inv.filter((x) => x.open && x.basis === "annual").reduce((s, x) => s + (num(x.amount) * num(x.rate)) / 12, 0);
   const lenderPayoff = started ? principal + interestDue + feesDue : 0;
   return {
-    started, releases, tranches, lines, perDay, principal, undrawn: Math.max(0, num(L.note) - principal), interest, defInterest, accrued, paidInterest, interestDue,
+    started, releases, tranches, lines, perDay, accruingOn, principal, undrawn: Math.max(0, num(L.note) - principal), interest, defInterest, accrued, paidInterest, interestDue,
     feesPaid, feesDue, lenderPayoff, pastMaturity, curRate, perMonth, daysToMaturity: mat ? daysBetween(asOf, mat) : null,
     inv, invIn, invReturn, invDue, invPerMonth,
     received: principal + invIn,

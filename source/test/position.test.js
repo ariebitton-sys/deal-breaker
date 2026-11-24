@@ -72,6 +72,16 @@ const deal = {
   assert(ac.includes("Paid so far" + money(paid)) && ac.includes("Owed, not paid yet" + money(owed)), `paid ${money(paid)}, owed ${money(owed)} (the open bill, lender interest, the fee, the investor return)`);
   assert(ac.includes("Estimated, not recorded" + money(tax + ins + util)) && ac.includes("Committed to date" + money(committed)), `estimated ${money(tax + ins + util)}; committed ${money(committed)}`);
 
+  console.log("1b. The numbers strip under the address");
+  const kpi = (k) => [...doc.querySelectorAll(".kpi-tile")].find((x) => x.querySelector(".kpi-k").textContent === k);
+  assert(doc.querySelectorAll(".kpi-strip .kpi-tile").length === 6 && doc.querySelector(".ov > .kpi-strip + .ov-hero"), "six tiles, above the map card");
+  assert(/^Profit at analysis\$[\d,]+Grade .+plan not saved$/.test(kpi("Profit at analysis").textContent), "profit at analysis, flagged when no plan is saved");
+  assert(kpi("Spent so far").textContent === "Spent so far" + money(paid) + "+ " + money(owed) + " owed, not paid yet", "spent so far, with what is owed");
+  assert(kpi("Paying interest on").textContent === "Paying interest on$90,0001.5% a month, $44.38 a day", "paying interest on $90,000");
+  const perDay = (90000 * 0.18) / 365 + 2129 / 365 + 425 / 30.4375;
+  assert(kpi("Each extra day costs").textContent === `Each extra day costs${money(perDay)}Day 174 of 91 planned` && kpi("Each extra day costs").querySelector(".kpi-h.warn"), "each extra day costs interest + holding; held longer than planned, amber");
+  assert(/^\$[\d,]+$/.test(kpi("Projected profit at sale").querySelector(".kpi-v").textContent) && /committed today/.test(kpi("Projected profit at sale").title) && /^\$[\d,]+$/.test(kpi("Break-even price").querySelector(".kpi-v").textContent), "projected profit at sale (its sum in the tooltip) and the break-even price");
+
   console.log("2. The statement");
   await click(btn("Position today", accounting()));
   assert(w(), "Position today opens");

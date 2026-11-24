@@ -74,13 +74,90 @@ function positionToday({ actuals, mgmt, uw, m, stage, today }) {
   const estTotal = est.filter((e) => e.on).reduce((t, x) => t + x.amount, 0);
   const cats = ACTUAL_CATS.filter((c) => byCat[c]).map((c) => byCat[c]);
   return {
-    sold, today, paid, owed, owedTotal, est, estTotal, cats, fp, L,
+    sold, today, paid, owed, owedTotal, est, estTotal, cats, fp, L, inv,
     committed: paid + owedTotal + estTotal,
     lenderIn: fp.principal,
     investorsIn: fp.invIn,
     kappaIn: paid - fp.principal - fp.invIn,
     unpaidLedger: owed.filter((x) => x.src === "Ledger").reduce((t, x) => t + x.amount, 0),
   };
+}
+
+// Against a sale price: selling costs still to come (Flip analysis rates, less what the ledger already has),
+// profit if nothing more is spent, and the break-even price.
+function saleOutlook(P, actuals, sellingAt, price) {
+  const sellRecorded = actuals.filter((a) => a.cat === "Selling").reduce((t, a) => t + amtOf(a), 0);
+  const sell = (v) => (sellingAt ? sellingAt(v) : 0);
+  const sellToCome = Math.max(0, sell(price) - sellRecorded);
+  const ref = price > 0 ? price : 100000;
+  const a0 = sell(0),
+    slope = (sell(ref) - a0) / ref;
+  const breakEven = slope < 1 ? Math.max(P.committed, (P.committed + a0 - sellRecorded) / (1 - slope)) : P.committed;
+  return { sellRecorded, sellToCome, left: price - sellToCome - P.committed, breakEven };
+}
+
+// ---------- the numbers strip at the top of the project overview ----------
+function KpiStrip({ P, uw, m, uwBaseline, grade, actuals, position, mgmt, actualSale, stage, today }) {
+  const close = (mgmt.closing && mgmt.closing.date) || "";
+  if (!close || close > today || stage === "dead") return null;
+  const plan = uwBaseline ? uwBaseline.m.netProfit : m.netProfit;
+  const planGrade = uwBaseline ? uwBaseline.grade : grade;
+  const planHint = uwBaseline ? `Grade ${planGrade}, saved ${fmtDate(uwBaseline.date)}` : `Grade ${planGrade}, current analysis, plan not saved`;
+  const end = stage === "sold" && mgmt.sale.date ? mgmt.sale.date : today;
+  const held = finDays(close, end);
+  const plannedDays = Math.round(num(uw.holdMonths) * 30.4375);
+  const heldHint = `Day ${held}${plannedDays ? ` of ${plannedDays} planned` : ""}`;
+  const over = plannedDays > 0 && held > plannedDays;
+  const signed = (v) => (v >= 0 ? "+" : "−") + fmt(Math.abs(v));
+  const tiles = [];
+  const tile = (k, v, h, tone, htone) => tiles.push({ k, v, h, tone, htone });
+  if (stage === "sold") {
+    const spent = actuals.reduce((t, a) => t + amtOf(a), 0);
+    const actual = num(actualSale) - spent;
+    const finCost = actuals.filter((a) => a.cat === "Financing").reduce((t, a) => t + amtOf(a), 0);
+    tile("Profit at analysis", fmt(plan), planHint);
+    tile("Actual profit", fmt(actual), `${signed(actual - plan)} vs plan`, actual < 0 ? "neg" : "", actual - plan < 0 ? "neg" : "pos");
+    tile("Sold for", num(actualSale) > 0 ? fmt(num(actualSale)) : "—", mgmt.sale.date ? fmtDate(mgmt.sale.date) : "");
+    tile("Total spent", fmt(spent), `${actuals.length} ledger entries`);
+    tile("Financing cost", fmt(finCost), "interest, fees and investor returns in the ledger");
+    tile("Days held", String(held), plannedDays ? `${plannedDays} planned` : "", over ? "warn" : "");
+  } else {
+    const fp = P.fp;
+    const months = 30.4375;
+    const holdDay = num(uw.taxAnnual) / 365 + (num(uw.insMonthly) + num(uw.utilGas) + num(uw.utilWater) + num(uw.utilElec) + num(uw.hoaMonthly)) / months;
+    const intDay = fp.started ? fp.perDay + fp.invPerMonth / months : 0;
+    tile("Profit at analysis", fmt(plan), planHint);
+    tile("Spent so far", fmt(P.paid), P.owedTotal > 0.5 ? `+ ${fmt(P.owedTotal)} owed, not paid yet` : "Nothing owed");
+    tile("Paying interest on", fp.started && fp.accruingOn > 0 ? fmt(fp.accruingOn) : "—", fp.started && fp.accruingOn > 0 ? `${finPctLabel(fp.curRate / 12)} a month, ${fmt2(fp.perDay)} a day` : "No loan accruing", fp.pastMaturity ? "neg" : "");
+    if (position) {
+      // projected to the expected sale: what is committed today, plus the rehab budget not used yet (the current
+      // Flip analysis estimate) and interest and holding costs from today to the sale date
+      const price = num(position.defaultPrice);
+      const saleOn = finPayoffDefault(mgmt.financing || {}, mgmt, uw, today);
+      const toSale = finDays(today, saleOn);
+      const rehabIn = actuals.filter((a) => a.cat === "Rehab / Construction").reduce((t, a) => t + amtOf(a), 0);
+      const rehabToCome = mgmt.rehab && mgmt.rehab.endDate ? 0 : Math.max(0, num(m.repair) - rehabIn);
+      const fpSale = finPosition(P.L, P.inv, mgmt.draws, saleOn);
+      const finToCome = Math.max(0, fpSale.interestDue - fp.interestDue) + Math.max(0, fpSale.invReturn - fp.invReturn);
+      const holdToCome = holdDay * toSale;
+      const out = saleOutlook({ ...P, committed: P.committed + rehabToCome + finToCome + holdToCome }, actuals, position.sellingAt, price);
+      const why = `${fmt(price)} sale on ${fmtDate(saleOn)} − ${fmt(out.sellToCome)} selling − ${fmt(P.committed)} committed today${rehabToCome > 0 ? ` − ${fmt(rehabToCome)} rehab budget left` : ""} − ${fmt(finToCome + holdToCome)} interest and holding until the sale`;
+      tiles.push({ k: "Projected profit at sale", v: fmt(out.left), h: `${signed(out.left - plan)} vs plan, sale ${fmtDate(saleOn)}`, tone: out.left < 0 ? "neg" : "", htone: out.left - plan < 0 ? "neg" : "pos", title: why });
+      tile("Break-even price", fmt(out.breakEven), price > 0 ? `${signed(price - out.breakEven)} cushion at ${fmt(price)}` : "", "", price < out.breakEven ? "neg" : "");
+    }
+    tile("Each extra day costs", fmt(intDay + holdDay), heldHint, "", over ? "warn" : "");
+  }
+  return (
+    <div className="kpi-strip" role="list">
+      {tiles.map((x) => (
+        <div key={x.k} className="kpi-tile" role="listitem" title={x.title}>
+          <span className="kpi-k">{x.k}</span>
+          <b className={"kpi-v" + (x.tone ? " " + x.tone : "")}>{x.v}</b>
+          {x.h && <span className={"kpi-h" + (x.htone ? " " + x.htone : "")}>{x.h}</span>}
+        </div>
+      ))}
+    </div>
+  );
 }
 
 // ---------- the statement window ----------
@@ -101,14 +178,7 @@ function PositionWindow({ uw, sellingAt, defaultPrice, actuals, mgmt, m, stage, 
     });
   const markPaid = (id) => setActuals((prev) => prev.map((a) => (a.id === id ? { ...a, unpaid: undefined } : a)));
   // against the sale: selling costs at that price (Flip analysis rates) less what is already in the ledger
-  const sellRecorded = actuals.filter((a) => a.cat === "Selling").reduce((t, a) => t + amtOf(a), 0);
-  const sell = (v) => (sellingAt ? sellingAt(v) : 0);
-  const sellToCome = Math.max(0, sell(price) - sellRecorded);
-  const left = price - sellToCome - P.committed;
-  const ref = price > 0 ? price : 100000;
-  const a0 = sell(0),
-    slope = (sell(ref) - a0) / ref;
-  const breakEven = slope < 1 ? Math.max(P.committed, (P.committed + a0 - sellRecorded) / (1 - slope)) : P.committed;
+  const { sellRecorded, sellToCome, left, breakEven } = saleOutlook(P, actuals, sellingAt, price);
   const fp = P.fp;
   const lenderPay = P.sold ? 0 : fp.lenderPayoff;
   const invPay = P.sold ? 0 : fp.invDue;
