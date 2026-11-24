@@ -1098,7 +1098,6 @@ function ProjectOverview({ address, mapsKey, folderId, photosUrl, setPhotosUrl, 
   const links = [
     address.trim() && ["Zillow", `https://www.zillow.com/homes/${q}_rb/`, "link"],
     address.trim() && ["Google Maps", `https://www.google.com/maps/search/?api=1&query=${q}`, "map"],
-    folderId && ["Drive folder", `https://drive.google.com/drive/folders/${folderId}`, "folder"],
     photosUrl && ["Photos", photosUrl, "camera"],
   ].filter(Boolean);
   const comps = (mgmt.docs || []).filter((d) => d.kind === "Comps").length;
