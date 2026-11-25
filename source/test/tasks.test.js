@@ -42,12 +42,31 @@ const B = deal(
     checklists: {
       contract: [item("b1", "Inspection scheduled")],
       rehab: [item("b2", "Before photos taken")],
-      market: [item("b3", "Listing agent signed"), item("b4", "Professional photos"), item("b5", "Disclosures prepared")],
+      market: [item("b3", "Listing agent signed"), item("b4", "Professional photos"), item("b5", "Disclosures prepared"), item("b6", "Listing live on MLS"), item("b7", "Republic Services: stop trash on the sale closing date", { ut: "republic:sell" })],
     },
   },
   { stageHistory: [{ stage: "market", date: day(-1), ts: ts(20) }] },
 );
 const C = deal("33 Lead Rd, Euclid, OH 44123", "analyzing", { checklists: { contract: [item("c1", "EMD deposited")] } });
+const E = deal(
+  "55 Contract Way, Akron, OH 44301",
+  "contract",
+  {
+    contract: { date: day(-3), expectedClosing: day(20) },
+    checklists: {
+      contract: [
+        item("e1", "EMD deposited"),
+        item("e2", "Inspection scheduled"),
+        item("e3", "Inspection completed"),
+        item("e4", "Insurance bound"),
+        item("e5", "Final walkthrough"),
+        item("e6", "Ohio Edison: start electric in the LLC's name from the closing date", { ut: "edison:buy", addedAt: ts(70) }),
+      ],
+      rehab: [item("e7", "Locks changed / lockbox")],
+    },
+  },
+  { stageHistory: [{ stage: "contract", date: day(-3), ts: ts(70) }] },
+);
 const D = deal(
   "44 Sold Ct, Parma, OH 44129",
   "sold",
@@ -57,7 +76,7 @@ const D = deal(
 
 (async () => {
   const drive = makeDrive();
-  const ids = { A: drive.add("11 Task St, Cleveland, OH 44102.json", A), B: drive.add("22 Market Ave, Lakewood, OH 44107.json", B), C: drive.add("33 Lead Rd, Euclid, OH 44123.json", C), D: drive.add("44 Sold Ct, Parma, OH 44129.json", D) };
+  const ids = { A: drive.add("11 Task St, Cleveland, OH 44102.json", A), B: drive.add("22 Market Ave, Lakewood, OH 44107.json", B), C: drive.add("33 Lead Rd, Euclid, OH 44123.json", C), D: drive.add("44 Sold Ct, Parma, OH 44129.json", D), E: drive.add("55 Contract Way, Akron, OH 44301.json", E) };
   const t = await boot({ drive, settings: { clientId: "c", folderId: "f" } });
   const { doc, click, btn, setVal, settle, sleep, nav } = t;
   const saved = (k) => JSON.parse(drive.files[ids[k]].content);
@@ -71,32 +90,38 @@ const D = deal(
   await settle(12);
   await sleep(60);
   await settle(8);
-  // new: the hand-added task (1 h ago) and the market checklist that went live 20 h ago (3)
-  assert(bell() && bell().querySelector(".tb-bell-n").textContent === "4", `bell shows 4 new (got ${bell() && bell().textContent})`);
+  // new: the hand-added task (1 h ago), the market checklist that went live 20 h ago (3 workable now), and the
+  // contract that started 3 days ago (EMD, inspection scheduled; the rest comes later), and the stop-electric task
+  // that came up when the sale closed 5 days ago
+  assert(bell() && bell().querySelector(".tb-bell-n").textContent === "7", `bell shows 7 new (got ${bell() && bell().textContent})`);
   assert(bell().classList.contains("late"), "red: a task is overdue");
   const side = [...doc.querySelectorAll(".sidebar .sb-item")].find((b) => /Tasks/.test(b.textContent));
-  // open: A carried utility 1 + rehab 3 open; B market 3; D the stop-electric utility task 1
-  assert(side && side.querySelector("em").textContent === "8", `sidebar Tasks: 8 open (got ${side && side.textContent})`);
+  // open: A carried utility 1 + rehab 3 open; B market 3; D the stop-electric utility task 1; E 2
+  assert(side && side.querySelector("em").textContent === "10", `sidebar Tasks: 10 open (got ${side && side.textContent})`);
   await click(bell());
   const pop = doc.querySelector(".bell-pop");
   const secs = [...pop.querySelectorAll(".bell-sec")].map((x) => x.querySelector(".bell-k").textContent + ":" + x.querySelectorAll(".bell-row").length);
-  assert(secs.join(",") === "New tasks:4,Overdue:1", "the panel: 4 new, 1 overdue — " + secs.join(","));
+  assert(secs.join(",") === "New tasks:7,Overdue:1", "the panel: 7 new, 1 overdue — " + secs.join(","));
   assert(/Confirm the electric account.*11 Task St · Rehab/.test(pop.querySelector(".bell-row").textContent), "newest first, with the project and stage");
   await click(bell());
   assert(!doc.querySelector(".bell-pop") && !bell().querySelector(".tb-bell-n") && bell().querySelector(".tb-bell-dot"), "closing it marks them seen: no number, a red dot stays for the overdue task");
 
   console.log("2. The Tasks screen");
   await click(side);
-  assert(doc.querySelector(".tasks") && doc.querySelectorAll(".tasks .tk-group").length === 3, "three projects with open tasks (not the one being analyzed)");
+  assert(doc.querySelector(".tasks") && doc.querySelectorAll(".tasks .tk-group").length === 4, "four projects with open tasks (not the one being analyzed)");
   const groups = [...doc.querySelectorAll(".tasks .tk-group .tk-addr")].map((x) => x.textContent);
   assert(groups[0] === "11 Task St", "the project with the overdue task comes first");
   assert(row("Start electric service") && /Under contract checklist, still open from that stage · Utilities · CEI/.test(row("Start electric service").querySelector(".tk-meta").textContent), "a utility task still open from Under contract carries over, with its note");
-  assert(!row("Title ordered") && !row("Inspection scheduled") && !row("Before photos taken") && !row("EMD deposited"), "earlier stages' template items and the analyzing deal stay out");
-  assert(row("Stop electric service") && !row("Staging picked up"), "the sold deal keeps only its open utility task");
+  const bGroup = [...doc.querySelectorAll(".tasks .tk-group")].find((x) => /22 Market Ave/.test(x.textContent));
+  assert(!row("Title ordered") && !/Inspection scheduled|Before photos taken/.test(bGroup.textContent), "earlier stages' template items stay out");
+  assert(row("Stop electric service") && row("Stop electric service").querySelector(".tk-new") && !row("Staging picked up"), "the sold deal keeps only its open utility task, new from the sale");
+  assert(!row("Republic Services: stop trash"), "a stop-the-service task waits for the sale to close: not on the board while on the market");
+  assert(!row("Listing live on MLS"), "Listing live on MLS waits for the listing agent and the photos");
+  assert(row("EMD deposited") && row("Inspection scheduled") && !row("Inspection completed") && !row("Insurance bound") && !row("Final walkthrough") && !row("Ohio Edison"), "under contract: the first steps now; inspection completed after it's scheduled; insurance, walkthrough and utilities closer to closing");
   assert(row("Permits pulled").querySelector(".tk-due.overdue").textContent === "2 days late", "overdue: 2 days late, in red");
   assert(row("Confirm the electric account").querySelector(".tk-new") && row("Listing agent signed").querySelector(".tk-new") && !row("Utilities transferred").querySelector(".tk-new"), "New this week: tagged");
   const chip = (l) => [...doc.querySelectorAll(".tasks .lg-chip")].find((b) => b.textContent.startsWith(l));
-  assert(chip("All open").querySelector("em").textContent === "8" && chip("New this week").querySelector("em").textContent === "4" && chip("Overdue").querySelector("em").textContent === "1", "filters count 8 / 4 / 1");
+  assert(chip("All open").querySelector("em").textContent === "10" && chip("New this week").querySelector("em").textContent === "7" && chip("Overdue").querySelector("em").textContent === "1", "filters count 10 / 7 / 1");
   await click(chip("Overdue"));
   assert(rows().length === 1 && row("Permits pulled"), "Overdue shows only the late task");
   await click(chip("All open"));
@@ -128,6 +153,11 @@ const D = deal(
   assert(row("Order a pre-listing inspection") && row("Order a pre-listing inspection").querySelector(".tk-new"), "and it shows, as new");
   assert(!t.errors.length, "no errors " + t.errors.join(" | "));
 
+  await click(row("Inspection scheduled").querySelector('input[type="checkbox"]'));
+  await sleep(20);
+  await settle(6);
+  assert(row("Inspection completed") && row("Inspection completed").querySelector(".tk-new"), "inspection scheduled done: inspection completed comes up, as new");
+
   console.log("4. The open project changes in place");
   const g = [...doc.querySelectorAll(".tasks .tk-group")].find((x) => /11 Task St/.test(x.textContent));
   await click(btn("Open project", g));
@@ -149,6 +179,8 @@ const D = deal(
   await settle(8);
   await click(nav(/^Stages and milestones/));
   assert(doc.body.textContent.includes("Due " + mmdd(day(2))), "Professional photos: Due " + mmdd(day(2)));
+  const later = [...doc.querySelectorAll(".ck-later")].map((x) => x.textContent);
+  assert(later.includes("On the task board after the sale closes") && later.includes('On the task board after "Listing agent signed" and "Professional photos"'), "the checklist says when a waiting task comes up");
   assert(!t.errors.length, "no errors " + t.errors.join(" | "));
   console.log("\nALL TASKS TESTS PASSED");
   process.exit(0);

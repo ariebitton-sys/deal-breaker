@@ -986,8 +986,8 @@ function NextUp({ stage, mgmt, setMgmt, address, by, addLog, onGo, onUploadDoc, 
   const ck = CHECKLIST_OF[stage];
   const items = ck ? (mgmt.checklists && mgmt.checklists[ck]) || [] : [];
   const tasks = items.filter((i) => !i.ut);
-  const open = tasks.filter((i) => !i.done);
-  const doneN = tasks.length - open.length;
+  const open = tasks.filter((i) => !i.done && taskGate(i, ck, mgmt, stage).ok);
+  const doneN = tasks.filter((i) => i.done).length;
   const toggle = (id) =>
     setMgmt((mg) => ({
       ...mg,

@@ -37,6 +37,41 @@ const writeTasksSeen = (v) => {
   } catch {}
 };
 
+// ---------- when a task is due to be worked on ----------
+// A task reaches the board when it makes sense to do it: stop-the-service tasks once the sale has closed;
+// a task that follows another once that one is done; the last steps before a purchase closing in the days
+// before it. Everything else, and anything added by hand, from when its stage starts.
+const TASK_AFTER = {
+  "Inspection completed": ["Inspection scheduled"],
+  "Title commitment reviewed": ["Title ordered"],
+  "Listing live on MLS": ["Listing agent signed", "Professional photos"],
+};
+const TASK_BEFORE_CLOSING = { "Investor funds confirmed": 14, "Insurance bound": 14, "Final walkthrough": 3, "Closing funds wired": 3 };
+const UTIL_START_LEAD = 10; // days before the purchase closing to set up the utilities
+// { ok } now, or { ok: false, why } with when it will be; `at`: when it became workable, if later than its stage
+function taskGate(i, ck, mg, st, today) {
+  const t = today || todayISO();
+  if (i.custom) return { ok: true };
+  if (ck === "market" && i.ut) return st === "sold" ? { ok: true } : { ok: false, why: "after the sale closes" };
+  const pre = TASK_AFTER[i.label];
+  if (pre) {
+    const list = (mg.checklists && mg.checklists[ck]) || [];
+    const deps = pre.map((l) => list.find((x) => x.label === l)).filter(Boolean);
+    const open = deps.filter((x) => !x.done);
+    if (open.length) return { ok: false, why: `after ${open.map((x) => `"${x.label}"`).join(" and ")}` };
+    return { ok: true, at: deps.map((x) => x.doneAt || "").sort().pop() || "" };
+  }
+  if (ck === "contract" && st === "contract") {
+    const c = mg.contract && mg.contract.expectedClosing;
+    const lead = i.ut ? UTIL_START_LEAD : TASK_BEFORE_CLOSING[i.label];
+    if (lead && c) {
+      const from = addDaysISO(c, -lead);
+      return from <= t ? { ok: true, at: from } : { ok: false, from, why: `from ${fmtDate(from)}, ${lead} days before closing` };
+    }
+  }
+  return { ok: true };
+}
+
 // The open (and recently done) tasks of one deal: { st, open: [...], done: [...] }
 function dealTasks(d, today) {
   const t = today || todayISO();
@@ -66,9 +101,14 @@ function dealTasks(d, today) {
         if (i.doneAt && i.doneAt.slice(0, 10) >= weekAgo) done.push({ ...base, doneAt: i.doneAt, by: i.by || "" });
         return;
       }
-      // no date of its own: contract tasks are due by the purchase closing, stop-the-service tasks by the sale's
-      const due = i.due || (ck === "contract" && st === "contract" ? mg.contract.expectedClosing || "" : ck === "market" && /:sell$/.test(i.ut || "") ? mg.buyer.expectedClosing || "" : "");
-      open.push({ ...base, due, dueSet: !!i.due, at: i.addedAt || entered(ck) || "" });
+      // not time for it yet: it stays in the deal's checklist and reaches the board when it is
+      const g = taskGate(i, ck, mg, st, t);
+      if (!g.ok) return;
+      // no date of its own: contract tasks are due by the purchase closing
+      const due = i.due || (ck === "contract" && st === "contract" ? mg.contract.expectedClosing || "" : "");
+      const live = cur === "sold" ? entered("sold") : entered(ck);
+      const at = i.addedAt || (g.at && g.at > (live || "") ? g.at : live) || "";
+      open.push({ ...base, due, dueSet: !!i.due, at });
     });
   });
   return { st, open, done };

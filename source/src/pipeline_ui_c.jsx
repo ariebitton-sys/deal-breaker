@@ -37,7 +37,7 @@ function StageSection({ st, open, onToggle, summary, current, children }) {
     </section>
   );
 }
-function Checklist({ items, onChange, by }) {
+function Checklist({ items, onChange, by, gate }) {
   const [draft, setDraft] = useState("");
   const done = items.filter((i) => i.done).length;
   const toggle = (id) =>
@@ -65,6 +65,10 @@ function Checklist({ items, onChange, by }) {
             <span style={{ fontSize: 13, color: i.done ? T.txtMute : T.txt, textDecoration: i.done ? "line-through" : "none" }}>{i.label}</span>
             {i.note && !i.done && <span style={{ display: "block", fontSize: 12, color: T.txtMute, marginTop: 1 }}>{i.note}</span>}
             {i.due && !i.done && <span style={{ display: "block", fontSize: 12, color: i.due < todayISO() ? T.red : T.txtMute, marginTop: 1 }}>Due {fmtDate(i.due)}</span>}
+            {gate && !i.done && (() => {
+              const g = gate(i);
+              return g && !g.ok ? <span className="ck-later">On the task board {g.why}</span> : null;
+            })()}
           </span>
           {i.url && (
             <a href={i.url} target="_blank" rel="noopener noreferrer" className="ck-link" title="Open the provider's page">
@@ -1136,7 +1140,7 @@ function ManagementTab(p) {
                     <TextIn label="Expected closing" type="date" value={c.expectedClosing} onChange={(v) => upd("contract.expectedClosing", v)} />
                     <Field label="Earnest money (EMD)" value={num(c.emd)} onChange={(v) => upd("contract.emd", v)} prefix="$" step={500} />
                   </div>
-                  <Checklist items={mgmt.checklists.contract || []} onChange={(v) => upd("checklists.contract", v)} by={userEmail} />
+                  <Checklist items={mgmt.checklists.contract || []} onChange={(v) => upd("checklists.contract", v)} by={userEmail} gate={(i) => taskGate(i, "contract", mgmt, stage)} />
                 </React.Fragment>
               )}
               {s.key === "rehab" && (
@@ -1154,7 +1158,7 @@ function ManagementTab(p) {
                     onImportSow={p.onImportSow}
                   />
                   <div style={{ marginTop: 14 }}>
-                    <Checklist items={mgmt.checklists.rehab || []} onChange={(v) => upd("checklists.rehab", v)} by={userEmail} />
+                    <Checklist items={mgmt.checklists.rehab || []} onChange={(v) => upd("checklists.rehab", v)} by={userEmail} gate={(i) => taskGate(i, "rehab", mgmt, stage)} />
                   </div>
                 </React.Fragment>
               )}
@@ -1162,7 +1166,7 @@ function ManagementTab(p) {
                 <React.Fragment>
                   <MarketSection mgmt={mgmt} upd={upd} m={m} dealInputs={dealInputs} addLog={addLog} />
                   <div style={{ marginTop: 14 }}>
-                    <Checklist items={mgmt.checklists.market || []} onChange={(v) => upd("checklists.market", v)} by={userEmail} />
+                    <Checklist items={mgmt.checklists.market || []} onChange={(v) => upd("checklists.market", v)} by={userEmail} gate={(i) => taskGate(i, "market", mgmt, stage)} />
                   </div>
                 </React.Fragment>
               )}
