@@ -135,7 +135,9 @@ const profitOf = ({ price, rehab, pm, extra }) => {
   await click(ptab("Forecast"));
   await commit(field(1, "Rehab, total"), "15000");
   await click(ptab("Expenses"));
-  assert(/Rehab and project management budgets come from the forecast \(Conservative\)/.test(doc.querySelector(".xd-rail").textContent), "Expenses: the budget rail says the rehab and PM budgets are the forecast's");
+  assert(/The rehab and project management budgets and the projected profit come from the forecast \(Conservative\)/.test(doc.querySelector(".xd-rail").textContent), "Expenses: the budget rail says its budgets and projected profit are the forecast's");
+  const p4 = profitOf({ price: 375000, rehab: 15000, pm: 5000, extra: 5000 });
+  assert(doc.querySelector(".xd-rail .xd-head-v").textContent === money(p4) && /\$375,000 sale on/.test(doc.querySelector(".xd-rail .xd-head-sub").textContent), `the rail's projected net profit is the forecast's: ${money(p4)} at $375,000`);
   const rehabBar = [...doc.querySelectorAll(".xd-rail .xd-bar")].find((x) => /Rehab/.test(x.textContent));
   assert(rehabBar && /\+33% over/.test(rehabBar.textContent), "the rehab bar: $20,000 against the forecast's $15,000, 33% over");
   await click(ptab("Project overview"));

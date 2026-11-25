@@ -865,7 +865,7 @@ function AddExpenseRow({ onAdd, defaultCat }) {
 
 // ---------- right rail: live budget burn ----------
 const BASIS_KEY = "kappa_ledger_basis";
-function BudgetRail({ cats, actualsTotal, actualSale, arv, plan, baselineDate, filter, onFilter, setActualSale, onReadSale, fcName }) {
+function BudgetRail({ cats, actualsTotal, actualSale, arv, plan, baselineDate, filter, onFilter, setActualSale, onReadSale, fc }) {
   const [basis, setBasisRaw] = useState(() => {
     try {
       return localStorage.getItem(BASIS_KEY) === "cash" ? "cash" : "projected";
@@ -880,11 +880,13 @@ function BudgetRail({ cats, actualsTotal, actualSale, arv, plan, baselineDate, f
     } catch (e) {}
   };
   const sold = actualSale > 0;
-  const saleBasis = sold ? actualSale : arv;
+  // with a saved forecast, "Projected" is the Forecast tab's number: its sale price and all-in costs to the sale
+  const useFc = !sold && !!fc;
+  const saleBasis = sold ? actualSale : useFc ? fc.price : arv;
   const totBudget = cats.reduce((t, c) => t + c.budget, 0);
   const totProjected = cats.reduce((t, c) => t + c.projected, 0);
   const remaining = Math.max(0, totProjected - actualsTotal);
-  const projProfit = saleBasis - totProjected;
+  const projProfit = useFc ? fc.profit : saleBasis - totProjected;
   const actualProfit = actualSale - actualsTotal;
   const vsPlan = basis === "cash" ? (sold ? actualProfit : null) : projProfit;
   const variance = vsPlan == null ? null : vsPlan - plan;
@@ -901,7 +903,7 @@ function BudgetRail({ cats, actualsTotal, actualSale, arv, plan, baselineDate, f
             Projected
           </button>
         </div>
-        {fcName && <div className="xd-fc-note">Rehab and project management budgets come from the forecast ({fcName}).</div>}
+        {fc && <div className="xd-fc-note">The rehab and project management budgets{sold ? "" : " and the projected profit"} come from the forecast ({fc.name}).</div>}
         {basis === "cash" ? (
           <div className="xd-head">
             <span className="xd-head-k">{sold ? "Actual net profit" : "Cash out so far"}</span>
@@ -913,7 +915,9 @@ function BudgetRail({ cats, actualsTotal, actualSale, arv, plan, baselineDate, f
             <span className="xd-head-k">Projected net profit</span>
             <b className={"xd-head-v" + (projProfit < 0 ? " neg" : "")}>{fmt(projProfit)}</b>
             <span className="xd-head-sub">
-              {fmt(saleBasis)} {sold ? "sale" : "ARV"} less {fmt(actualsTotal)} spent and {fmt(remaining)} still budgeted
+              {useFc
+                ? `${fmt(fc.price)} sale on ${fmtDate(fc.saleDate)} less ${fmt(fc.total)} all in: spent, owed, and still to come until the sale`
+                : `${fmt(saleBasis)} ${sold ? "sale" : "ARV"} less ${fmt(actualsTotal)} spent and ${fmt(remaining)} still budgeted`}
             </span>
           </div>
         )}
@@ -1148,6 +1152,16 @@ function ExpensesDocs(p) {
   const [posOpen, setPosOpen] = useState(false);
   const P = uwBaseline ? uwBaseline.m : m;
   const cats = budgetCats(P, actuals, forecastScenario(mgmt, stage));
+  // the forecast scenario's result, as on the Forecast tab, for the rail's projected profit
+  const fcRail = (() => {
+    const fsc = forecastScenario(mgmt, stage);
+    if (!fsc || !p.position) return null;
+    const today = todayISO();
+    const uw = p.position.uw;
+    const P2 = positionToday({ actuals, mgmt, uw, m, stage, today });
+    const { sc, f } = fcMain({ P: P2, actuals, mgmt, uw, m, sellingAt: p.position.sellingAt, position: p.position, today, uwBaseline, holdMonths: uw.holdMonths, grade: "", purchase: m.purchase });
+    return { name: sc.name || "scenario", price: f.price, saleDate: f.saleDate, profit: f.profit, total: f.total };
+  })();
   const src = docSources(mgmt);
   const msById = Object.fromEntries((mgmt.rehab.milestones || []).map((x) => [x.id, x]));
   const sorted = [...actuals].sort((a, b) => {
@@ -1416,7 +1430,7 @@ function ExpensesDocs(p) {
         onFilter={setFilter}
         setActualSale={setActualSale}
         onReadSale={() => p.onImportClosing("sell")}
-        fcName={(forecastScenario(mgmt, stage) || {}).name || (forecastScenario(mgmt, stage) ? "scenario" : "")}
+        fc={fcRail}
       />
       {posOpen && p.position && <PositionWindow {...p.position} actuals={actuals} mgmt={mgmt} m={m} stage={stage} setActuals={setActuals} setMgmt={p.setMgmt} onClose={() => setPosOpen(false)} />}
       {view && <DocViewer key={JSON.stringify(viewer)} view={view} onClose={() => setViewer(null)} onOpenAnalysis={(a) => (setViewer(null), p.onOpenAnalysis(a))} />}
