@@ -72,11 +72,23 @@ function taskGate(i, ck, mg, st, today) {
   return { ok: true };
 }
 
+// ---------- standard tasks every purchased property gets ----------
+// Once a deal is bought (rehab), its rehab checklist gets "Property insurance bought", unless an insurance task
+// is already there or was done before closing. Added once (mg.std remembers), so removing it sticks.
+const STD_INSURANCE = { id: "std-insurance", label: "Property insurance bought (vacant / builder's risk)" };
+function withStandardTasks(mg, st) {
+  if (st !== "rehab" || !mg || !mg.checklists || (mg.std && mg.std.insurance)) return mg;
+  const ins = (i) => /insur/i.test(i.label || "");
+  const rehab = mg.checklists.rehab || [];
+  if (rehab.some(ins) || (mg.checklists.contract || []).some((i) => ins(i) && i.done)) return mg;
+  return { ...mg, std: { ...(mg.std || {}), insurance: 1 }, checklists: { ...mg.checklists, rehab: [{ id: STD_INSURANCE.id, label: STD_INSURANCE.label, done: false }, ...rehab] } };
+}
+
 // The open (and recently done) tasks of one deal: { st, open: [...], done: [...] }
 function dealTasks(d, today) {
   const t = today || todayISO();
   const st = inferStage(d);
-  const mg = mergeMgmt(d.mgmt);
+  const mg = withStandardTasks(mergeMgmt(d.mgmt), st);
   const cur = st === "sold" ? "sold" : CHECKLIST_OF[st];
   if (!cur || st === "dead" || st === "analyzing") return { st, open: [], done: [] };
   // a sold deal: its open stop-the-service tasks, for 90 days after the sale

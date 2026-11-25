@@ -284,6 +284,40 @@ const AUTO_BLOCKED = {
   exists: "Not saved: another deal already has this address",
   folder: "Not saved: set the Drive folder in Settings",
 };
+// copies the property address in one click; a check shows it worked
+function CopyAddress({ text }) {
+  const [ok, setOk] = useState(false);
+  const v = (text || "").trim();
+  const copy = async () => {
+    if (!v) return;
+    let done = false;
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        await navigator.clipboard.writeText(v);
+        done = true;
+      }
+    } catch (e) {}
+    if (!done) {
+      try {
+        const ta = document.createElement("textarea");
+        ta.value = v;
+        ta.style.position = "fixed";
+        ta.style.opacity = "0";
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand && document.execCommand("copy");
+        ta.remove();
+      } catch (e) {}
+    }
+    setOk(true);
+    setTimeout(() => setOk(false), 1600);
+  };
+  return (
+    <button className={"dh-copy no-print" + (ok ? " ok" : "")} onClick={copy} disabled={!v} title={ok ? "Copied" : "Copy the address"} aria-label={ok ? "Address copied" : "Copy the address"}>
+      <Icon name={ok ? "check" : "copy"} size={16} />
+    </button>
+  );
+}
 function ProjectHeader({ address, setAddress, stage, health, context, dirty, saving, saveMsg, autoSave, autoBlocked, onSave, onExportCsv, onPrint, actions }) {
   const [menu, setMenu] = useState(false);
   const st = autoSave || {};
@@ -301,7 +335,10 @@ function ProjectHeader({ address, setAddress, stage, health, context, dirty, sav
   const msg = saveMsg && !saveMsg.startsWith("✓") ? saveMsg.replace(/^[✓⚠❌]\s*/, "") : auto[0];
   return (
     <div className="deal-head">
-      <input className="dh-addr" placeholder="Property address" value={address} onChange={(e) => setAddress(e.target.value)} aria-label="Property address" />
+      <div className="dh-addr-row">
+        <CopyAddress text={address} />
+        <input className="dh-addr" placeholder="Property address" value={address} onChange={(e) => setAddress(e.target.value)} aria-label="Property address" />
+      </div>
       <div className="dh-row">
         <div className="dh-meta">
           <StagePill st={stage} />

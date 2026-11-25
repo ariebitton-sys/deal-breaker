@@ -96,8 +96,8 @@ const D = deal(
   assert(bell() && bell().querySelector(".tb-bell-n").textContent === "7", `bell shows 7 new (got ${bell() && bell().textContent})`);
   assert(bell().classList.contains("late"), "red: a task is overdue");
   const side = [...doc.querySelectorAll(".sidebar .sb-item")].find((b) => /Tasks/.test(b.textContent));
-  // open: A carried utility 1 + rehab 3 open; B market 3; D the stop-electric utility task 1; E 2
-  assert(side && side.querySelector("em").textContent === "10", `sidebar Tasks: 10 open (got ${side && side.textContent})`);
+  // open: A carried utility 1 + rehab 3 open + the standard insurance task; B market 3; D the stop-electric utility task 1; E 2
+  assert(side && side.querySelector("em").textContent === "11", `sidebar Tasks: 11 open (got ${side && side.textContent})`);
   await click(bell());
   const pop = doc.querySelector(".bell-pop");
   const secs = [...pop.querySelectorAll(".bell-sec")].map((x) => x.querySelector(".bell-k").textContent + ":" + x.querySelectorAll(".bell-row").length);
@@ -121,7 +121,9 @@ const D = deal(
   assert(row("Permits pulled").querySelector(".tk-due.overdue").textContent === "2 days late", "overdue: 2 days late, in red");
   assert(row("Confirm the electric account").querySelector(".tk-new") && row("Listing agent signed").querySelector(".tk-new") && !row("Utilities transferred").querySelector(".tk-new"), "New this week: tagged");
   const chip = (l) => [...doc.querySelectorAll(".tasks .lg-chip")].find((b) => b.textContent.startsWith(l));
-  assert(chip("All open").querySelector("em").textContent === "10" && chip("New this week").querySelector("em").textContent === "7" && chip("Overdue").querySelector("em").textContent === "1", "filters count 10 / 7 / 1");
+  assert(chip("All open").querySelector("em").textContent === "11" && chip("New this week").querySelector("em").textContent === "7" && chip("Overdue").querySelector("em").textContent === "1", "filters count 11 / 7 / 1");
+  const ins = rows().filter((x) => /Property insurance bought/.test(x.textContent));
+  assert(ins.length === 1 && /Rehab checklist/.test(ins[0].querySelector(".tk-meta").textContent) && [...doc.querySelectorAll(".tasks .tk-group")].find((x) => /11 Task St/.test(x.textContent)).contains(ins[0]), "every purchased property gets an insurance task: only the deal in rehab, not the ones under contract or on the market");
   await click(chip("Overdue"));
   assert(rows().length === 1 && row("Permits pulled"), "Overdue shows only the late task");
   await click(chip("All open"));
@@ -158,12 +160,24 @@ const D = deal(
   await settle(6);
   assert(row("Inspection completed") && row("Inspection completed").querySelector(".tk-new"), "inspection scheduled done: inspection completed comes up, as new");
 
+  await click(rows().find((x) => /Property insurance bought/.test(x.textContent)).querySelector('input[type="checkbox"]'));
+  await sleep(20);
+  await settle(6);
+  const insA = saved("A").mgmt.checklists.rehab.find((i) => i.id === "std-insurance");
+  assert(insA && insA.done && saved("A").mgmt.std.insurance === 1, "ticked from the board: saved in the file as done");
+
   console.log("4. The open project changes in place");
   const g = [...doc.querySelectorAll(".tasks .tk-group")].find((x) => /11 Task St/.test(x.textContent));
   await click(btn("Open project", g));
   await sleep(30);
   await settle(8);
   assert(doc.querySelector(".ptab.on") && /Stages and milestones/.test(doc.querySelector(".ptab.on").textContent), "Open project lands on Stages and milestones");
+  assert(/Property insurance bought \(vacant \/ builder's risk\)/.test(doc.body.textContent), "the insurance task is in the deal's rehab checklist");
+  const cp = doc.querySelector(".dh-addr-row > .dh-copy");
+  assert(cp && cp.nextElementSibling.classList.contains("dh-addr") && cp.getAttribute("aria-label") === "Copy the address", "a copy button to the left of the address");
+  t.win.navigator.clipboard = { writeText: async (v) => (t.win.__copied = v) };
+  await click(cp);
+  assert(t.win.__copied === "11 Task St, Cleveland, OH 44102" && cp.getAttribute("aria-label") === "Address copied", "one click copies the address, and says so");
   await click(side);
   await click(row("Utilities transferred").querySelector('input[type="checkbox"]'));
   await settle(4);

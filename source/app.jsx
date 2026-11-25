@@ -3346,7 +3346,7 @@ function App() {
     if (!f) throw new Error("This project is no longer in the Drive folder.");
     const out = await withAuthRetry(async (tok) => {
       const d = await driveRead(tok, fid);
-      const data = { ...d, mgmt: fn(mergeMgmt(d.mgmt)), savedAt: new Date().toISOString(), savedBy: userEmail || d.savedBy || "" };
+      const data = { ...d, mgmt: fn(withStandardTasks(mergeMgmt(d.mgmt), inferStage(d))), savedAt: new Date().toISOString(), savedBy: userEmail || d.savedBy || "" };
       const sum = summarizeDeal(data);
       const props = summaryToProps(sum, false);
       const res = await driveUpdateFull(tok, fid, data, { name: f.name, appProperties: props || { sv: null } });
@@ -3731,6 +3731,10 @@ function App() {
   };
   const openFromPortfolio = (f) => loadDeal(f);
   const navCounts = stageCounts(driveFiles, summaries);
+  // standard tasks a purchased property gets (insurance), as soon as the deal is in rehab
+  useEffect(() => {
+    setMgmt((mg) => withStandardTasks(mg, stage));
+  }, [stage, mgmt.checklists]);
   // the Forecast tab is for deals between contract and sale
   useEffect(() => {
     if (mode === "forecast" && !FC_STAGES.includes(stage)) setMode("overview");
