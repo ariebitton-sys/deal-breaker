@@ -1097,7 +1097,8 @@ function ProjectOverview({ address, mapsKey, folderId, photosUrl, setPhotosUrl, 
   const finL = finLenderOf(fin, uw || {}, m, mgmt);
   const finInv = finInvestorsOf(fin, uw || {}, m, mgmt);
   const soldOn = stage === "sold" ? (mgmt.sale && mgmt.sale.date) || "" : null;
-  const finPos = finPosition(finL, finInv, mgmt.draws, soldOn && soldOn < today ? soldOn : today);
+  const finSpendNow = finSpend(actuals);
+  const finPos = finPosition(finL, finInv, mgmt.draws, soldOn && soldOn < today ? soldOn : today, finSpendNow);
   const setFinancing = (fn) => setMgmt((mm) => ({ ...mm, financing: fn(mm.financing || {}) }));
   const setDraws = (fn) => setMgmt((mm) => ({ ...mm, draws: fn(mm.draws || []) }));
   const [street, city] = splitAddress(address || "");
@@ -1475,6 +1476,7 @@ function ProjectOverview({ address, mapsKey, folderId, photosUrl, setPhotosUrl, 
           L={finL}
           investors={finInv}
           draws={mgmt.draws}
+          spend={finSpendNow}
           today={soldOn && soldOn < today ? soldOn : today}
           payoffDate={finPayoffDefault(fin, mgmt, uw || {}, today)}
           setFinancing={setFinancing}

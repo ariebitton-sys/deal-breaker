@@ -1181,3 +1181,4 @@ mark{background:#DBEAFE;color:inherit;border-radius:2px;padding:0 1px}
 .tk-setdue:hover{border-style:solid;color:var(--ink)}
 @media (max-width:900px){.tk-setdue{grid-column:2;justify-self:start}}
 .ck-later{display:block;font-size:12px;color:var(--faint);margin-top:1px;font-style:italic}
+.fin-planned{font-weight:500;font-size:12px;color:var(--soft)}

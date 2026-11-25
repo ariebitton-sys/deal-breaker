@@ -2232,6 +2232,7 @@ function App() {
   const [uwBaseline, setUwBaseline] = useState(null);
   const [mgmt, setMgmt] = useState(emptyMgmt);
   const [rehabFunding, setRehabFunding] = useState(DEFAULTS.rehabFunding);
+  const [purchaseLender, setPurchaseLender] = useState(DEFAULTS.purchaseLender);
   const [drawCount, setDrawCount] = useState(DEFAULTS.drawCount);
   const [drawMonths, setDrawMonths] = useState(DEFAULTS.drawMonths);
   const [drawFee, setDrawFee] = useState(DEFAULTS.drawFee);
@@ -2760,6 +2761,7 @@ function App() {
     setUwBaseline(null);
     setMgmt(emptyMgmt());
     setRehabFunding(DEFAULTS.rehabFunding);
+    setPurchaseLender(DEFAULTS.purchaseLender);
     setDrawCount(DEFAULTS.drawCount);
     setDrawMonths(DEFAULTS.drawMonths);
     setDrawFee(DEFAULTS.drawFee);
@@ -2872,6 +2874,7 @@ function App() {
     uwBaseline,
     mgmt,
     rehabFunding,
+    purchaseLender,
     drawCount,
     drawMonths,
     drawFee,
@@ -2920,6 +2923,7 @@ function App() {
     setUwBaseline(d.uwBaseline || null);
     setMgmt(compsIntoDocs(mergeMgmt(d.mgmt), d.cmaFiles));
     setRehabFunding(d.rehabFunding || DEFAULTS.rehabFunding);
+    setPurchaseLender(d.purchaseLender || DEFAULTS.purchaseLender);
     setDrawCount(d.drawCount !== undefined ? d.drawCount : DEFAULTS.drawCount);
     setDrawMonths(d.drawMonths !== undefined ? d.drawMonths : DEFAULTS.drawMonths);
     setDrawFee(d.drawFee !== undefined ? d.drawFee : DEFAULTS.drawFee);
@@ -3093,6 +3097,7 @@ function App() {
   }, [repairs, useRepairBuilder, manualRepair]);
   const dealInputs = {
     rehabFunding,
+    purchaseLender,
     drawCount,
     drawMonths,
     drawFee,
@@ -3146,6 +3151,7 @@ function App() {
       arv,
       sqft,
       rehabFunding,
+      purchaseLender,
       drawCount,
       drawMonths,
       drawFee,
@@ -3174,7 +3180,7 @@ function App() {
   );
   const pctNum = (x) => `${+((x || 0) * 100).toFixed(2)}%`;
   // the terms the Financing card and the Position today statement read
-  const posUw = { intRatePurchase, intRateRehab, rehabFunding, investorRate, points, holdMonths, taxAnnual, insMonthly, utilGas, utilWater, utilElec, hoaMonthly };
+  const posUw = { intRatePurchase, intRateRehab, rehabFunding, purchaseLender, investorRate, points, holdMonths, taxAnnual, insMonthly, utilGas, utilWater, utilElec, hoaMonthly };
   const positionProps = {
     uw: posUw,
     sellingAt: (price) => calcDeal({ ...dealInputs, arv: price }).totalSelling,
@@ -3182,7 +3188,7 @@ function App() {
   };
   // Health of the open deal, from the same summary the dashboards use (so the two always agree).
   const liveHealth = useMemo(() => (view === "deal" ? healthOf(summarizeDeal(getState()), todayISO()) : null), [dealKey, view]);
-  const financingSub = `${pctNum(loanOnPurchasePct)} purchase loan, rehab ${rehabFunding === "draws" ? `in ${drawCount} lender draws` : `on Kappa loan at ${pctNum(intRateRehab)}`}`;
+  const financingSub = `${pctNum(loanOnPurchasePct)} purchase loan${purchaseLender === "kappa" ? " from Kappa" : ""}, rehab ${rehabFunding === "draws" ? `in ${drawCount} lender draws` : `on Kappa loan at ${pctNum(intRateRehab)}`}`;
   const dealContext = (() => {
     const t = todayISO();
     if (stage === "dead") return `Dead deal${mgmt.dead && mgmt.dead.reason ? `: ${mgmt.dead.reason}` : ""}`;
@@ -4096,6 +4102,7 @@ function App() {
         "Funding",
         rehabFunding === "draws" ? `Lender draws (${drawCount} over ${drawMonths} mo, fee ${n(drawFee)})` : "Kappa internal loan",
       ],
+      ["Purchase loan from", purchaseLender === "kappa" ? "Kappa internal loan" : "Outside lender"],
       ["Investor amount", n(m.investorAmount), "Investor return", pc(investorRate)],
       [],
       ["HOLDING (monthly)"],
@@ -4300,6 +4307,7 @@ function App() {
             actuals,
             stage,
             rehabFunding,
+            purchaseLender,
             intRateRehab,
             intRatePurchase,
             preview: (p) => {
@@ -4787,6 +4795,48 @@ function App() {
                   </p>
                 </Group>
                 <Group id="financing" title="Financing" sub={financingSub} total={fmt(m.totalFinancing)}>
+                  <div style={{ marginBottom: 12 }}>
+                    <span style={{ display: "block", fontSize: 11, color: T.txtDim, marginBottom: 5, fontWeight: 600 }}>Purchase loan from</span>
+                    <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }} role="group" aria-label="Purchase loan from">
+                      {[
+                        ["lender", "Outside lender"],
+                        ["kappa", "Kappa internal loan"],
+                      ].map(([k, l]) => (
+                        <button
+                          key={k}
+                          aria-pressed={purchaseLender === k}
+                          onClick={() => {
+                            setPurchaseLender(k);
+                            // the deal's own loan terms, if entered, follow the choice
+                            setMgmt((mm) => {
+                              const L = mm.financing && mm.financing.lender;
+                              if (!L) return mm;
+                              const name = k === "kappa" ? "Kappa internal loan" : L.name === "Kappa internal loan" ? "" : L.name;
+                              return { ...mm, financing: { ...mm.financing, lender: { ...L, kind: k, name } } };
+                            });
+                          }}
+                          style={{
+                            padding: "7px 14px",
+                            borderRadius: 4,
+                            fontSize: 12.5,
+                            fontWeight: 700,
+                            cursor: "pointer",
+                            fontFamily: FONT,
+                            border: `1px solid ${purchaseLender === k ? T.violet : T.border}`,
+                            background: purchaseLender === k ? `${T.violet}1a` : "transparent",
+                            color: purchaseLender === k ? T.violet : T.txtDim,
+                          }}
+                        >
+                          {l}
+                        </button>
+                      ))}
+                    </div>
+                    {purchaseLender === "kappa" && (
+                      <span style={{ display: "block", fontSize: 10.5, color: T.txtMute, marginTop: 4, fontFamily: MONO }}>
+                        the Financing card tracks Kappa's balance: what is spent, from each payment's date
+                      </span>
+                    )}
+                  </div>
                   <div
                     className="field-grid-2"
                     style={{

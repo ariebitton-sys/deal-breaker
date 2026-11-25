@@ -92,7 +92,7 @@ const deal = {
   assert(owedRows.length === 4 && owedRows[0].includes("Countertops, balance due") && owedRows.some((r) => /Lender interest to date, Bridgeit LLC/.test(r) && r.includes(money(interest))), "owed: the open bill, lender interest, the fee, the investor return");
   const estRows = [...w().querySelectorAll(".pos-est")].map((r) => r.textContent);
   assert(estRows.length === 3 && estRows[0].includes("Property tax owed") && estRows[0].includes("+ $892 the seller credited") && estRows[0].includes(money(tax)), "estimate: tax since closing plus the seller's credited share");
-  assert(w().textContent.includes("Lender$90,000") && w().textContent.includes("Investors$30,000") && w().textContent.includes("Loan and investor money not spent yet−" + money(120000 - paid)), "paid so far came from the lender and investors; what they put in beyond that is not spent yet");
+  assert(w().textContent.includes("Bridgeit LLC$90,000") && w().textContent.includes("Investors$30,000") && w().textContent.includes("Loan and investor money not spent yet−" + money(120000 - paid)), "paid so far came from the lender and investors; what they put in beyond that is not spent yet");
   assert(w().textContent.includes("Profit, if nothing more is spent" + money(160000 - committed)) && /Break-even sale price today: \$/.test(w().textContent), "against the sale at the ARV, no selling costs set: profit and break-even");
 
   console.log("3. Untick an estimate, mark the bill paid");

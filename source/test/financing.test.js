@@ -71,8 +71,8 @@ const monthly = (amt, from, to) => {
   // plan: $80,000 at closing, the $10,000 rehab draw not received; investors (auto) $20,000 + 9% flat
   const i80 = (80000 * 0.18 * 174) / 365;
   assert(/Interest owed today/.test(card().textContent) && card().querySelector(".ov-stat.big b").textContent === money(i80), "derived: interest owed today on the $80,000 released at closing");
-  assert(card().textContent.includes(`$80,000 since ${mmdd(day(-174))}, 174 days`) && /Investors, \$20,000 in\$1,800 return/.test(card().textContent), "one line per loan amount with its days; investors in and their return");
-  assert(/Owed today, lender and investors/.test(card().textContent) && card().textContent.includes(money(80000 + i80 + 20000 + 1800)), "and the total owed today");
+  assert(card().textContent.includes(`$80,000 since ${mmdd(day(-174))}, 174 days`) && /Investors, \$20,000 planned\s*not in yet/.test(card().textContent), "one line per loan amount with its days; the analysis's investors are planned, not in yet");
+  assert(/Owed today, lender and investors/.test(card().textContent) && card().textContent.includes("Owed today, lender and investors" + money(80000 + i80)), "and the total owed today: no investor money in yet");
   assert(/From the Flip analysis/.test(card().textContent), "and it says the terms are from the Flip analysis");
 
   console.log("2. Enter the real loan in the details window");
@@ -95,6 +95,8 @@ const monthly = (amt, from, to) => {
   await setVal(ia, "30000");
   ia.dispatchEvent(new t.win.FocusEvent("focusout", { bubbles: true }));
   await settle(3);
+  assert(/Not in yet/.test(w().querySelector(".fin-inv-r").textContent), "no money-in date: the investor shows Not in yet");
+  await setVal(w().querySelector('.fin-inv-r [aria-label="Money in"]'), day(-174));
   assert(!/These terms come from the Flip analysis/.test(w().textContent), "the first edit saved the deal's own terms");
   const i90 = (90000 * 0.18 * 174) / 365; // the full note, from closing
   assert(hero("Interest owed today") === money(i90, true) && hero("Lender payoff today") === money(90000 + i90 + 900, true), `interest today ${hero("Interest owed today")}; payoff = $90,000 + interest + $900 fee`);

@@ -32,7 +32,8 @@ function positionToday({ actuals, mgmt, uw, m, stage, today }) {
   const fin = mgmt.financing || {};
   const L = finLenderOf(fin, uw, m, mgmt);
   const inv = finInvestorsOf(fin, uw, m, mgmt);
-  const fp = finPosition(L, inv, mgmt.draws, today);
+  const spend = finSpend(actuals);
+  const fp = finPosition(L, inv, mgmt.draws, today, spend);
   if (!sold && fp.started) {
     if (fp.interestDue > 0.005) {
       owed.push({ key: "int", src: "Financing", cat: "Financing", label: `Lender interest to date${L.name ? `, ${L.name}` : ""}`, detail: fp.lines.map((x) => `${fmt(x.amount)} since ${fmtDate(x.date)}`).join(", "), amount: fp.interestDue });
@@ -74,7 +75,7 @@ function positionToday({ actuals, mgmt, uw, m, stage, today }) {
   const estTotal = est.filter((e) => e.on).reduce((t, x) => t + x.amount, 0);
   const cats = ACTUAL_CATS.filter((c) => byCat[c]).map((c) => byCat[c]);
   return {
-    sold, today, paid, owed, owedTotal, est, estTotal, cats, fp, L, inv,
+    sold, today, paid, owed, owedTotal, est, estTotal, cats, fp, L, inv, spend,
     committed: paid + owedTotal + estTotal,
     lenderIn: fp.principal,
     investorsIn: fp.invIn,
@@ -137,7 +138,7 @@ function KpiStrip({ P, uw, m, uwBaseline, grade, actuals, position, mgmt, actual
       const toSale = finDays(today, saleOn);
       const rehabIn = actuals.filter((a) => a.cat === "Rehab / Construction").reduce((t, a) => t + amtOf(a), 0);
       const rehabToCome = mgmt.rehab && mgmt.rehab.endDate ? 0 : Math.max(0, num(m.repair) - rehabIn);
-      const fpSale = finPosition(P.L, P.inv, mgmt.draws, saleOn);
+      const fpSale = finPosition(P.L, P.inv, mgmt.draws, saleOn, P.spend);
       const finToCome = Math.max(0, fpSale.interestDue - fp.interestDue) + Math.max(0, fpSale.invReturn - fp.invReturn);
       const holdToCome = holdDay * toSale;
       const out = saleOutlook({ ...P, committed: P.committed + rehabToCome + finToCome + holdToCome }, actuals, position.sellingAt, price);
@@ -312,7 +313,7 @@ function PositionWindow({ uw, sellingAt, defaultPrice, actuals, mgmt, m, stage, 
           <section className="xw-sec">
             <div className="xw-sec-h">Where the money paid so far came from</div>
             <div className="xw-items">
-              {row("Lender", P.lenderIn)}
+              {row(P.L.name || "Lender", P.lenderIn)}
               {row("Investors", P.investorsIn)}
               {P.kappaIn >= 0 ? row("Kappa", P.kappaIn) : row("Loan and investor money not spent yet", P.kappaIn, "", "−")}
               {row("Paid", P.paid, "sum")}
