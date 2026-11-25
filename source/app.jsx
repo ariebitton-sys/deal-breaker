@@ -3180,7 +3180,7 @@ function App() {
   );
   const pctNum = (x) => `${+((x || 0) * 100).toFixed(2)}%`;
   // the terms the Financing card and the Position today statement read
-  const posUw = { intRatePurchase, intRateRehab, rehabFunding, purchaseLender, investorRate, points, holdMonths, taxAnnual, insMonthly, utilGas, utilWater, utilElec, hoaMonthly };
+  const posUw = { intRatePurchase, intRateRehab, rehabFunding, purchaseLender, investorRate, points, holdMonths, taxAnnual, insMonthly, utilGas, utilWater, utilElec, hoaMonthly, miscHold };
   const positionProps = {
     uw: posUw,
     sellingAt: (price) => calcDeal({ ...dealInputs, arv: price }).totalSelling,
@@ -3731,6 +3731,10 @@ function App() {
   };
   const openFromPortfolio = (f) => loadDeal(f);
   const navCounts = stageCounts(driveFiles, summaries);
+  // the Forecast tab is for deals between contract and sale
+  useEffect(() => {
+    if (mode === "forecast" && !FC_STAGES.includes(stage)) setMode("overview");
+  }, [mode, stage]);
   const goProject = (k, anchor) => {
     setView("deal");
     setMode(normMode(k));
@@ -4456,7 +4460,7 @@ function App() {
             onBack={navIndex > 0 ? goBack : null}
             finder={{ files: driveFiles, summaries, onOpen: (f) => loadDeal(f), onDelete: deleteDeal, onRefresh: () => refreshFiles() }}
             bell={accessToken ? <TaskBell tasks={allTasks} seenAt={tasksSeen} onSeen={markTasksSeen} onOpenTask={openTasksScreen} onOpenAll={() => openTasksScreen(null)} /> : null}
-            tabs={view === "deal" ? <ProjectTabs mode={mode} go={goProject} counts={{ expenses: actuals.length }} /> : null}
+            tabs={view === "deal" ? <ProjectTabs mode={mode} go={goProject} counts={{ expenses: actuals.length }} hide={FC_STAGES.includes(stage) ? [] : ["forecast"]} /> : null}
           />
           <div className="app-main-inner">
         {view === "portfolio" && normDash(pfFilter) === "tasks" ? (
@@ -5178,6 +5182,26 @@ function App() {
               />
             </div>
           </React.Fragment>
+        ) : mode === "forecast" && FC_STAGES.includes(stage) ? (
+          <ForecastTab
+            ctx={{
+              P: positionToday({ actuals, mgmt, uw: posUw, m, stage, today: todayISO() }),
+              actuals,
+              mgmt,
+              uw: posUw,
+              m,
+              sellingAt: positionProps.sellingAt,
+              position: positionProps,
+              today: todayISO(),
+              uwBaseline,
+              holdMonths,
+              arv,
+              grade: deal.grade,
+              purchase,
+            }}
+            setMgmt={setMgmt}
+            addLog={addLogEntry}
+          />
         ) : mode === "manage" ? (
           <ManagementTab
             stage={stage}

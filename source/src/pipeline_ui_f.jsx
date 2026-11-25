@@ -90,6 +90,7 @@ const dashOfStage = (st) => (st === "analyzing" ? "leads" : st === "sold" ? "por
 const PROJECT_NAV = [
   ["overview", "Project overview", "home"],
   ["underwrite", "Flip analysis", "calc"],
+  ["forecast", "Forecast", "chart"],
   ["manage", "Stages and milestones", "cal"],
   ["expenses", "Expenses & Documents", "receipt"],
 ];
@@ -262,11 +263,11 @@ function TopBar({ crumbs, connected, userEmail, onConnect, finder, onBack, tabs,
     </header>
   );
 }
-function ProjectTabs({ mode, go, counts }) {
+function ProjectTabs({ mode, go, counts, hide }) {
   const cur = normMode(mode);
   return (
     <div className="ptabs" role="tablist" aria-label="Project">
-      {PROJECT_NAV.map(([k, l]) => (
+      {PROJECT_NAV.filter(([k]) => !(hide || []).includes(k)).map(([k, l]) => (
         <button key={k} role="tab" aria-selected={cur === k} className={"ptab" + (cur === k ? " on" : "")} onClick={() => go(k)}>
           {l}
           {counts && counts[k] ? <em>{counts[k]}</em> : null}

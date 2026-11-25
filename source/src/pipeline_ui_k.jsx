@@ -131,20 +131,13 @@ function KpiStrip({ P, uw, m, uwBaseline, grade, actuals, position, mgmt, actual
     tile("Spent so far", fmt(P.paid), P.owedTotal > 0.5 ? `+ ${fmt(P.owedTotal)} owed, not paid yet` : "Nothing owed");
     tile("Paying interest on", fp.started && fp.accruingOn > 0 ? fmt(fp.accruingOn) : "—", fp.started && fp.accruingOn > 0 ? `${finPctLabel(fp.curRate / 12)} a month, ${fmt2(fp.perDay)} a day` : "No loan accruing", fp.pastMaturity ? "neg" : "");
     if (position) {
-      // projected to the expected sale: what is committed today, plus the rehab budget not used yet (the current
-      // Flip analysis estimate) and interest and holding costs from today to the sale date
-      const price = num(position.defaultPrice);
-      const saleOn = finPayoffDefault(mgmt.financing || {}, mgmt, uw, today);
-      const toSale = finDays(today, saleOn);
-      const rehabIn = actuals.filter((a) => a.cat === "Rehab / Construction").reduce((t, a) => t + amtOf(a), 0);
-      const rehabToCome = mgmt.rehab && mgmt.rehab.endDate ? 0 : Math.max(0, num(m.repair) - rehabIn);
-      const fpSale = finPosition(P.L, P.inv, mgmt.draws, saleOn, P.spend);
-      const finToCome = Math.max(0, fpSale.interestDue - fp.interestDue) + Math.max(0, fpSale.invReturn - fp.invReturn);
-      const holdToCome = holdDay * toSale;
-      const out = saleOutlook({ ...P, committed: P.committed + rehabToCome + finToCome + holdToCome }, actuals, position.sellingAt, price);
-      const why = `${fmt(price)} sale on ${fmtDate(saleOn)} − ${fmt(out.sellToCome)} selling − ${fmt(P.committed)} committed today${rehabToCome > 0 ? ` − ${fmt(rehabToCome)} rehab budget left` : ""} − ${fmt(finToCome + holdToCome)} interest and holding until the sale`;
-      tiles.push({ k: "Projected profit at sale", v: fmt(out.left), h: `${signed(out.left - plan)} vs plan, sale ${fmtDate(saleOn)}`, tone: out.left < 0 ? "neg" : "", htone: out.left - plan < 0 ? "neg" : "pos", title: why });
-      tile("Break-even price", fmt(out.breakEven), price > 0 ? `${signed(price - out.breakEven)} cushion at ${fmt(price)}` : "", "", price < out.breakEven ? "neg" : "");
+      // the deal's forecast scenario (Forecast tab): actual costs so far, its assumptions until the sale
+      const ctx = { P, actuals, mgmt, uw, m, sellingAt: position.sellingAt, position, today, uwBaseline, holdMonths: uw.holdMonths, grade, purchase: m.purchase };
+      const { sc, f } = fcMain(ctx);
+      const named = Array.isArray(mgmt.scenarios) && mgmt.scenarios.length > 0;
+      const why = `${fmt(f.price)} sale on ${fmtDate(f.saleDate)} − ${fmt(f.total)} total cost: ${FC_ROWS.filter(([k]) => f.rows[k]).map(([k, l]) => `${l.toLowerCase()} ${fmt(f.rows[k])}`).join(", ")}`;
+      tiles.push({ k: "Projected profit at sale", v: fmt(f.profit), h: `${signed(f.profit - plan)} vs plan${named ? `, ${sc.name}` : `, sale ${fmtDate(f.saleDate)}`}`, tone: f.profit < 0 ? "neg" : "", htone: f.profit - plan < 0 ? "neg" : "pos", title: why });
+      tile("Break-even price", fmt(f.breakEven), f.price > 0 ? `${signed(f.price - f.breakEven)} cushion at ${fmt(f.price)}` : "", "", f.price < f.breakEven ? "neg" : "");
     }
     tile("Each extra day costs", fmt(intDay + holdDay), heldHint, "", over ? "warn" : "");
   }

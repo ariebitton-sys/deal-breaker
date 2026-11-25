@@ -80,7 +80,7 @@ const deal = {
   assert(kpi("Paying interest on").textContent === "Paying interest on$90,0001.5% a month, $44.38 a day", "paying interest on $90,000");
   const perDay = (90000 * 0.18) / 365 + 2129 / 365 + 425 / 30.4375;
   assert(kpi("Each extra day costs").textContent === `Each extra day costs${money(perDay)}Day 174 of 91 planned` && kpi("Each extra day costs").querySelector(".kpi-h.warn"), "each extra day costs interest + holding; held longer than planned, amber");
-  assert(/^\$[\d,]+$/.test(kpi("Projected profit at sale").querySelector(".kpi-v").textContent) && /committed today/.test(kpi("Projected profit at sale").title) && /^\$[\d,]+$/.test(kpi("Break-even price").querySelector(".kpi-v").textContent), "projected profit at sale (its sum in the tooltip) and the break-even price");
+  assert(/^\$[\d,]+$/.test(kpi("Projected profit at sale").querySelector(".kpi-v").textContent) && /total cost: purchase and closing/.test(kpi("Projected profit at sale").title) && /^\$[\d,]+$/.test(kpi("Break-even price").querySelector(".kpi-v").textContent), "projected profit at sale (its sum in the tooltip) and the break-even price");
 
   console.log("2. The statement");
   await click(btn("Position today", accounting()));

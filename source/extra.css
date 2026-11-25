@@ -1182,3 +1182,49 @@ mark{background:#DBEAFE;color:inherit;border-radius:2px;padding:0 1px}
 @media (max-width:900px){.tk-setdue{grid-column:2;justify-self:start}}
 .ck-later{display:block;font-size:12px;color:var(--faint);margin-top:1px;font-style:italic}
 .fin-planned{font-weight:500;font-size:12px;color:var(--soft)}
+/* v62 forecast: scenarios after the purchase */
+.fc{display:flex;flex-direction:column;gap:16px}
+.fc-head{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;flex-wrap:wrap}
+.fc-head h2{font-size:20px;font-weight:650;color:var(--ink);margin:0 0 4px;letter-spacing:-.01em}
+.fc-head p{margin:0;font-size:13px;color:var(--soft);max-width:760px;line-height:1.5}
+.fc-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:14px}
+.fc-card{padding:14px 16px;display:flex;flex-direction:column;gap:12px}
+.fc-card.main{border-color:#BFD3FB;box-shadow:0 0 0 1px #BFD3FB}
+.fc-card-h{display:flex;align-items:center;gap:8px}
+.fc-name{flex:1;min-width:0;border:1px solid transparent;border-radius:7px;padding:5px 7px;margin-left:-7px;font-size:14.5px;font-weight:600;color:var(--ink);background:transparent}
+.fc-name:hover,.fc-name:focus{border-color:var(--line2);background:#fff;outline:none}
+.fc-main{font-size:11px;font-weight:700;color:var(--accent);border:1px solid #BFD3FB;background:#EFF4FF;border-radius:999px;padding:2px 9px;white-space:nowrap}
+.fc-use{font-size:12.5px;white-space:nowrap}
+.fc-profit{display:flex;flex-direction:column;gap:1px;padding:10px 12px;background:var(--subtle);border-radius:9px}
+.fc-profit span{font-size:12px;color:var(--soft)}
+.fc-profit b{font-size:24px;font-weight:650;letter-spacing:-.02em;color:var(--ink);font-variant-numeric:tabular-nums}
+.fc-profit b.neg{color:var(--neg)}
+.fc-profit em{font-style:normal;font-size:12px;font-variant-numeric:tabular-nums}
+.fc-profit em.neg{color:var(--neg)}.fc-profit em.pos{color:var(--pos)}
+.fc-fields{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.fc-fields label{display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--soft);font-weight:500;min-width:0}
+.fc-fields input[type=date]{border:1px solid var(--line2);border-radius:7px;padding:7px 9px;font-size:13px;color:var(--ink);background:#fff;color-scheme:light;min-width:0}
+.fc-extras{display:flex;flex-direction:column;gap:6px}
+.fc-extra{display:grid;grid-template-columns:minmax(0,1fr) 120px 22px;gap:6px;align-items:center}
+.fc-extra>input{border:1px solid var(--line2);border-radius:7px;padding:7px 9px;font-size:13px;min-width:0}
+.fc-addx{display:inline-flex;align-items:center;gap:4px;font-size:12.5px;align-self:flex-start;text-align:left}
+.fc-card-f{display:flex;gap:14px;border-top:1px solid var(--line);padding-top:10px;margin-top:auto}
+.fc-card-f .link-btn{font-size:12.5px}
+.fc-del{color:var(--soft)!important}
+.fc-tbl-wrap{overflow-x:auto}
+.fc-tbl{width:100%;border-collapse:collapse;font-size:13px;font-variant-numeric:tabular-nums}
+.fc-tbl th,.fc-tbl td{padding:8px 16px;text-align:right;border-top:1px solid var(--line);white-space:nowrap;vertical-align:top}
+.fc-tbl th{font-size:12px;font-weight:600;color:var(--soft);border-top:none;background:var(--subtle)}
+.fc-tbl th.main{color:var(--accent)}
+.fc-tbl td:first-child,.fc-tbl th:first-child{text-align:left;color:var(--ink2);font-weight:500}
+.fc-tbl td em,.fc-tbl th em{display:block;font-style:normal;font-size:11.5px;color:var(--faint);font-weight:500}
+.fc-tbl td em.neg{color:var(--neg)}.fc-tbl td em.pos{color:var(--pos)}
+.fc-tbl td.neg{color:var(--neg)}
+.fc-tbl tr.fc-price td{font-weight:600;color:var(--ink)}
+.fc-tbl tr.fc-sum td{font-weight:600;background:var(--subtle)}
+.fc-tbl tr.fc-net td{font-weight:700;font-size:14px;color:var(--ink)}
+.fc-tbl tr.fc-net td.neg{color:var(--neg)}
+.fc-grid td.base{background:#EFF4FF;font-weight:700}
+.fc-grid td.warn{color:var(--warn)}
+.fc-note{padding:10px 16px 14px;font-size:12px;color:var(--soft);line-height:1.5;border-top:1px solid var(--line)}
+@media (max-width:640px){.fc-fields{grid-template-columns:1fr}.fc-tbl th,.fc-tbl td{padding:7px 10px}}
