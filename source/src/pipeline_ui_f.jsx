@@ -74,6 +74,7 @@ const DASH_META = {
   portfolio: { title: "Sold Properties", sub: "Sold flips and how they did against the plan", stages: ["sold"] },
   dead: { title: "Dead deals", sub: "Deals that didn't go ahead", stages: ["dead"] },
   costs: { title: "Expense search", sub: "Every ledger line across the projects", stages: [] },
+  tasks: { title: "Tasks", sub: "Open tasks across the projects", stages: [] },
 };
 // What an empty dashboard says: where its deals come from.
 const DASH_EMPTY = {
@@ -136,6 +137,11 @@ function Sidebar({ logo, view, filter, onFilter, counts, project, onNew, onSetti
           <em>{counts.dead || 0}</em>
         </button>
         <div className="sb-sep" />
+        <button onClick={() => onFilter("tasks")} className={"sb-item" + (view === "portfolio" && filter === "tasks" ? " on" : "")} title={collapsed ? `Tasks (${counts.tasks || 0})` : "Open tasks across every project"} aria-current={view === "portfolio" && filter === "tasks" ? "page" : undefined}>
+          <Icon name="check" size={17} />
+          <span className="sb-label">Tasks</span>
+          <em>{counts.tasks || 0}</em>
+        </button>
         <button onClick={() => onFilter("costs")} className={"sb-item" + (view === "portfolio" && filter === "costs" ? " on" : "")} title={collapsed ? "Expense search" : "Search expenses across every project"} aria-current={view === "portfolio" && filter === "costs" ? "page" : undefined}>
           <Icon name="search" size={17} />
           <span className="sb-label">Expense search</span>
@@ -167,7 +173,7 @@ function Sidebar({ logo, view, filter, onFilter, counts, project, onNew, onSetti
   );
 }
 // Sticky header: Back, breadcrumb with the property switcher, search, account; the deal's tabs below.
-function TopBar({ crumbs, connected, userEmail, onConnect, finder, onBack, tabs }) {
+function TopBar({ crumbs, connected, userEmail, onConnect, finder, onBack, tabs, bell }) {
   const [open, setOpen] = useState(null); // "search" | "switch" | null
   const initials = (userEmail || "")
     .split("@")[0]
@@ -240,6 +246,7 @@ function TopBar({ crumbs, connected, userEmail, onConnect, finder, onBack, tabs 
             </button>
             {open === "search" && <DealFinder {...finder} onClose={() => setOpen(null)} />}
           </div>
+          {bell}
           {connected ? (
             <span className="tb-avatar" title={userEmail || "Connected to Google"}>
               {initials || "K"}

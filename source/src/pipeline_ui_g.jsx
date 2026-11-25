@@ -752,7 +752,7 @@ function applyUtilityTasks(mg, u) {
   const { buy, after, sell } = utilityTasks(u);
   const merge = (list, add) => {
     const keep = (list || []).filter((i) => !i.ut || i.done || add.some((a) => a.ut === i.ut));
-    const fresh = add.filter((a) => !keep.some((i) => i.ut === a.ut)).map((a) => ({ id: uid(), done: false, ...a }));
+    const fresh = add.filter((a) => !keep.some((i) => i.ut === a.ut)).map((a) => ({ id: uid(), done: false, addedAt: new Date().toISOString(), ...a }));
     return { list: [...keep, ...fresh], added: fresh.length };
   };
   const c = merge(mg.checklists.contract, buy);

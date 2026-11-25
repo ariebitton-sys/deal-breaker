@@ -44,7 +44,7 @@ function Checklist({ items, onChange, by }) {
     onChange(items.map((i) => (i.id === id ? { ...i, done: !i.done, doneAt: !i.done ? new Date().toISOString() : "", by: !i.done ? by : "" } : i)));
   const add = () => {
     if (!draft.trim()) return;
-    onChange([...items, { id: uid(), label: draft.trim(), done: false, custom: true }]);
+    onChange([...items, { id: uid(), label: draft.trim(), done: false, custom: true, addedAt: new Date().toISOString() }]);
     setDraft("");
   };
   return (
@@ -64,6 +64,7 @@ function Checklist({ items, onChange, by }) {
           <span style={{ flex: 1, minWidth: 0 }}>
             <span style={{ fontSize: 13, color: i.done ? T.txtMute : T.txt, textDecoration: i.done ? "line-through" : "none" }}>{i.label}</span>
             {i.note && !i.done && <span style={{ display: "block", fontSize: 12, color: T.txtMute, marginTop: 1 }}>{i.note}</span>}
+            {i.due && !i.done && <span style={{ display: "block", fontSize: 12, color: i.due < todayISO() ? T.red : T.txtMute, marginTop: 1 }}>Due {fmtDate(i.due)}</span>}
           </span>
           {i.url && (
             <a href={i.url} target="_blank" rel="noopener noreferrer" className="ck-link" title="Open the provider's page">

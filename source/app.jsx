@@ -2672,6 +2672,7 @@ function App() {
       summaryCacheRef.current[res.id] = { modifiedTime: res.modifiedTime, sum };
       saveSummaryCache(summaryCacheRef.current);
       setSummaries((s) => ({ ...s, [res.id]: sum }));
+      taskIndexPut({ id: res.id, name }, data, res.modifiedTime);
       // a new or renamed file changes the deal list; a plain update only changes this deal's entry
       if (!auto || !before || before.id !== res.id || before.name !== name) await refreshFiles(result.tok);
       else setDriveFiles((fs) => fs.map((f) => (f.id === res.id ? { ...f, name, modifiedTime: res.modifiedTime } : f)));
@@ -3056,6 +3057,7 @@ function App() {
       applyState(data);
       loadedRef.current = { id: file.id, name: meta.name || file.name, modifiedTime: meta.modifiedTime };
       ledgerIndexPut(file, data, meta.modifiedTime);
+      taskIndexPut(file, data, meta.modifiedTime);
       const st = inferStage(data);
       setMode((opts && opts.mode) || "overview");
       setView("deal");
@@ -3281,6 +3283,114 @@ function App() {
       setLedgerFocus({ id: entryId, item: item || null, n: Date.now() });
     }
   };
+  // ---- tasks: every active deal's open checklist tasks, per file version; the bell's "seen" mark ----
+  const [taskIndex, setTaskIndex] = useState(readTaskIndex);
+  const [taskBusy, setTaskBusy] = useState(null);
+  const [tasksSeen, setTasksSeen] = useState(readTasksSeen);
+  const [taskFocus, setTaskFocus] = useState(null);
+  const taskIndexPut = (f, d, mt) => setTaskIndex((ix) => ({ ...ix, [f.id]: taskIndexEntry(d, mt || f.modifiedTime, f.name) }));
+  useEffect(() => {
+    const t = setTimeout(() => writeTaskIndex(taskIndex), 600);
+    return () => clearTimeout(t);
+  }, [taskIndex]);
+  const markTasksSeen = () => {
+    const now = new Date().toISOString();
+    setTasksSeen(now);
+    writeTasksSeen(now);
+  };
+  useEffect(() => {
+    if (!accessToken || !driveFiles.length) return;
+    const ids = new Set(driveFiles.map((f) => f.id));
+    if (Object.keys(taskIndex).some((id) => !ids.has(id))) setTaskIndex((ix) => Object.fromEntries(Object.entries(ix).filter(([id]) => ids.has(id))));
+    // read the deals that can have tasks (by their summary's stage) when their version isn't indexed yet
+    const toRead = driveFiles.filter((f) => summaries[f.id] && TASK_STAGES.includes(summaries[f.id].st) && (!taskIndex[f.id] || taskIndex[f.id].mt !== f.modifiedTime));
+    if (!toRead.length) return;
+    let cancelled = false;
+    const queue = [...toRead];
+    let done = 0;
+    setTaskBusy({ done: 0, total: toRead.length });
+    (async () => {
+      const worker = async () => {
+        while (queue.length && !cancelled) {
+          const f = queue.shift();
+          try {
+            const d = await withAuthRetry((tok) => driveRead(tok, f.id));
+            if (!cancelled) taskIndexPut(f, d);
+          } catch (e) {}
+          done++;
+          if (!cancelled) setTaskBusy({ done, total: toRead.length });
+        }
+      };
+      await Promise.all([worker(), worker(), worker()]);
+      if (!cancelled) setTaskBusy(null);
+    })();
+    return () => {
+      cancelled = true;
+      setTaskBusy(null);
+    };
+  }, [accessToken, driveFiles, summaries]);
+  // Change one deal's management data. The open deal changes in place (autosave writes it); any other deal is
+  // read fresh from Drive, changed and written back with its summary, so nothing else in it is touched.
+  const patchDealFile = async (fid, fn) => {
+    if (loadedRef.current && loadedRef.current.id === fid) {
+      setMgmt((mg) => fn(mg));
+      return;
+    }
+    const f = driveFiles.find((x) => x.id === fid);
+    if (!f) throw new Error("This project is no longer in the Drive folder.");
+    const out = await withAuthRetry(async (tok) => {
+      const d = await driveRead(tok, fid);
+      const data = { ...d, mgmt: fn(mergeMgmt(d.mgmt)), savedAt: new Date().toISOString(), savedBy: userEmail || d.savedBy || "" };
+      const sum = summarizeDeal(data);
+      const props = summaryToProps(sum, false);
+      const res = await driveUpdateFull(tok, fid, data, { name: f.name, appProperties: props || { sv: null } });
+      return { data, sum, props, res };
+    });
+    const mt = out.res.modifiedTime;
+    summaryCacheRef.current[fid] = { modifiedTime: mt, sum: out.sum };
+    saveSummaryCache(summaryCacheRef.current);
+    setSummaries((s2) => ({ ...s2, [fid]: out.sum }));
+    setDriveFiles((fs) => fs.map((x) => (x.id === fid ? { ...x, modifiedTime: mt, appProperties: out.props || x.appProperties } : x)));
+    taskIndexPut(f, out.data, mt);
+    ledgerIndexPut(f, out.data, mt);
+  };
+  const logLine = (text) => ({ id: uid(), ts: new Date().toISOString(), by: userEmail || "", text, auto: true });
+  const setChecklistItem = (ck, id, patch) => (mg) => ({ ...mg, checklists: { ...mg.checklists, [ck]: (mg.checklists[ck] || []).map((i) => (i.id === id ? { ...i, ...patch } : i)) } });
+  const toggleTaskAnywhere = (t, done) =>
+    patchDealFile(t.fid, (mg) => {
+      const next = setChecklistItem(t.ck, t.id, { done, doneAt: done ? new Date().toISOString() : "", by: done ? userEmail || "" : "" })(mg);
+      return { ...next, log: [logLine(done ? `Task done: ${t.label}` : `Task reopened: ${t.label}`), ...next.log] };
+    });
+  const setTaskDueAnywhere = (t, due) => patchDealFile(t.fid, setChecklistItem(t.ck, t.id, { due: due || undefined }));
+  const addTaskAnywhere = (fid, label, due) => {
+    const live = loadedRef.current && loadedRef.current.id === fid;
+    const st = live ? stage : (summaries[fid] && summaries[fid].st) || (taskIndex[fid] && taskIndex[fid].st);
+    const ck = CHECKLIST_OF[st];
+    if (!ck || st === "sold") throw new Error("Tasks can be added to deals under contract, in rehab or on the market.");
+    return patchDealFile(fid, (mg) => ({
+      ...mg,
+      checklists: { ...mg.checklists, [ck]: [...(mg.checklists[ck] || []), { id: uid(), label, done: false, custom: true, addedAt: new Date().toISOString(), ...(due ? { due } : {}) }] },
+      log: [logLine(`Task added: ${label}`), ...mg.log],
+    }));
+  };
+  const liveTasks = loadedRef.current && loadedRef.current.id && address.trim() ? { id: loadedRef.current.id, entry: taskIndexEntry({ address, stage, mgmt, stageHistory }, loadedRef.current.modifiedTime, "") } : null;
+  const allTasks = collectTasks(taskIndex, driveFiles, liveTasks);
+  const doneTasks = [];
+  Object.entries(taskIndex).forEach(([fid, e]) => {
+    if (!e || !e.done || (liveTasks && liveTasks.id === fid) || !driveFiles.some((f) => f.id === fid)) return;
+    e.done.forEach((t) => doneTasks.push({ ...t, fid, key: fid + ":" + t.id, address: e.address || (e.name || "").replace(/\.json$/i, ""), st: e.st }));
+  });
+  if (liveTasks) liveTasks.entry.done.forEach((t) => doneTasks.push({ ...t, fid: liveTasks.id, key: liveTasks.id + ":" + t.id, address, st: stage }));
+  const openTasksScreen = (t) => {
+    setPfFilter("tasks");
+    goPortfolio();
+    if (t) setTaskFocus({ key: t.key, n: Date.now() });
+  };
+  const openTaskProject = async (fid) => {
+    if (loadedRef.current && loadedRef.current.id === fid) return goProject("manage");
+    const f = driveFiles.find((x) => x.id === fid);
+    if (f) await loadDeal(f, { mode: "manage" });
+  };
   const searchAllProjects = (q) => {
     setCostQuery(q || "");
     setPfFilter("costs");
@@ -3317,6 +3427,7 @@ function App() {
           try {
             const d = await withAuthRetry((tok) => driveRead(tok, f.id));
             ledgerIndexPut(f, d);
+            taskIndexPut(f, d);
             const sum = summarizeDeal(d);
             cache[f.id] = { modifiedTime: f.modifiedTime, sum };
             setSummaries((s) => ({ ...s, [f.id]: sum }));
@@ -4299,7 +4410,7 @@ function App() {
             setPfFilter(k);
             goPortfolio();
           }}
-          counts={navCounts}
+          counts={{ ...navCounts, tasks: allTasks.length }}
           project={
             view !== "deal" && address.trim()
               ? {
@@ -4336,10 +4447,24 @@ function App() {
             onConnect={signIn}
             onBack={navIndex > 0 ? goBack : null}
             finder={{ files: driveFiles, summaries, onOpen: (f) => loadDeal(f), onDelete: deleteDeal, onRefresh: () => refreshFiles() }}
+            bell={accessToken ? <TaskBell tasks={allTasks} seenAt={tasksSeen} onSeen={markTasksSeen} onOpenTask={openTasksScreen} onOpenAll={() => openTasksScreen(null)} /> : null}
             tabs={view === "deal" ? <ProjectTabs mode={mode} go={goProject} counts={{ expenses: actuals.length }} /> : null}
           />
           <div className="app-main-inner">
-        {view === "portfolio" && normDash(pfFilter) === "costs" ? (
+        {view === "portfolio" && normDash(pfFilter) === "tasks" ? (
+          <TasksScreen
+            tasks={allTasks}
+            done={doneTasks}
+            files={driveFiles.map((f) => ({ id: f.id, address: f.name.replace(/\.json$/i, ""), st: summaries[f.id] && summaries[f.id].st }))}
+            busy={taskBusy}
+            onSeen={markTasksSeen}
+            onToggle={toggleTaskAnywhere}
+            onDue={setTaskDueAnywhere}
+            onAdd={addTaskAnywhere}
+            onOpen={openTaskProject}
+            focus={taskFocus}
+          />
+        ) : view === "portfolio" && normDash(pfFilter) === "costs" ? (
           <CostSearch
             files={driveFiles}
             index={ledgerIndex}
