@@ -169,36 +169,81 @@ const PM_WHEN = [
   ["listed", "When it's listed"],
   ["sold", "At the sale"],
 ];
-const pmWhenLabel = (w) => (PM_WHEN.find((x) => x[0] === w) || [w, w])[1];
+// besides the flip steps: a set date ("date", with inst.on) or a rehab milestone being done ("ms:<id>")
+const pmWhenLabel = (w, mg, inst) => {
+  if (w === "date") return inst && inst.on ? `On ${fmtDate(inst.on)}` : "On a date";
+  if (String(w || "").startsWith("ms:")) {
+    const ms = mg && mg.rehab && (mg.rehab.milestones || []).find((x) => "ms:" + x.id === w);
+    return ms ? `When "${ms.label}" is done` : "When a rehab milestone is done";
+  }
+  return (PM_WHEN.find((x) => x[0] === w) || [w, w])[1];
+};
 const PM_DEFAULT_PLAN = () => [
   { id: "pm1", when: "rehabStart", pct: 40 },
   { id: "pm2", when: "rehabDone", pct: 40 },
   { id: "pm3", when: "sold", pct: 20 },
 ];
-const pmDueDate = (mg, when) =>
-  ({
-    closing: mg.closing.date,
-    rehabStart: mg.rehab.startDate,
-    rehabDone: mg.rehab.endDate,
-    listed: mg.listing.date,
-    sold: mg.sale.date,
-  })[when] || "";
+const pmDueDate = (mg, when, inst) => {
+  if (when === "date") return (inst && inst.on) || "";
+  if (String(when || "").startsWith("ms:")) {
+    const ms = (mg.rehab.milestones || []).find((x) => "ms:" + x.id === when);
+    return ms && ms.status === "done" ? String(ms.doneAt || "").slice(0, 10) || todayISO() : "";
+  }
+  return (
+    {
+      closing: mg.closing.date,
+      rehabStart: mg.rehab.startDate,
+      rehabDone: mg.rehab.endDate,
+      listed: mg.listing.date,
+      sold: mg.sale.date,
+    }[when] || ""
+  );
+};
+// Payment terms: nothing is due until they are agreed (or a payment has been logged, which means they were)
+const pmAgreed = (mg, actuals) => {
+  const t = mg.pm && mg.pm.terms;
+  return t === "agreed" || (t !== "open" && (actuals || []).some((a) => a.tag === "pm_fee"));
+};
+const PM_PRESETS = (mg) => {
+  const ms = (mg.rehab.milestones || []).filter((x) => x.label);
+  const out = [
+    ["stages", "In stages: 40 / 40 / 20", () => PM_DEFAULT_PLAN().map((x) => ({ ...x, id: uid() }))],
+    ["sale", "All at the sale", () => [{ id: uid(), when: "sold", pct: 100 }]],
+  ];
+  if (ms.length >= 2 && ms.length <= 15) {
+    out.push([
+      "ms",
+      `By rehab milestones (${ms.length})`,
+      () => {
+        const each = Math.floor((100 / ms.length) * 100) / 100;
+        return ms.map((x, i) => ({ id: uid(), when: "ms:" + x.id, pct: i === ms.length - 1 ? Math.round((100 - each * (ms.length - 1)) * 100) / 100 : each }));
+      },
+    ]);
+  }
+  return out;
+};
 // each installment: its share of the fee, when it's due, and the ledger entry that paid it
 function pmPlan(mg, actuals, fee, today) {
   const t = today || todayISO();
   const list = (mg.pm && mg.pm.installments) || [];
+  const agreed = pmAgreed(mg, actuals);
   const rows = list.map((inst, i) => {
     const amount = Math.round((fee * (parseFloat(inst.pct) || 0)) / 100);
     const paid = (actuals || []).find((a) => a.tag === "pm_fee" && a.pmInst === inst.id) || null;
-    const due = pmDueDate(mg, inst.when);
-    const status = paid ? "paid" : due && due <= t ? "due" : "later";
+    const due = pmDueDate(mg, inst.when, inst);
+    const status = paid ? "paid" : !agreed ? "draft" : due && due <= t ? "due" : "later";
     return { inst, i, amount, due, paid, status };
   });
   const paidTotal = (actuals || []).filter((a) => a.tag === "pm_fee").reduce((s, a) => s + (parseFloat(a.amount) || 0), 0);
   const dueTotal = rows.filter((r) => r.status === "due").reduce((s, r) => s + r.amount, 0);
   const pctTotal = list.reduce((s, x) => s + (parseFloat(x.pct) || 0), 0);
-  return { rows, paidTotal, dueTotal, pctTotal };
+  return { rows, paidTotal, dueTotal, pctTotal, agreed };
 }
+// the project manager's fee: the forecast's once one is saved, else the Flip analysis's
+const pmFeeFor = (mg, st, m) => {
+  const f = forecastScenario(mg, st);
+  return f ? num(f.pm) : num(m && m.pmFee);
+};
 
 // ---------- rehab clock ----------
 // Rehab time runs from the day work actually starts. The days between the purchase closing and that
@@ -268,7 +313,7 @@ function mergeMgmt(x) {
     lessons: x.lessons || "",
     analyses: Array.isArray(x.analyses) ? x.analyses : [],
     credits: Array.isArray(x.credits) ? x.credits : [],
-    pm: x.pm && Array.isArray(x.pm.installments) ? x.pm : e.pm,
+    pm: x.pm && Array.isArray(x.pm.installments) ? x.pm : { ...e.pm, ...(x.pm || {}), installments: e.pm.installments },
     utilities: x.utilities && Array.isArray(x.utilities.items) ? x.utilities : null,
     dead: x.dead || null,
   };
@@ -546,7 +591,7 @@ function summarizeDeal(d) {
       return inferStage(d) === "rehab" && x ? String(x.label || "").slice(0, 40) : undefined;
     })(),
     pmd: (() => {
-      const fee = m.pmFee || 0;
+      const fee = pmFeeFor(mg, inferStage(d), m);
       if (!(fee > 0)) return undefined;
       return R0(pmPlan(mg, acts, fee).dueTotal) || undefined;
     })(),

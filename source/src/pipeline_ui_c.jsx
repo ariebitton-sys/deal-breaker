@@ -236,27 +236,50 @@ function PmPayments({ mgmt, upd, actuals, pushActuals, fee, feeNote, addLog, onE
   const plan = pmPlan(mgmt, actuals, fee, today);
   const list = (mgmt.pm && mgmt.pm.installments) || [];
   const [pay, setPay] = useState(null); // { id, date, amount }
-  const setList = (next) => upd("pm", { ...(mgmt.pm || {}), installments: next });
+  const setPm = (patch) => upd("pm", { ...(mgmt.pm || {}), ...patch });
+  const setList = (next) => setPm({ installments: next });
   const edit = (id, patch) => setList(list.map((x) => (x.id === id ? { ...x, ...patch } : x)));
   const n = list.length;
+  const ms = (mgmt.rehab.milestones || []).filter((x) => x.label);
+  const summary = () => list.map((x) => `${+(parseFloat(x.pct) || 0).toFixed(2)}% ${pmWhenLabel(x.when, mgmt, x).toLowerCase()}`).join(", ");
+  const agree = () => {
+    setPm({ terms: "agreed", agreedAt: today });
+    addLog(`Project manager payment terms agreed (${fmt(fee)}): ${summary()}`);
+  };
+  const reopen = () => {
+    setPm({ terms: "open" });
+    addLog("Project manager payment terms reopened: nothing is due until they are agreed again");
+  };
   const doPay = (r) => {
     const amt = Math.round((parseFloat(pay.amount) || 0) * 100) / 100;
     if (!(amt > 0)) return;
     pushActuals([
       {
         cat: "Services",
-        label: `Project manager: installment ${r.i + 1} of ${n} (${pmWhenLabel(r.inst.when).toLowerCase()})`,
+        label: `Project manager: installment ${r.i + 1} of ${n} (${pmWhenLabel(r.inst.when, mgmt, r.inst).toLowerCase()})`,
         amount: amt,
         date: pay.date || today,
         tag: "pm_fee",
         pmInst: r.inst.id,
       },
     ]);
+    // paying means the terms were agreed
+    if (!plan.agreed) setPm({ terms: "agreed", agreedAt: today });
     addLog(`Project manager paid ${fmt(amt)}: installment ${r.i + 1} of ${n}`);
     setPay(null);
   };
+  const stTxt = (r) =>
+    r.status === "paid"
+      ? `Paid ${fmtDateShort(r.paid.date)}`
+      : r.status === "due"
+        ? `Due since ${fmtDateShort(r.due)}`
+        : r.status === "draft"
+          ? "Draft"
+          : r.due
+            ? `Due ${fmtDateShort(r.due)}`
+            : "Not due yet";
   return (
-    <section className="pm-pay">
+    <section className="pm-pay" id="pm-payments">
       <div className="pm-pay-head">
         <div>
           <h3>Project manager payments</h3>
@@ -272,17 +295,62 @@ function PmPayments({ mgmt, upd, actuals, pushActuals, fee, feeNote, addLog, onE
           <span>paid of {fmt(fee)}</span>
         </div>
       </div>
+      {plan.agreed ? (
+        <div className="pm-terms ok">
+          <span>
+            <Icon name="check" size={14} /> Terms agreed{mgmt.pm && mgmt.pm.agreedAt ? ` ${fmtDate(mgmt.pm.agreedAt)}` : ""}. Each payment comes up on the task board when it falls due.
+          </span>
+          <button className="pm-link" onClick={reopen}>
+            Edit terms
+          </button>
+        </div>
+      ) : (
+        <div className="pm-terms open">
+          <div className="pm-terms-t">
+            <b>Payment terms not agreed yet.</b> Nothing is due and no reminders go out until you confirm them. Pick a schedule or set the installments below, then confirm.
+          </div>
+          <div className="pm-terms-a">
+            {PM_PRESETS(mgmt).map(([k, l, mk]) => (
+              <button key={k} className="pm-preset" onClick={() => setList(mk())}>
+                {l}
+              </button>
+            ))}
+            <span style={{ flex: 1 }} />
+            <button onClick={agree} style={smallBtn(T.blue, "#fff")} disabled={!list.length || Math.abs(plan.pctTotal - 100) > 0.01} title={Math.abs(plan.pctTotal - 100) > 0.01 ? "The installments must add up to 100%" : "Confirm these payment terms"}>
+              Terms agreed
+            </button>
+          </div>
+        </div>
+      )}
       <div className="pm-inst-list">
         {plan.rows.map((r) => (
           <div key={r.inst.id} className={"pm-inst is-" + r.status}>
             <span className="pm-inst-n">{r.i + 1}</span>
-            <select value={r.inst.when} onChange={(e) => edit(r.inst.id, { when: e.target.value })} aria-label={`Installment ${r.i + 1}: when it's due`} disabled={!!r.paid}>
-              {PM_WHEN.map(([k, l]) => (
-                <option key={k} value={k}>
-                  {l}
-                </option>
-              ))}
-            </select>
+            <span className="pm-inst-when">
+              <select
+                value={r.inst.when}
+                onChange={(e) => edit(r.inst.id, { when: e.target.value, ...(e.target.value === "date" && !r.inst.on ? { on: today } : {}) })}
+                aria-label={`Installment ${r.i + 1}: when it's due`}
+                disabled={!!r.paid}
+              >
+                {PM_WHEN.map(([k, l]) => (
+                  <option key={k} value={k}>
+                    {l}
+                  </option>
+                ))}
+                <option value="date">On a date</option>
+                {ms.length > 0 && (
+                  <optgroup label="When a rehab milestone is done">
+                    {ms.map((x) => (
+                      <option key={x.id} value={"ms:" + x.id}>
+                        {x.label}
+                      </option>
+                    ))}
+                  </optgroup>
+                )}
+              </select>
+              {r.inst.when === "date" && !r.paid && <input type="date" value={r.inst.on || ""} onChange={(e) => edit(r.inst.id, { on: e.target.value })} aria-label={`Installment ${r.i + 1}: date`} />}
+            </span>
             <label className="pm-inst-pct">
               <input
                 type="number"
@@ -296,9 +364,7 @@ function PmPayments({ mgmt, upd, actuals, pushActuals, fee, feeNote, addLog, onE
               %
             </label>
             <span className="pm-inst-amt">{fmt(r.paid ? parseFloat(r.paid.amount) || 0 : r.amount)}</span>
-            <span className="pm-inst-st">
-              {r.status === "paid" ? `Paid ${fmtDateShort(r.paid.date)}` : r.status === "due" ? `Due since ${fmtDateShort(r.due)}` : "Not due yet"}
-            </span>
+            <span className="pm-inst-st">{stTxt(r)}</span>
             {r.paid ? (
               <span className="pm-inst-act" />
             ) : pay && pay.id === r.inst.id ? (

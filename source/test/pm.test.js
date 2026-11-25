@@ -26,7 +26,7 @@ const base = {
   });
   const fP = drive.add("30 Paid Ave, Cleveland, OH 44102.json", {
     ...base, address: "30 Paid Ave, Cleveland, OH 44102", stage: "rehab", pm: { type: "pct", val: 10 },
-    mgmt: { closing: { date: daysAgo(30), price: 110000 }, rehab: { startDate: daysAgo(25), targetEnd: daysAgo(-60), endDate: "" } },
+    mgmt: { closing: { date: daysAgo(30), price: 110000 }, rehab: { startDate: daysAgo(25), targetEnd: daysAgo(-60), endDate: "" }, pm: { terms: "agreed" } },
   });
   const t = await boot({ drive, settings: { clientId: "c", folderId: "f" } });
   const { doc, click, btn, setVal, settle, sleep, text } = t;

@@ -3379,7 +3379,7 @@ function App() {
       log: [logLine(`Task added: ${label}`), ...mg.log],
     }));
   };
-  const liveTasks = loadedRef.current && loadedRef.current.id && address.trim() ? { id: loadedRef.current.id, entry: taskIndexEntry({ address, stage, mgmt, stageHistory }, loadedRef.current.modifiedTime, "") } : null;
+  const liveTasks = loadedRef.current && loadedRef.current.id && address.trim() ? { id: loadedRef.current.id, entry: taskIndexEntry(getState(), loadedRef.current.modifiedTime, "") } : null;
   const allTasks = collectTasks(taskIndex, driveFiles, liveTasks);
   const doneTasks = [];
   Object.entries(taskIndex).forEach(([fid, e]) => {
@@ -3391,6 +3391,23 @@ function App() {
     setPfFilter("tasks");
     goPortfolio();
     if (t) setTaskFocus({ key: t.key, n: Date.now() });
+  };
+  // a project manager task opens that deal's payments panel on the Expenses page
+  const openPmPanel = async (t) => {
+    const scroll = () =>
+      setTimeout(() => {
+        const el = document.getElementById("pm-payments");
+        if (el && el.scrollIntoView) el.scrollIntoView({ block: "start", behavior: "smooth" });
+      }, 350);
+    if (loadedRef.current && loadedRef.current.id === t.fid) {
+      goProject("expenses");
+      return scroll();
+    }
+    const f = driveFiles.find((x) => x.id === t.fid);
+    if (f) {
+      await loadDeal(f, { mode: "expenses" });
+      scroll();
+    }
   };
   const openTaskProject = async (fid) => {
     if (loadedRef.current && loadedRef.current.id === fid) return goProject("manage");
@@ -4479,6 +4496,7 @@ function App() {
             onDue={setTaskDueAnywhere}
             onAdd={addTaskAnywhere}
             onOpen={openTaskProject}
+            onOpenPm={openPmPanel}
             focus={taskFocus}
           />
         ) : view === "portfolio" && normDash(pfFilter) === "costs" ? (
@@ -5269,16 +5287,24 @@ function App() {
             setMgmt={setMgmt}
             onSearchAll={accessToken ? searchAllProjects : null}
             pmPanel={
-              (m.pmFee || 0) > 0 || actuals.some((a) => a.tag === "pm_fee") ? (
+              pmFeeFor(mgmt, stage, m) > 0 || actuals.some((a) => a.tag === "pm_fee") ? (
                 <PmPayments
                   mgmt={mgmt}
                   upd={(path, val) => setMgmt((mm) => setIn(mm, path, val))}
                   actuals={actuals}
                   pushActuals={pushActuals}
-                  fee={m.pmFee || 0}
-                  feeNote={pm.type === "flat" ? "fixed amount" : `${+(pm.val || 0)}% of the ${fmt(m.repair || 0)} rehab estimate`}
+                  fee={pmFeeFor(mgmt, stage, m)}
+                  feeNote={
+                    forecastScenario(mgmt, stage)
+                      ? `from the forecast (${forecastScenario(mgmt, stage).name || "scenario"})`
+                      : pm.type === "flat"
+                        ? "fixed amount"
+                        : `${+(pm.val || 0)}% of the ${fmt(m.repair || 0)} rehab estimate`
+                  }
                   addLog={addLogEntry}
                   onEditFee={() => {
+                    // with a forecast the fee is the forecast's: change it there
+                    if (forecastScenario(mgmt, stage)) return goProject("forecast");
                     // open the Project manager group in Flip analysis and bring it into view
                     try {
                       localStorage.setItem(GROUPS_KEY, JSON.stringify({ ...loadGroups(), pm: true }));

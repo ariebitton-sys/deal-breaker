@@ -9,7 +9,7 @@
 const TASK_INDEX_KEY = "kappa_task_index_v1";
 const TASK_SEEN_KEY = "kappa_tasks_seen_v1";
 const TASK_CKS = ["contract", "rehab", "market"];
-const TASK_CK_LABEL = { contract: "Under contract", rehab: "Rehab", market: "On market" };
+const TASK_CK_LABEL = { contract: "Under contract", rehab: "Rehab", market: "On market", pm: "Project manager" };
 const TASK_STAGES = ["contract", "rehab", "market", "sold"];
 const readTaskIndex = () => {
   try {
@@ -99,6 +99,19 @@ function dealTasks(d, today) {
     return (h && (h.ts || h.date)) || { contract: mg.contract.date, rehab: mg.closing.date, market: mg.listing.date, sold: mg.sale.date }[s] || "";
   };
   const upto = cur === "sold" ? 3 : TASK_CKS.indexOf(cur) + 1;
+  // project manager payments, from the purchase on: agree the terms, then pay each installment as it falls due
+  const pmTasks = (() => {
+    if (!["rehab", "market", "sold"].includes(st)) return [];
+    const fee = pmFeeFor(mg, st, calcDeal(inputsFromState(d)));
+    if (!(fee > 0)) return [];
+    const plan = pmPlan(mg, d.actuals || [], fee, t);
+    if (!plan.rows.some((r) => !r.paid)) return [];
+    const base = { ck: "pm", note: "", url: "", ut: "", custom: false, carried: false };
+    if (!plan.agreed) return [{ ...base, id: "pm-terms", pm: "terms", label: `Agree the project manager's payment terms (${fmt(fee)})`, due: "", dueSet: false, at: entered("rehab") || mg.closing.date || "" }];
+    return plan.rows
+      .filter((r) => r.status === "due")
+      .map((r) => ({ ...base, id: "pm-" + r.inst.id, pm: "pay", label: `Pay the project manager ${fmt(r.amount)}: installment ${r.i + 1} of ${plan.rows.length}, ${pmWhenLabel(r.inst.when, mg, r.inst).toLowerCase()}`, due: r.due, dueSet: true, at: r.due }));
+  })();
   const weekAgo = addDaysISO(t, -14);
   const open = [],
     done = [];
@@ -123,7 +136,7 @@ function dealTasks(d, today) {
       open.push({ ...base, due, dueSet: !!i.due, at });
     });
   });
-  return { st, open, done };
+  return { st, open: [...open, ...pmTasks], done };
 }
 const taskIndexEntry = (d, mt, name) => {
   const x = dealTasks(d);
@@ -260,7 +273,7 @@ const TASK_FILTERS = [
   ["overdue", "Overdue"],
   ["week", "Due this week"],
 ];
-function TasksScreen({ tasks, done, files, busy, onSeen, onToggle, onDue, onAdd, onOpen, focus }) {
+function TasksScreen({ tasks, done, files, busy, onSeen, onToggle, onDue, onAdd, onOpen, onOpenPm, focus }) {
   const today = todayISO();
   const weekAgo = addDaysISO(today, -7);
   const [filter, setFilter] = useState("all");
@@ -385,8 +398,14 @@ function TasksScreen({ tasks, done, files, busy, onSeen, onToggle, onDue, onAdd,
             {g.items.map((t) => {
               const ds = taskDueState(t, today);
               return (
-                <div key={t.key} className={"tk-row" + (busyKey === t.key ? " busy" : "")} data-task={t.key}>
-                  <input type="checkbox" checked={false} disabled={busyKey === t.key} onChange={() => run(t.key, () => onToggle(t, true))} aria-label={`Done: ${t.label}`} />
+                <div key={t.key} className={"tk-row" + (busyKey === t.key ? " busy" : "") + (t.pm ? " pm" : "")} data-task={t.key}>
+                  {t.pm ? (
+                    <button className="tk-pm" onClick={() => onOpenPm(t)} title="Open the project manager payments on the Expenses page" aria-label={`${t.pm === "terms" ? "Set the terms" : "Log the payment"}: ${t.label}`}>
+                      <Icon name="chevron" size={13} />
+                    </button>
+                  ) : (
+                    <input type="checkbox" checked={false} disabled={busyKey === t.key} onChange={() => run(t.key, () => onToggle(t, true))} aria-label={`Done: ${t.label}`} />
+                  )}
                   <div className="tk-main">
                     <span className="tk-l">
                       {isNew(t) && <span className="tk-new">New</span>}
@@ -398,13 +417,26 @@ function TasksScreen({ tasks, done, files, busy, onSeen, onToggle, onDue, onAdd,
                       )}
                     </span>
                     <span className="tk-meta">
-                      {TASK_CK_LABEL[t.ck]} checklist{t.carried ? ", still open from that stage" : ""}
-                      {t.ut ? " · Utilities" : ""}
-                      {t.note ? ` · ${t.note}` : ""}
+                      {t.pm ? (
+                        <React.Fragment>
+                          Project manager payments ·{" "}
+                          <button className="link-btn tk-pm-link" onClick={() => onOpenPm(t)}>
+                            {t.pm === "terms" ? "Set the terms" : "Log the payment"}
+                          </button>
+                        </React.Fragment>
+                      ) : (
+                        <React.Fragment>
+                          {TASK_CK_LABEL[t.ck]} checklist{t.carried ? ", still open from that stage" : ""}
+                          {t.ut ? " · Utilities" : ""}
+                          {t.note ? ` · ${t.note}` : ""}
+                        </React.Fragment>
+                      )}
                     </span>
                   </div>
                   <span className={"tk-due " + ds}>{taskDueLabel(t, today)}</span>
-                  {t.dueSet || dueEdit === t.key ? (
+                  {t.pm ? (
+                    <span />
+                  ) : t.dueSet || dueEdit === t.key ? (
                     <input
                       type="date"
                       className="tk-date"
