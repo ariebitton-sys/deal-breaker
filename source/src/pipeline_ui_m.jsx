@@ -8,22 +8,49 @@
 // main }]; until one is saved, an "Expected" scenario is derived from the analysis and the deal's dates.
 const FC_MAX = 4;
 const FC_STAGES = ["contract", "rehab", "market"];
+// v69: a scenario's sale date can follow the rehab schedule (saleFrom: "schedule"): the rehab's finish on the
+// Schedule tab (or its actual completion) plus the days to sell (sellDays: listing, days on market, closing).
+// It applies under contract and in rehab, once the schedule is set up; after that the stored date stands.
+const FC_SELL_DAYS = 60;
+function fcSchedSale(ctx, days) {
+  const st = ctx.P && ctx.P.stage;
+  const r = ctx.mgmt && ctx.mgmt.rehab;
+  if (!["contract", "rehab"].includes(st) || !gtIsSet(r) || !(r.milestones || []).length) return null;
+  const end = r.endDate || schedOf(ctx.mgmt, ctx.today).end;
+  if (!end) return null;
+  const d = Math.max(0, Math.round(days == null || days === "" ? FC_SELL_DAYS : num(days)));
+  return { rehabEnd: end, actual: !!r.endDate, days: d, date: addDaysISO(end, d) };
+}
 
 function fcDefaults(ctx) {
   const { m, mgmt, uw, today, position, actuals } = ctx;
   const rehabIn = actuals.filter((a) => a.cat === "Rehab / Construction").reduce((t, a) => t + amtOf(a), 0);
+  const fromSched = fcSchedSale(ctx);
   return {
     price: Math.round(num(position && position.defaultPrice) || num(m.arv) || 0),
-    saleDate: finPayoffDefault(mgmt.financing || {}, mgmt, uw, today),
+    saleDate: fromSched ? fromSched.date : finPayoffDefault(mgmt.financing || {}, mgmt, uw, today),
+    saleFrom: fromSched ? "schedule" : undefined,
+    sellDays: fromSched ? FC_SELL_DAYS : undefined,
     rehab: Math.round(Math.max(num(m.repair), rehabIn)),
     pm: Math.round(num(m.pmFee)),
     extras: [],
   };
 }
 function fcScenarios(ctx) {
+  // a scenario that follows the schedule gets its sale date from it (sched: how it was worked out)
+  const link = (s) => {
+    if (s.saleFrom !== "schedule") return s;
+    const x = fcSchedSale(ctx, s.sellDays);
+    return x ? { ...s, saleDate: x.date, sched: x } : s;
+  };
   const saved = ctx.mgmt.scenarios;
-  if (Array.isArray(saved) && saved.length) return saved.map((s, i) => ({ ...fcDefaults(ctx), ...s, main: saved.some((x) => x.main) ? !!s.main : i === 0 }));
-  return [{ id: "expected", name: "Expected", ...fcDefaults(ctx), main: true, derived: true }];
+  if (Array.isArray(saved) && saved.length) {
+    const d = fcDefaults(ctx);
+    delete d.saleFrom;
+    delete d.sellDays;
+    return saved.map((s, i) => link({ ...d, ...s, main: saved.some((x) => x.main) ? !!s.main : i === 0 }));
+  }
+  return [link({ id: "expected", name: "Expected", ...fcDefaults(ctx), main: true, derived: true })];
 }
 
 // One scenario's numbers: cost by category, profit, return, break-even, months held and grade.
@@ -120,7 +147,7 @@ function ForecastTab({ ctx, setMgmt, addLog }) {
   // the first change saves the scenarios with the deal (the derived "Expected" one included)
   const save = (fn) =>
     setMgmt((mm) => {
-      const cur = Array.isArray(mm.scenarios) && mm.scenarios.length ? mm.scenarios : list.map(({ derived, ...s }) => ({ ...s, id: s.id === "expected" ? uid() : s.id }));
+      const cur = Array.isArray(mm.scenarios) && mm.scenarios.length ? mm.scenarios : list.map(({ derived, sched, ...s }) => ({ ...s, id: s.id === "expected" ? uid() : s.id }));
       return { ...mm, scenarios: fn(cur) };
     });
   const upd = (i, patch) => save((cur) => cur.map((s, j) => (j === i ? { ...s, ...patch } : s)));
@@ -130,6 +157,7 @@ function ForecastTab({ ctx, setMgmt, addLog }) {
       if (cur.length >= FC_MAX) return cur;
       const base = { ...(from || main.sc) };
       delete base.derived;
+      delete base.sched;
       const names = ["Conservative", "Best case", "Worst case", "Scenario"];
       const name = from ? `${from.name} (copy)` : names.find((n) => !cur.some((s) => s.name === n)) || `Scenario ${cur.length + 1}`;
       return [...cur, { ...base, id: uid(), name, main: false, extras: (base.extras || []).map((x) => ({ ...x, id: uid() })) }];
@@ -145,6 +173,7 @@ function ForecastTab({ ctx, setMgmt, addLog }) {
     addLog && addLog(`Forecast set to the "${list[i].name}" scenario`);
   };
   const reset = (i) => upd(i, fcDefaults(ctx));
+  const schedAvail = fcSchedSale(ctx);
   // sensitivity of the forecast scenario: sale price × rehab
   const priceSteps = [-0.1, -0.05, 0, 0.05];
   const rehabSteps = [0, 0.1, 0.2];
@@ -190,8 +219,35 @@ function ForecastTab({ ctx, setMgmt, addLog }) {
               </label>
               <label>
                 Sale date
-                <input type="date" value={sc.saleDate || ""} onChange={(e) => upd(i, { saleDate: e.target.value })} aria-label="Sale date" />
+                <input type="date" value={sc.saleDate || ""} onChange={(e) => e.target.value && upd(i, { saleDate: e.target.value, saleFrom: undefined })} aria-label="Sale date" />
               </label>
+              {sc.sched ? (
+                <div className="fc-sched on">
+                  <Icon name="gantt" size={14} />
+                  <span>
+                    Rehab {sc.sched.actual ? "finished" : "ends"} {fmtDateShort(sc.sched.rehabEnd)}
+                    {sc.sched.actual ? "" : " on the schedule"} +
+                  </span>
+                  <FinNum value={sc.sched.days} onCommit={(v) => upd(i, { sellDays: Math.max(0, Math.round(v)) })} suffix="days" label="Days to sell" />
+                  <span>to sell</span>
+                  <button className="link-btn fc-sched-off" onClick={() => upd(i, { saleFrom: undefined, saleDate: sc.saleDate })} title="Keep this date and stop following the schedule">
+                    Unlink
+                  </button>
+                </div>
+              ) : schedAvail ? (
+                <div className="fc-sched">
+                  <Icon name="gantt" size={14} />
+                  <button
+                    className="link-btn fc-sched-use"
+                    onClick={() => upd(i, { saleFrom: "schedule", sellDays: num(sc.sellDays) > 0 ? sc.sellDays : FC_SELL_DAYS, saleDate: fcSchedSale(ctx, num(sc.sellDays) > 0 ? sc.sellDays : FC_SELL_DAYS).date })}
+                  >
+                    From the schedule: {fmtDate(fcSchedSale(ctx, num(sc.sellDays) > 0 ? sc.sellDays : FC_SELL_DAYS).date)}
+                  </button>
+                  <span>
+                    rehab ends {fmtDateShort(schedAvail.rehabEnd)} + {num(sc.sellDays) > 0 ? sc.sellDays : FC_SELL_DAYS} days to sell
+                  </span>
+                </div>
+              ) : null}
               <label>
                 Rehab, total
                 <FinNum value={sc.rehab} onCommit={(v) => upd(i, { rehab: v })} prefix="$" label="Rehab, total" />

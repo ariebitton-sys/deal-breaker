@@ -75,7 +75,7 @@ function positionToday({ actuals, mgmt, uw, m, stage, today }) {
   const estTotal = est.filter((e) => e.on).reduce((t, x) => t + x.amount, 0);
   const cats = ACTUAL_CATS.filter((c) => byCat[c]).map((c) => byCat[c]);
   return {
-    sold, today, paid, owed, owedTotal, est, estTotal, cats, fp, L, inv, spend,
+    stage, sold, today, paid, owed, owedTotal, est, estTotal, cats, fp, L, inv, spend,
     committed: paid + owedTotal + estTotal,
     lenderIn: fp.principal,
     investorsIn: fp.invIn,

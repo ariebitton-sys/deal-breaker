@@ -9,7 +9,8 @@
 const TASK_INDEX_KEY = "kappa_task_index_v1";
 const TASK_SEEN_KEY = "kappa_tasks_seen_v1";
 const TASK_CKS = ["contract", "rehab", "market"];
-const TASK_CK_LABEL = { contract: "Under contract", rehab: "Rehab", market: "On market", pm: "Project manager" };
+const TASK_CK_LABEL = { contract: "Under contract", rehab: "Rehab", market: "On market", pm: "Project manager", sched: "Rehab schedule" };
+const TASK_INDEX_V = 2; // v69: entries carry the schedule's tasks; older entries are read again
 const TASK_STAGES = ["contract", "rehab", "market", "sold"];
 const readTaskIndex = () => {
   try {
@@ -113,6 +114,19 @@ function dealTasks(d, today) {
       .map((r) => ({ ...base, id: "pm-" + r.inst.id, pm: "pay", label: `Pay the project manager ${fmt(r.amount)}: installment ${r.i + 1} of ${plan.rows.length}, ${pmWhenLabel(r.inst.when, mg, r.inst).toLowerCase()}`, due: r.due, dueSet: true, at: r.due }));
   })();
   const weekAgo = addDaysISO(t, -14);
+  // the rehab schedule (Schedule tab), once it is set up and the rehab has started: each milestone not done
+  // comes to the board on its scheduled start (from), due on its scheduled finish; done ones for two weeks
+  const sched = (() => {
+    if (st !== "rehab" || !mg.rehab.startDate || !gtOnBoard(mg.rehab)) return { open: [], done: [] };
+    const S = schedOf(mg, t);
+    const base = { ck: "sched", note: "", url: "", ut: "", custom: false, carried: false };
+    return {
+      open: S.tasks.filter((k) => !k.done).map((k) => ({ ...base, id: "sch-" + k.id, ms: k.id, label: k.label, who: k.x.who || "", start: k.start, due: k.end, dueSet: true, at: k.start, from: k.start })),
+      done: S.tasks
+        .filter((k) => k.done && k.x.doneAt && k.x.doneAt.slice(0, 10) >= weekAgo)
+        .map((k) => ({ ...base, id: "sch-" + k.id, ms: k.id, label: k.label, doneAt: k.x.doneAt, by: k.x.by || "" })),
+    };
+  })();
   const open = [],
     done = [];
   TASK_CKS.slice(0, upto).forEach((ck) => {
@@ -136,11 +150,11 @@ function dealTasks(d, today) {
       open.push({ ...base, due, dueSet: !!i.due, at });
     });
   });
-  return { st, open: [...open, ...pmTasks], done };
+  return { st, open: [...open, ...pmTasks, ...sched.open], done: [...done, ...sched.done] };
 }
 const taskIndexEntry = (d, mt, name) => {
   const x = dealTasks(d);
-  return { mt, name: name || "", address: d.address || "", st: x.st, open: x.open, done: x.done };
+  return { v: TASK_INDEX_V, mt, name: name || "", address: d.address || "", st: x.st, open: x.open, done: x.done };
 };
 const taskDueState = (t, today) => (!t.due ? "none" : t.due < today ? "overdue" : t.due <= addDaysISO(today, 3) ? "soon" : t.due <= addDaysISO(today, 7) ? "week" : "later");
 const taskDueLabel = (t, today) => {
@@ -158,11 +172,13 @@ const agoLabel = (iso) => {
   return n <= 0 ? "today" : n === 1 ? "yesterday" : n < 30 ? `${n} days ago` : fmtDate(iso.slice(0, 10));
 };
 // every open task across the deals: index entries, with the open deal's live state in place of its entry
-function collectTasks(index, files, live) {
+// (a task with a start date of its own, from the schedule, only once that date has come)
+function collectTasks(index, files, live, today) {
+  const t0 = today || todayISO();
   const ids = new Set(files.map((f) => f.id));
   const out = [];
   const add = (fid, e) =>
-    e.open.forEach((t) => out.push({ ...t, fid, key: fid + ":" + t.id, address: e.address || (e.name || "").replace(/\.json$/i, ""), st: e.st }));
+    e.open.forEach((t) => (!t.from || t.from <= t0) && out.push({ ...t, fid, key: fid + ":" + t.id, address: e.address || (e.name || "").replace(/\.json$/i, ""), st: e.st }));
   Object.entries(index).forEach(([fid, e]) => {
     if (!ids.has(fid) || (live && live.id === fid) || !e || !e.open) return;
     add(fid, e);
@@ -273,7 +289,7 @@ const TASK_FILTERS = [
   ["overdue", "Overdue"],
   ["week", "Due this week"],
 ];
-function TasksScreen({ tasks, done, files, busy, onSeen, onToggle, onDue, onAdd, onOpen, onOpenPm, focus }) {
+function TasksScreen({ tasks, done, files, busy, onSeen, onToggle, onDue, onAdd, onOpen, onOpenPm, onOpenSchedule, focus }) {
   const today = todayISO();
   const weekAgo = addDaysISO(today, -7);
   const [filter, setFilter] = useState("all");
@@ -343,7 +359,7 @@ function TasksScreen({ tasks, done, files, busy, onSeen, onToggle, onDue, onAdd,
       <div className="pf-head">
         <div>
           <h1 className="pf-title">Tasks</h1>
-          <div className="pf-sub">Open tasks across the projects: each stage's checklist, plus utility and added tasks still open from an earlier stage.</div>
+          <div className="pf-sub">Open tasks across the projects: each stage's checklist, utility and added tasks still open from an earlier stage, and the rehab schedule's tasks from their start dates.</div>
         </div>
       </div>
       <div className="tk-bar">
@@ -424,6 +440,14 @@ function TasksScreen({ tasks, done, files, busy, onSeen, onToggle, onDue, onAdd,
                             {t.pm === "terms" ? "Set the terms" : "Log the payment"}
                           </button>
                         </React.Fragment>
+                      ) : t.ck === "sched" ? (
+                        <React.Fragment>
+                          Rehab schedule · {t.start === t.due ? fmtDateShort(t.due) : `${fmtDateShort(t.start)} – ${fmtDateShort(t.due)}`}
+                          {t.who ? ` · ${t.who}` : ""} ·{" "}
+                          <button className="link-btn tk-sch-link" onClick={() => onOpenSchedule && onOpenSchedule(t)}>
+                            Open the schedule
+                          </button>
+                        </React.Fragment>
                       ) : (
                         <React.Fragment>
                           {TASK_CK_LABEL[t.ck]} checklist{t.carried ? ", still open from that stage" : ""}
@@ -434,7 +458,7 @@ function TasksScreen({ tasks, done, files, busy, onSeen, onToggle, onDue, onAdd,
                     </span>
                   </div>
                   <span className={"tk-due " + ds}>{taskDueLabel(t, today)}</span>
-                  {t.pm ? (
+                  {t.pm || t.ck === "sched" ? (
                     <span />
                   ) : t.dueSet || dueEdit === t.key ? (
                     <input

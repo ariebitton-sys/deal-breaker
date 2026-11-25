@@ -3309,7 +3309,7 @@ function App() {
     const ids = new Set(driveFiles.map((f) => f.id));
     if (Object.keys(taskIndex).some((id) => !ids.has(id))) setTaskIndex((ix) => Object.fromEntries(Object.entries(ix).filter(([id]) => ids.has(id))));
     // read the deals that can have tasks (by their summary's stage) when their version isn't indexed yet
-    const toRead = driveFiles.filter((f) => summaries[f.id] && TASK_STAGES.includes(summaries[f.id].st) && (!taskIndex[f.id] || taskIndex[f.id].mt !== f.modifiedTime));
+    const toRead = driveFiles.filter((f) => summaries[f.id] && TASK_STAGES.includes(summaries[f.id].st) && (!taskIndex[f.id] || taskIndex[f.id].mt !== f.modifiedTime || taskIndex[f.id].v !== TASK_INDEX_V));
     if (!toRead.length) return;
     let cancelled = false;
     const queue = [...toRead];
@@ -3364,6 +3364,11 @@ function App() {
   const setChecklistItem = (ck, id, patch) => (mg) => ({ ...mg, checklists: { ...mg.checklists, [ck]: (mg.checklists[ck] || []).map((i) => (i.id === id ? { ...i, ...patch } : i)) } });
   const toggleTaskAnywhere = (t, done) =>
     patchDealFile(t.fid, (mg) => {
+      // a rehab schedule task is the milestone itself
+      if (t.ck === "sched") {
+        const ms = (mg.rehab.milestones || []).map((x) => (x.id === t.ms ? { ...x, status: done ? "done" : "todo", doneAt: done ? new Date().toISOString() : "", by: done ? userEmail || "" : "" } : x));
+        return { ...mg, rehab: { ...mg.rehab, milestones: ms }, log: [logLine(done ? `Milestone done: ${t.label}` : `Milestone reopened: ${t.label}`), ...mg.log] };
+      }
       const next = setChecklistItem(t.ck, t.id, { done, doneAt: done ? new Date().toISOString() : "", by: done ? userEmail || "" : "" })(mg);
       return { ...next, log: [logLine(done ? `Task done: ${t.label}` : `Task reopened: ${t.label}`), ...next.log] };
     });
@@ -3409,10 +3414,10 @@ function App() {
       scroll();
     }
   };
-  const openTaskProject = async (fid) => {
-    if (loadedRef.current && loadedRef.current.id === fid) return goProject("manage");
+  const openTaskProject = async (fid, mode = "manage") => {
+    if (loadedRef.current && loadedRef.current.id === fid) return goProject(mode);
     const f = driveFiles.find((x) => x.id === fid);
-    if (f) await loadDeal(f, { mode: "manage" });
+    if (f) await loadDeal(f, { mode });
   };
   const searchAllProjects = (q) => {
     setCostQuery(q || "");
@@ -4497,6 +4502,7 @@ function App() {
             onAdd={addTaskAnywhere}
             onOpen={openTaskProject}
             onOpenPm={openPmPanel}
+            onOpenSchedule={(t) => openTaskProject(t.fid, "schedule")}
             focus={taskFocus}
           />
         ) : view === "portfolio" && normDash(pfFilter) === "costs" ? (
@@ -5226,7 +5232,7 @@ function App() {
             addLog={addLogEntry}
           />
         ) : mode === "schedule" && GT_STAGES.includes(stage) ? (
-          <GanttTab key={(loadedRef.current && loadedRef.current.id) || "new"} mgmt={mgmt} setMgmt={setMgmt} addLog={addLogEntry} userEmail={userEmail} address={address} />
+          <GanttTab key={(loadedRef.current && loadedRef.current.id) || "new"} mgmt={mgmt} setMgmt={setMgmt} addLog={addLogEntry} userEmail={userEmail} address={address} stage={stage} />
         ) : mode === "manage" ? (
           <ManagementTab
             stage={stage}

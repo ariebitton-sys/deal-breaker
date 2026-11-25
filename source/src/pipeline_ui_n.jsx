@@ -41,6 +41,11 @@ const GT_WEEKS = [
   [6, "Mon–Sat"],
   [7, "7 days"],
 ];
+// The schedule counts as set up once someone has worked on it (a duration, a dependency, a lock, a group, the
+// work week or a planned start): until then its dates are only the 5-day defaults. Its tasks then go on the
+// Tasks board, unless that was switched off.
+const gtIsSet = (r) => !!r && (((r.groups || []).length > 0) || !!r.sched || (r.milestones || []).some((x) => x.dur != null || Array.isArray(x.after) || x.auto === false));
+const gtOnBoard = (r) => (r && r.sched && r.sched.board === false ? false : gtIsSet(r));
 const gtPatch = (x, p) => {
   const o = { ...x, ...p };
   Object.keys(p).forEach((k) => p[k] === undefined && delete o[k]);
@@ -330,7 +335,7 @@ function GtNum({ value, onCommit, ...rest }) {
   );
 }
 
-function GanttTab({ mgmt, setMgmt, addLog, userEmail, address, today }) {
+function GanttTab({ mgmt, setMgmt, addLog, userEmail, address, stage, today }) {
   const t0 = today || todayISO();
   const r = mgmt.rehab;
   const S = schedOf(mgmt, t0);
@@ -915,6 +920,27 @@ function GanttTab({ mgmt, setMgmt, addLog, userEmail, address, today }) {
           </b>
           <em className={nLate || nBehind ? "neg" : ""}>{nLate || nBehind ? [nLate ? `${nLate} late` : "", nBehind ? `${nBehind} behind` : ""].filter(Boolean).join(", ") : S.tasks.length ? "on schedule" : ""}</em>
         </div>
+        {!ro && stage === "rehab" && (
+          <div className="gt-sum-i gt-board">
+            <span>Tasks board</span>
+            <label>
+              <input type="checkbox" checked={gtOnBoard(r)} onChange={(e) => setSched({ board: e.target.checked })} aria-label="Put the schedule's tasks on the Tasks board" />
+              <b>{gtOnBoard(r) ? "On" : "Off"}</b>
+            </label>
+            <em>
+              {!gtOnBoard(r)
+                ? gtIsSet(r)
+                  ? "switched off"
+                  : "once the schedule is set up"
+                : !r.startDate
+                  ? "from the rehab start"
+                  : (() => {
+                      const n = S.tasks.filter((k) => !k.done && k.start <= t0).length;
+                      return `${n} task${n === 1 ? "" : "s"} there now, each from its start`;
+                    })()}
+            </em>
+          </div>
+        )}
         {!ro && S.end && S.end !== r.targetEnd && (
           <button
             className="gt-use"

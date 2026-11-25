@@ -1403,3 +1403,17 @@ body.gt-printing .gt-sum{border:1px solid #ddd}
 body.gt-printing .keep-color{-webkit-print-color-adjust:exact;print-color-adjust:exact}
 body.gt-printing .gt-r,body.gt-printing .gt-bar,body.gt-printing .gt-dia{break-inside:avoid}
 }
+/* v69 · the schedule in the forecast and on the Tasks board */
+.fc-sched{grid-column:1/-1;display:flex;align-items:center;flex-wrap:wrap;gap:6px;font-size:12px;color:var(--soft);margin-top:-2px}
+.fc-sched svg{color:var(--faint)}
+.fc-sched.on{background:var(--accent-bg);border-radius:8px;padding:5px 8px;color:var(--ink2)}
+.fc-sched.on svg{color:var(--accent)}
+.fc-sched .fin-in{width:96px;flex:0 0 96px}
+.fc-sched .fin-in input{padding:4px 4px 4px 6px;font-size:12.5px}
+.fc-sched .fin-in i.suf{font-size:12px;padding-right:7px}
+.fc-sched .link-btn{font-size:12px}
+.fc-sched-off{margin-left:auto;color:var(--soft)!important}
+.gt-board label{display:flex;align-items:center;gap:6px;cursor:pointer}
+.gt-board label b{font-size:15px;font-weight:650;color:var(--ink)}
+.gt-board input{width:15px;height:15px;accent-color:var(--accent)}
+.tk-sch-link{font-size:inherit}
