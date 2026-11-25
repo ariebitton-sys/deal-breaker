@@ -1301,7 +1301,11 @@ function ProjectOverview({ address, mapsKey, folderId, photosUrl, setPhotosUrl, 
   // ---- accounting card ----
   const spent = sumActuals(actuals);
   const rSpent = sumActuals(actuals, "Rehab / Construction");
-  const rBudget = uwBaseline ? uwBaseline.m.repair : m.repair;
+  // the rehab budget: the forecast scenario's total rehab once scenarios are saved, else the analysis's
+  const fcSaved = Array.isArray(mgmt.scenarios) && mgmt.scenarios.length > 0 ? mgmt.scenarios.find((x) => x.main) || mgmt.scenarios[0] : null;
+  const rFromForecast = !!fcSaved && FC_STAGES.includes(stage) && Number.isFinite(num(fcSaved.rehab)) && fcSaved.rehab !== "" && fcSaved.rehab != null;
+  const rBudget = rFromForecast ? num(fcSaved.rehab) : uwBaseline ? uwBaseline.m.repair : m.repair;
+  const rBudgetFrom = rFromForecast ? `from the forecast (${fcSaved.name || "scenario"})` : uwBaseline ? "from the analysis plan" : "from the Flip analysis";
   const plan = uwBaseline ? uwBaseline.m.netProfit : m.netProfit;
   const actualProfit = actualSale - spent;
   const rTone = rBudget > 0 && rSpent > rBudget ? (rSpent > rBudget * 1.1 ? "red" : "amber") : null;
@@ -1472,7 +1476,7 @@ function ProjectOverview({ address, mapsKey, folderId, photosUrl, setPhotosUrl, 
             <React.Fragment>
               <div className="ov-pair">
                 <OvStat k="Rehab spent" v={fmt(rSpent)} tone={rTone === "red" ? T.red : rTone === "amber" ? T.amber : undefined} big />
-                <OvStat k="Rehab budget" v={fmt(rBudget)} />
+                <OvStat k="Rehab budget" v={fmt(rBudget)} h={rBudgetFrom} />
               </div>
               <BudgetBar spent={rSpent} budget={rBudget} work={stage === "rehab" ? mp : null} />
               <div className="ov-note">

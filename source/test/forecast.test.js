@@ -79,6 +79,8 @@ const profitOf = ({ price, rehab, pm, extra }) => {
   await click([...doc.querySelectorAll("tr.dt-row")].find((x) => x.textContent.includes("4623 Forecast Ave")));
   await sleep(30);
   await settle(10);
+  const rehabBudget = () => [...doc.querySelectorAll(".ov-stat")].find((x) => /^Rehab budget/.test(x.textContent));
+  assert(rehabBudget().textContent === "Rehab budget$100,000from the Flip analysis", "the Accounting card's rehab budget: the Flip analysis while there is no forecast");
   assert(ptab("Forecast") && doc.querySelectorAll(".ptabs .ptab")[2] === ptab("Forecast"), "a Forecast tab, after Flip analysis");
   await click(ptab("Forecast"));
   assert(cards().length === 1 && /Expected/.test(cards()[0].querySelector(".fc-name").value) && cards()[0].querySelector(".fc-main"), "one scenario to start: Expected, the forecast");
@@ -123,6 +125,7 @@ const profitOf = ({ price, rehab, pm, extra }) => {
   await click(ptab("Project overview"));
   const tile = [...doc.querySelectorAll(".kpi-tile")].find((x) => /Projected profit at sale/.test(x.textContent));
   assert(tile.querySelector(".kpi-v").textContent === money(p3) && /Conservative$/.test(tile.querySelector(".kpi-h").textContent), "the overview's Projected profit at sale shows the forecast scenario");
+  assert(rehabBudget().textContent === "Rehab budget$135,000from the forecast (Conservative)" && /15% of budget spent/.test(doc.querySelector(".ov-console").textContent), "the Accounting card's rehab budget comes from the forecast: $135,000, $20,000 spent = 15%");
   await sleep(1700);
   await settle(6);
   s = saved();
