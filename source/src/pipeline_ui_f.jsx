@@ -92,6 +92,7 @@ const PROJECT_NAV = [
   ["underwrite", "Flip analysis", "calc"],
   ["forecast", "Forecast", "chart"],
   ["manage", "Stages and milestones", "cal"],
+  ["schedule", "Schedule", "gantt"],
   ["expenses", "Expenses & Documents", "receipt"],
 ];
 // Older tab keys (saved history entries, links inside the app) land on the merged screen.

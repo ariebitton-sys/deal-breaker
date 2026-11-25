@@ -10,7 +10,7 @@ DIST = os.path.join(HERE, 'dist')
 os.makedirs(DIST, exist_ok=True)
 
 PARTS = ['pipeline_core.jsx', 'pipeline_ui_a.jsx', 'pipeline_ui_b.jsx', 'pipeline_ui_c.jsx',
-         'pipeline_ui_d.jsx', 'pipeline_ui_e.jsx', 'pipeline_ui_f.jsx', 'pipeline_ui_g.jsx', 'pipeline_ui_h.jsx', 'pipeline_ui_i.jsx', 'pipeline_ui_j.jsx', 'pipeline_ui_k.jsx', 'pipeline_ui_l.jsx', 'pipeline_ui_m.jsx']
+         'pipeline_ui_d.jsx', 'pipeline_ui_e.jsx', 'pipeline_ui_f.jsx', 'pipeline_ui_g.jsx', 'pipeline_ui_h.jsx', 'pipeline_ui_i.jsx', 'pipeline_ui_j.jsx', 'pipeline_ui_k.jsx', 'pipeline_ui_l.jsx', 'pipeline_ui_m.jsx', 'pipeline_ui_n.jsx']
 read = lambda *p: open(os.path.join(HERE, *p), encoding='utf-8').read()
 version = read('VERSION').strip()
 

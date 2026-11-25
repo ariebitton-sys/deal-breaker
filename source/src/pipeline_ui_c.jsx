@@ -402,7 +402,7 @@ function PmPayments({ mgmt, upd, actuals, pushActuals, fee, feeNote, addLog, onE
 }
 
 // ----- Rehab section -----
-function RehabSection({ mgmt, upd, m, uwBaseline, actuals, rehabFunding, drawFee, addLog, by, onImportSow }) {
+function RehabSection({ mgmt, upd, m, uwBaseline, actuals, rehabFunding, drawFee, addLog, by, onImportSow, onSchedule }) {
   const today = todayISO();
   const r = mgmt.rehab;
   const budget = uwBaseline ? uwBaseline.m.repair : m.repair;
@@ -503,6 +503,11 @@ function RehabSection({ mgmt, upd, m, uwBaseline, actuals, rehabFunding, drawFee
           <span style={{ fontFamily: MONO, color: T.txtMute, letterSpacing: 0 }} title={milestonesWeighted(r.milestones) ? "Weighted by milestone budget" : "Each milestone counts the same"}>
             {mp != null ? mp : 0}% complete{milestonesWeighted(r.milestones) ? " (by $)" : ""}
           </span>
+          {onSchedule && (
+            <button onClick={onSchedule} style={{ ...smallBtn(T.glass, T.txt), textTransform: "none", letterSpacing: 0 }} title="Durations, dependencies and dates on a Gantt chart">
+              Schedule
+            </button>
+          )}
           {onImportSow && (
             <button onClick={onImportSow} style={{ ...smallBtn(T.glass, T.violet), textTransform: "none", letterSpacing: 0 }}>
               Read SOW
@@ -1222,6 +1227,7 @@ function ManagementTab(p) {
                     addLog={addLog}
                     by={userEmail}
                     onImportSow={p.onImportSow}
+                    onSchedule={p.onSchedule}
                   />
                   <div style={{ marginTop: 14 }}>
                     <Checklist items={mgmt.checklists.rehab || []} onChange={(v) => upd("checklists.rehab", v)} by={userEmail} gate={(i) => taskGate(i, "rehab", mgmt, stage)} />

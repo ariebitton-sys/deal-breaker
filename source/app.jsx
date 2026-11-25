@@ -3755,7 +3755,7 @@ function App() {
   }, [stage, mgmt.checklists]);
   // the Forecast tab is for deals between contract and sale
   useEffect(() => {
-    if (mode === "forecast" && !FC_STAGES.includes(stage)) setMode("overview");
+    if ((mode === "forecast" && !FC_STAGES.includes(stage)) || (mode === "schedule" && !GT_STAGES.includes(stage))) setMode("overview");
   }, [mode, stage]);
   const goProject = (k, anchor) => {
     setView("deal");
@@ -4482,7 +4482,7 @@ function App() {
             onBack={navIndex > 0 ? goBack : null}
             finder={{ files: driveFiles, summaries, onOpen: (f) => loadDeal(f), onDelete: deleteDeal, onRefresh: () => refreshFiles() }}
             bell={accessToken ? <TaskBell tasks={allTasks} seenAt={tasksSeen} onSeen={markTasksSeen} onOpenTask={openTasksScreen} onOpenAll={() => openTasksScreen(null)} /> : null}
-            tabs={view === "deal" ? <ProjectTabs mode={mode} go={goProject} counts={{ expenses: actuals.length }} hide={FC_STAGES.includes(stage) ? [] : ["forecast"]} /> : null}
+            tabs={view === "deal" ? <ProjectTabs mode={mode} go={goProject} counts={{ expenses: actuals.length }} hide={[...(FC_STAGES.includes(stage) ? [] : ["forecast"]), ...(GT_STAGES.includes(stage) ? [] : ["schedule"])]} /> : null}
           />
           <div className="app-main-inner">
         {view === "portfolio" && normDash(pfFilter) === "tasks" ? (
@@ -5225,6 +5225,8 @@ function App() {
             setMgmt={setMgmt}
             addLog={addLogEntry}
           />
+        ) : mode === "schedule" && GT_STAGES.includes(stage) ? (
+          <GanttTab key={(loadedRef.current && loadedRef.current.id) || "new"} mgmt={mgmt} setMgmt={setMgmt} addLog={addLogEntry} userEmail={userEmail} address={address} />
         ) : mode === "manage" ? (
           <ManagementTab
             stage={stage}
@@ -5246,6 +5248,7 @@ function App() {
             analysisDate={analysisDate}
             onImport={(sd) => setImportSide(sd)}
             onImportSow={() => setAiModal({ kind: "sow" })}
+            onSchedule={GT_STAGES.includes(stage) ? () => goProject("schedule") : null}
             onOpenAnalysis={openAnalysis}
             onDeleteAnalysis={deleteAnalysis}
             onUploadDoc={(f) => uploadDealDoc(f, "")}
