@@ -116,14 +116,14 @@ function ledgerRows(list) {
   return rows;
 }
 // Budget per ledger category: the original underwriting when there is one, else the current one.
-function budgetCats(P, actuals) {
+function budgetCats(P, actuals, fc) {
   return [
     ["Acquisition", (P.purchase || 0) + (P.totalBuying || 0), "purchase price and buying costs"],
-    ["Rehab / Construction", P.repair || 0, "rehab estimate"],
+    ["Rehab / Construction", fc ? num(fc.rehab) : P.repair || 0, fc ? `rehab, from the forecast (${fc.name || "scenario"})` : "rehab estimate"],
     ["Financing", P.totalFinancing || 0, "interest, points, investor return"],
     ["Holding", P.totalHolding || 0, "taxes, insurance, utilities"],
     ["Selling", P.totalSelling || 0, "commission, title, transfer"],
-    ["Services", P.pmFee || 0, "project manager"],
+    ["Services", fc ? num(fc.pm) : P.pmFee || 0, fc ? `project manager, from the forecast (${fc.name || "scenario"})` : "project manager"],
     ["Other", 0, "not budgeted"],
   ].map(([cat, budget, note]) => {
     const actual = sumActuals(actuals, cat);
@@ -865,7 +865,7 @@ function AddExpenseRow({ onAdd, defaultCat }) {
 
 // ---------- right rail: live budget burn ----------
 const BASIS_KEY = "kappa_ledger_basis";
-function BudgetRail({ cats, actualsTotal, actualSale, arv, plan, baselineDate, filter, onFilter, setActualSale, onReadSale }) {
+function BudgetRail({ cats, actualsTotal, actualSale, arv, plan, baselineDate, filter, onFilter, setActualSale, onReadSale, fcName }) {
   const [basis, setBasisRaw] = useState(() => {
     try {
       return localStorage.getItem(BASIS_KEY) === "cash" ? "cash" : "projected";
@@ -901,6 +901,7 @@ function BudgetRail({ cats, actualsTotal, actualSale, arv, plan, baselineDate, f
             Projected
           </button>
         </div>
+        {fcName && <div className="xd-fc-note">Rehab and project management budgets come from the forecast ({fcName}).</div>}
         {basis === "cash" ? (
           <div className="xd-head">
             <span className="xd-head-k">{sold ? "Actual net profit" : "Cash out so far"}</span>
@@ -1146,7 +1147,7 @@ function ExpensesDocs(p) {
   const [unpaidOnly, setUnpaidOnly] = useState(false);
   const [posOpen, setPosOpen] = useState(false);
   const P = uwBaseline ? uwBaseline.m : m;
-  const cats = budgetCats(P, actuals);
+  const cats = budgetCats(P, actuals, forecastScenario(mgmt, stage));
   const src = docSources(mgmt);
   const msById = Object.fromEntries((mgmt.rehab.milestones || []).map((x) => [x.id, x]));
   const sorted = [...actuals].sort((a, b) => {
@@ -1415,6 +1416,7 @@ function ExpensesDocs(p) {
         onFilter={setFilter}
         setActualSale={setActualSale}
         onReadSale={() => p.onImportClosing("sell")}
+        fcName={(forecastScenario(mgmt, stage) || {}).name || (forecastScenario(mgmt, stage) ? "scenario" : "")}
       />
       {posOpen && p.position && <PositionWindow {...p.position} actuals={actuals} mgmt={mgmt} m={m} stage={stage} setActuals={setActuals} setMgmt={p.setMgmt} onClose={() => setPosOpen(false)} />}
       {view && <DocViewer key={JSON.stringify(viewer)} view={view} onClose={() => setViewer(null)} onOpenAnalysis={(a) => (setViewer(null), p.onOpenAnalysis(a))} />}

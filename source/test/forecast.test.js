@@ -131,6 +131,24 @@ const profitOf = ({ price, rehab, pm, extra }) => {
   s = saved();
   assert(s.mgmt.scenarios[1].main && !s.mgmt.scenarios[0].main && s.mgmt.scenarios[1].extras[0].label === "Contingency" && s.mgmt.log.some((l) => /Forecast set to the "Conservative" scenario/.test(l.text)), "saved, and logged");
 
+  console.log("4b. The forecast's rehab is the budget everywhere");
+  await click(ptab("Forecast"));
+  await commit(field(1, "Rehab, total"), "15000");
+  await click(ptab("Expenses"));
+  assert(/Rehab and project management budgets come from the forecast \(Conservative\)/.test(doc.querySelector(".xd-rail").textContent), "Expenses: the budget rail says the rehab and PM budgets are the forecast's");
+  const rehabBar = [...doc.querySelectorAll(".xd-rail .xd-bar")].find((x) => /Rehab/.test(x.textContent));
+  assert(rehabBar && /\+33% over/.test(rehabBar.textContent), "the rehab bar: $20,000 against the forecast's $15,000, 33% over");
+  await click(ptab("Project overview"));
+  assert(/Rehab over budget \(forecast\) by 33%/.test(doc.querySelector(".ov-hero").textContent), "the deal's health: Rehab over budget (forecast) by 33%");
+  await sleep(1700);
+  await settle(6);
+  await click(nav(/^Active projects/));
+  const row = [...doc.querySelectorAll("tr.dt-row")].find((x) => x.textContent.includes("4623 Forecast Ave"));
+  assert(row && /\$20K \/ \$15K/.test(row.textContent), "the Active projects dashboard: $20K / $15K");
+  await click(row);
+  await sleep(30);
+  await settle(8);
+
   console.log("5. Delete; not for deals still being analyzed");
   await click(ptab("Forecast"));
   await click(btn("Delete", cards()[1]));

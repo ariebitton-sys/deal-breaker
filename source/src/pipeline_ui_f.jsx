@@ -1302,8 +1302,8 @@ function ProjectOverview({ address, mapsKey, folderId, photosUrl, setPhotosUrl, 
   const spent = sumActuals(actuals);
   const rSpent = sumActuals(actuals, "Rehab / Construction");
   // the rehab budget: the forecast scenario's total rehab once scenarios are saved, else the analysis's
-  const fcSaved = Array.isArray(mgmt.scenarios) && mgmt.scenarios.length > 0 ? mgmt.scenarios.find((x) => x.main) || mgmt.scenarios[0] : null;
-  const rFromForecast = !!fcSaved && FC_STAGES.includes(stage) && Number.isFinite(num(fcSaved.rehab)) && fcSaved.rehab !== "" && fcSaved.rehab != null;
+  const fcSaved = forecastScenario(mgmt, stage);
+  const rFromForecast = !!fcSaved;
   const rBudget = rFromForecast ? num(fcSaved.rehab) : uwBaseline ? uwBaseline.m.repair : m.repair;
   const rBudgetFrom = rFromForecast ? `from the forecast (${fcSaved.name || "scenario"})` : uwBaseline ? "from the analysis plan" : "from the Flip analysis";
   const plan = uwBaseline ? uwBaseline.m.netProfit : m.netProfit;

@@ -361,6 +361,12 @@ function inputsFromState(d) {
 }
 
 // ---------- grading (pure; App and summaries share it) ----------
+// The deal's forecast scenario (Forecast tab) once scenarios are saved, while the deal is between contract and
+// sale: its rehab total and project-management fee are the budget from then on.
+function forecastScenario(mg, st) {
+  if (!mg || !Array.isArray(mg.scenarios) || !mg.scenarios.length || !["contract", "rehab", "market"].includes(st)) return null;
+  return mg.scenarios.find((x) => x.main) || mg.scenarios[0];
+}
 function gradeDeal({ repair, holdMonths, netProfit, purchase, arv }) {
   const r = repair || 0,
     h = holdMonths || 0,
@@ -501,6 +507,7 @@ function summarizeDeal(d) {
   const acts = d.actuals || [];
   const spent = sumActuals(acts);
   const base = d.uwBaseline || null;
+  const fsc = forecastScenario(mg, inferStage(d));
   const lastLog = mg.log.reduce((mx, l) => (l.ts && l.ts > mx ? l.ts : mx), "");
   const lu = [d.savedAt || "", lastLog].sort().pop() || "";
   const lastOffer = mg.offers.length ? mg.offers[mg.offers.length - 1] : null;
@@ -553,7 +560,10 @@ function summarizeDeal(d) {
       const sale = an.some((a) => a.kind === "closing" && side(a) === "sell" && a.appliedAt) || kinds.some((k) => /sale closing/i.test(k));
       return (buy ? "P" : "") + (sow ? "S" : "") + (sale ? "L" : "") || "-";
     })(),
-    rb: R0(base ? base.m.repair : m.repair),
+    // rehab budget: the forecast's total rehab once saved, else the plan's; fr marks summaries made this way
+    rb: R0(fsc ? num(fsc.rehab) : base ? base.m.repair : m.repair),
+    rbf: fsc ? 1 : undefined,
+    fr: 1,
     rsp: R0(sumActuals(acts, "Rehab / Construction")),
     ld: mg.listing.date || undefined,
     lp: R0(num(mg.listing.price)) || undefined,
@@ -634,8 +644,9 @@ function attentionFor(s, today) {
   }
   if (s.pmd > 0 && ACTIVE_STAGES.concat(["sold"]).includes(st)) out.push({ lvl: "amber", text: `Project manager payment due: $${Math.round(s.pmd).toLocaleString("en-US")}` });
   if (st === "rehab") {
-    if (s.rb > 0 && s.rsp > s.rb * 1.1) out.push({ lvl: "red", text: `Rehab over budget by ${Math.round((s.rsp / s.rb - 1) * 100)}%` });
-    else if (s.rb > 0 && s.rsp > s.rb) out.push({ lvl: "amber", text: `Rehab at ${Math.round((s.rsp / s.rb) * 100)}% of budget` });
+    const of = s.rbf ? " (forecast)" : "";
+    if (s.rb > 0 && s.rsp > s.rb * 1.1) out.push({ lvl: "red", text: `Rehab over budget${of} by ${Math.round((s.rsp / s.rb - 1) * 100)}%` });
+    else if (s.rb > 0 && s.rsp > s.rb) out.push({ lvl: "amber", text: `Rehab at ${Math.round((s.rsp / s.rb) * 100)}% of budget${of}` });
     const dl = daysBetween(t, s.rte);
     if (dl != null && dl < 0) out.push({ lvl: "red", text: `Rehab ${-dl} days past target date` });
     if (s.rb > 0 && s.mp != null && s.rsp / s.rb - s.mp / 100 > 0.25 && !(s.rsp > s.rb))
