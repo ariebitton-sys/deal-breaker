@@ -291,7 +291,7 @@ const GT_COLS = [
   ["who", "Assigned to", 100],
   ["auto", "Auto", 40],
   ["done", "Done", 42],
-  ["act", "", 52],
+  ["act", "", 76],
 ];
 const GT_PRINT_COLS = [
   ["name", "Task", 236],
@@ -355,6 +355,7 @@ function GanttTab({ mgmt, setMgmt, addLog, userEmail, address, stage, today }) {
   const [tplOpen, setTplOpen] = useState(false);
   const [drag, setDrag] = useState(null);
   const [focusId, setFocusId] = useState(null);
+  const [flash, setFlash] = useState(null); // "Deleted …" next to Undo, for a few seconds
   const hist = useRef({ undo: [], redo: [] });
   const [, bump] = useState(0);
   const scrollRef = useRef(null);
@@ -454,8 +455,11 @@ function GanttTab({ mgmt, setMgmt, addLog, userEmail, address, stage, today }) {
     }));
     setPanel(null);
     setSel(null);
+    setFlash(`Deleted “${k.label}”`);
   };
   const delGroup = (gid) => {
+    const g = S.groups.find((x) => x.id === gid);
+    setFlash(`Deleted the group “${g ? g.label : ""}”${g && g.n ? `; its ${g.n} task${g.n === 1 ? " stays" : "s stay"}` : ""}`);
     commit((rh) => ({ groups: (rh.groups || []).filter((g) => g.id !== gid), milestones: rh.milestones.map((y) => (y.group === gid ? gtPatch(y, { group: undefined }) : y)) }));
     setPanel(null);
   };
@@ -488,6 +492,11 @@ function GanttTab({ mgmt, setMgmt, addLog, userEmail, address, stage, today }) {
         if (panel) setPanel(null);
         else if (tplOpen) setTplOpen(false);
         else if (full) setFull(false);
+        return;
+      }
+      if (!typing && e.key === "Delete" && sel && !ro && S.tasks.some((k) => k.id === sel)) {
+        e.preventDefault();
+        delTask(sel);
         return;
       }
       if (typing || !(e.ctrlKey || e.metaKey)) return;
@@ -536,6 +545,12 @@ function GanttTab({ mgmt, setMgmt, addLog, userEmail, address, stage, today }) {
       }
     };
   }, [printing]);
+
+  useEffect(() => {
+    if (!flash) return;
+    const tm = setTimeout(() => setFlash(null), 7000);
+    return () => clearTimeout(tm);
+  }, [flash]);
 
   useEffect(() => {
     if (focusId) {
@@ -772,8 +787,11 @@ function GanttTab({ mgmt, setMgmt, addLog, userEmail, address, stage, today }) {
             <button className="gt-ib" title="Add a task after this one" aria-label="Add a task after this one" onClick={() => addTask(k.id)}>
               <Icon name="plus" size={14} />
             </button>
-            <button className="gt-ib" title="Details" aria-label="Task details" onClick={() => setPanel({ kind: "task", id: k.id })}>
+            <button className="gt-ib" title="Details: dependencies, group, move" aria-label="Task details" onClick={() => setPanel({ kind: "task", id: k.id })}>
               <Icon name="more" size={14} stroke={2.6} />
+            </button>
+            <button className="gt-ib gt-ib-del" title="Delete task (or the Delete key)" aria-label="Delete task" onClick={() => delTask(k.id)}>
+              <Icon name="trash" size={14} />
             </button>
           </span>,
         )}
@@ -805,6 +823,9 @@ function GanttTab({ mgmt, setMgmt, addLog, userEmail, address, stage, today }) {
           </button>
           <button className="gt-ib" title="Group" aria-label="Group details" onClick={() => setPanel({ kind: "group", id: g.id })}>
             <Icon name="more" size={14} stroke={2.6} />
+          </button>
+          <button className="gt-ib gt-ib-del" title="Delete the group (its tasks stay)" aria-label="Delete group" onClick={() => delGroup(g.id)}>
+            <Icon name="trash" size={14} />
           </button>
         </span>,
       )}
@@ -881,7 +902,7 @@ function GanttTab({ mgmt, setMgmt, addLog, userEmail, address, stage, today }) {
             Schedule{(full || printing) && address ? <span className="gt-h2-addr"> · {address}</span> : null}
           </h2>
           <p className="gt-noprint">
-            The rehab milestones on a timeline. A task set to Auto starts when the tasks before it finish, so changing one moves everything after it. Ticking Done here marks the milestone done everywhere.
+            The rehab milestones on a timeline. A task set to Auto starts when the tasks before it finish, so changing one moves everything after it. Done here is done everywhere.
           </p>
           {printing && (
             <p className="gt-print-sub">
@@ -968,6 +989,20 @@ function GanttTab({ mgmt, setMgmt, addLog, userEmail, address, stage, today }) {
         <div className="gt-tools">
           {tool("Undo", "undo", undo, { disabled: !hist.current.undo.length, title: "Undo (Ctrl+Z)" })}
           {tool("Redo", "redo", redo, { disabled: !hist.current.redo.length, title: "Redo (Ctrl+Y)" })}
+          {flash && (
+            <span className="gt-flash" role="status">
+              {flash} ·{" "}
+              <button
+                className="link-btn"
+                onClick={() => {
+                  undo();
+                  setFlash(null);
+                }}
+              >
+                Undo
+              </button>
+            </span>
+          )}
           <span className="gt-sep" />
           {tool("Auto schedule", "bolt", autoAll, { disabled: !anyLocked, title: anyLocked ? "Unlock every task: each starts when its predecessors finish" : "Every task is already on auto" })}
           {tool("Critical path", "path", () => setView({ crit: !view.crit }), { on: view.crit, title: "Show the tasks that set the finish date: a day lost on any of them is a day lost on the rehab" })}

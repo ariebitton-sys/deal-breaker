@@ -4489,7 +4489,7 @@ function App() {
             bell={accessToken ? <TaskBell tasks={allTasks} seenAt={tasksSeen} onSeen={markTasksSeen} onOpenTask={openTasksScreen} onOpenAll={() => openTasksScreen(null)} /> : null}
             tabs={view === "deal" ? <ProjectTabs mode={mode} go={goProject} counts={{ expenses: actuals.length }} hide={[...(FC_STAGES.includes(stage) ? [] : ["forecast"]), ...(GT_STAGES.includes(stage) ? [] : ["schedule"])]} /> : null}
           />
-          <div className="app-main-inner">
+          <div className={"app-main-inner" + (view === "deal" && mode === "schedule" ? " wide" : "")}>
         {view === "portfolio" && normDash(pfFilter) === "tasks" ? (
           <TasksScreen
             tasks={allTasks}

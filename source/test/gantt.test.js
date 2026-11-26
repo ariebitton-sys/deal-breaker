@@ -243,6 +243,26 @@ const deal = {
   await settle(6);
   s = saved();
   assert(s.mgmt.rehab.milestones.length === 22 && s.mgmt.rehab.groups.length === 4 && s.mgmt.rehab.milestones.every((x) => x.dur >= 0), "saved with the deal");
+
+  console.log("13. Delete a task: the trash button, the Delete key, Undo");
+  const victim = rows()[3];
+  const vLabel = victim.querySelector(".gt-name").value;
+  await click(victim.querySelector('[aria-label="Delete task"]'));
+  assert(rows().length === 21 && !row(vLabel) && /Deleted “.*”/.test(G().querySelector(".gt-flash").textContent), `trash: "${vLabel}" deleted, with a note next to Undo`);
+  await click(btn("Undo", G().querySelector(".gt-flash")));
+  assert(rows().length === 22 && row(vLabel) && !G().querySelector(".gt-flash"), "Undo in the note: it's back");
+  row(vLabel).dispatchEvent(new win.MouseEvent("mousedown", { bubbles: true }));
+  await settle(2);
+  doc.body.dispatchEvent(new win.KeyboardEvent("keydown", { key: "Delete", bubbles: true }));
+  await settle(3);
+  assert(rows().length === 21 && !row(vLabel), "a selected row and the Delete key: deleted");
+  const gRow = G().querySelectorAll(".gt-r.grp")[0];
+  const gName = gRow.querySelector(".gt-gname").value;
+  await click(gRow.querySelector('[aria-label="Delete group"]'));
+  assert(G().querySelectorAll(".gt-r.grp").length === 3 && rows().length === 21 && new RegExp(`Deleted the group “${gName}”; its \\d+ tasks? stays?`).test(G().querySelector(".gt-flash").textContent), "a group's trash: the group goes, its tasks stay");
+  await sleep(1700);
+  await settle(6);
+  assert(saved().mgmt.rehab.milestones.length === 21 && saved().mgmt.rehab.groups.length === 3, "saved: 21 tasks, 3 groups");
   assert(!t.errors.length, "no errors " + t.errors.join(" | "));
   console.log("\nALL SCHEDULE TESTS PASSED");
   process.exit(0);
