@@ -70,6 +70,18 @@ assert(of("p1").join() === "cp:gc:18000", "payment 1: the contractor's condition
 assert(of("p2").join() === "cp:gc:24000,up:gc:18000,up:el:6000", "payment 2: conditional on it; unconditional on payment 1 from the contractor and the electrician ($500 to the plumber is under the threshold)");
 assert(of("p3").join() === "cf:gc:24000,up:gc:24000,up:pl:3000,cf:el:6000,cf:pl:3500", "final payment: conditional final from the contractor and everyone paid, unconditional on payment 2");
 assert(of("p3", "after").join() === "uf:gc:66000,uf:el:6000,uf:pl:3500", "after it: unconditional finals for everything each was paid");
+assert(of("p1", "paid").join() === "", "an unpaid payment: no unconditional on it yet");
+const Lp = { ...L, payments: L.payments.map((p) => (p.id === "p1" ? { ...p, paidOn: "2026-11-10" } : p)) };
+const Rp = lwRequired(Lp);
+assert(
+  Rp.filter((r) => r.payment === "p1" && r.when === "paid").map((r) => `${r.kind}:${r.party}:${r.amount}:${r.key}`).join() === "up:gc:18000:up|gc|p1" && Rp.some((r) => r.payment === "p2" && r.when === "before" && r.key === "up|gc|p1"),
+  "once paid: the contractor's unconditional on it, the same waiver payment 2 needs",
+);
+const Lgap = { ...L, payments: [{ ...L.payments[0], paidOn: "2026-11-10" }] };
+let tkGap = lwTasks({ liens: Lgap }, "rehab", "2026-11-12");
+assert(tkGap.some((x) => x.id === "lw-paid-p1" && /Unconditional lien waiver on payment 1: not signed yet/.test(x.label)), "paid, and no next payment yet: a task for its unconditional");
+tkGap = lwTasks({ liens: { ...Lgap, waivers: [{ id: "u1", key: "up|gc|p1", kind: "up", party: "gc", amount: 18000, status: "complete" }] } }, "rehab", "2026-11-12");
+assert(!tkGap.some((x) => x.id === "lw-paid-p1"), "once it's signed: no task");
 let V = lwView({ ...L, waivers: [{ id: "w1", key: "cp|gc|p1", kind: "cp", party: "gc", amount: 18000, status: "complete" }] });
 assert(V.find((r) => r.key === "cp|gc|p1").ok, "a signed waiver for the amount: done");
 V = lwView({ ...L, waivers: [{ id: "w1", key: "cp|gc|p1", kind: "cp", party: "gc", amount: 17000, status: "complete" }] });
@@ -217,6 +229,7 @@ const lienCfg = { url: N8N, key: KEY, owner: "Kappa Flips LLC", threshold: 1000,
   await type(pay(0).querySelector('[aria-label="What this payment covers"]'), "Demo and framing");
   await click(btn("Mark paid…", pay(0)));
   assert(/For: Demo and framing/.test(d.body.textContent), "the Mark paid window says what the payment covers");
+  assert(/Email Mauricio Construction LLC the unconditional waiver on this payment now/.test(d.body.textContent), "it offers to email the contractor's unconditional waiver at once");
   await click(btn(/^Mark paid$/, d.body));
   await sleep(1700);
   await settle(6);
@@ -225,11 +238,26 @@ const lienCfg = { url: N8N, key: KEY, owner: "Kappa Flips LLC", threshold: 1000,
     s.mgmt.liens.payments[0].paidOn && s.mgmt.liens.payments[0].note === "Demo and framing" && s.actuals.some((a) => a.cat === "Rehab / Construction" && a.amount === 18000 && a.label === "Mauricio Construction LLC: payment 1 — Demo and framing"),
     "paid: recorded, and added to Expenses with what it covers",
   );
+  const p1 = s.mgmt.liens.payments[0].id;
+  const upW = () => saved().mgmt.liens.waivers.filter((w) => w.kind === "up" && w.key.endsWith("|" + p1));
+  const sentUp = upW().find((w) => w.status === "sent");
+  assert(sentUp && calls.some((c) => c.action === "request" && c.token === sentUp.token && c.amount === 18000 && c.to === "m@example.com" && /Unconditional Waiver and Release on Progress Payment/.test(c.doc.title)), "paid: the contractor's unconditional waiver on payment 1 goes out at once");
+  assert(/After paying it/.test(pay(0).textContent) && !/Not requested/.test(pay(0).querySelector(`.lw-w[data-key="${sentUp.key}"]`).textContent), "it shows under payment 1, after paying it");
+  assert(!/Not requested/.test(pay(1).querySelector(`.lw-w[data-key="${sentUp.key}"]`).textContent), "and it's the same waiver payment 2 needs");
   await type(pay(0).querySelector('[aria-label="What this payment covers"]'), "Demo, framing and rough plumbing");
   await sleep(1700);
   await settle(6);
   s = saved();
   assert(s.actuals.filter((a) => a.amount === 18000).length === 1 && s.actuals.some((a) => a.label === "Mauricio Construction LLC: payment 1 — Demo, framing and rough plumbing"), "a later change follows into the Expenses line");
+  await click(btn("Mark unpaid", pay(0)));
+  await sleep(1700);
+  await settle(6);
+  assert(upW().find((w) => w.token === sentUp.token).status === "void" && calls.some((c) => c.action === "void" && c.token === sentUp.token), "marked unpaid: the unconditional waiver request is withdrawn");
+  await click(btn("Mark paid…", pay(0)));
+  await click(btn(/^Mark paid$/, d.body));
+  await sleep(1700);
+  await settle(6);
+  assert(upW().filter((w) => w.status === "sent").length === 1 && saved().actuals.filter((a) => a.amount === 18000).length === 1, "paid again: a new request, and no second Expenses line");
   const kUp = keyOf(1, "up", /Mauricio/);
   const input = LW().querySelector('input[type="file"]');
   await click(btn("Upload signed", row(kUp)));

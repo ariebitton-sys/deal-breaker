@@ -100,8 +100,10 @@ function lwTotals(L) {
   return t;
 }
 // Before payment n: the contractor's conditional waiver on it, and unconditional waivers on payment n−1 from the
-// contractor and from everyone it paid from that payment (at or above the threshold). The final payment takes
-// final conditional waivers from everyone who worked on the house, and after it, final unconditional ones.
+// contractor and from everyone it paid from that payment (at or above the threshold). Once a progress payment is
+// paid, the contractor's unconditional waiver on it is asked for at once (when: "paid"); it is the same waiver
+// the next payment needs. The final payment takes final conditional waivers from everyone who worked on the house,
+// and after it, final unconditional ones.
 function lwRequired(L) {
   const th = L.threshold == null || L.threshold === "" ? LW_THRESHOLD : num(L.threshold);
   const parties = L.parties || [];
@@ -112,8 +114,9 @@ function lwRequired(L) {
     seen = new Set();
   const add = (r) => {
     const key = `${r.kind}|${r.party}|${r.about}`;
-    if (seen.has(key)) return;
-    seen.add(key);
+    const once = key + (r.when === "paid" ? "|paid" : "");
+    if (seen.has(once)) return;
+    seen.add(once);
     out.push({ ...r, key });
   };
   const totals = lwTotals(L);
@@ -128,6 +131,7 @@ function lwRequired(L) {
         .filter((s) => s.party && s.party !== (gc && gc.id) && num(s.amount) >= th && num(s.amount) > 0)
         .forEach((s) => add({ kind: "up", party: s.party, amount: num(s.amount), through: thru(prev), payment: p.id, about: prev.id, when: "before" }));
     }
+    if (gc && p.paidOn && !p.final) add({ kind: "up", party: gc.id, amount: num(p.amount), through: thru(p), payment: p.id, about: p.id, when: "paid" });
     if (p.final) {
       others.forEach((x) => add({ kind: "cf", party: x.id, amount: totals[x.id], through: thru(p), payment: p.id, about: p.id, when: "before" }));
       if (gc) add({ kind: "uf", party: gc.id, amount: gcTotal, through: thru(p), payment: p.id, about: "final", when: "after" });
@@ -352,6 +356,12 @@ function lwTasks(mg, st, t) {
     if (p.planned ? p.planned > addDaysISO(t, 10) : p !== next) return;
     out.push({ ...base, id: "lw-pay-" + p.id, lw: "pay", label: `Lien waivers before payment ${i + 1}: ${miss.length} of ${before.length} not signed`, due: p.planned || "", dueSet: !!p.planned, at: p.planned ? addDaysISO(p.planned, -10) : t });
   });
+  // the last payment so far is paid: its unconditional waiver has no next payment to wait for
+  const last = L.payments[L.payments.length - 1];
+  if (last && last.paidOn && !last.final) {
+    const miss = V.filter((r) => r.payment === last.id && r.when === "paid" && !r.ok);
+    if (miss.length) out.push({ ...base, id: "lw-paid-" + last.id, lw: "paid", label: `Unconditional lien waiver on payment ${L.payments.length}: not signed yet`, due: "", dueSet: false, at: last.paidOn });
+  }
   const fin = L.payments.find((p) => p.final && p.paidOn);
   if (fin) {
     const after = V.filter((r) => r.when === "after");
@@ -670,12 +680,30 @@ function LienTab({ mgmt, setMgmt, addLog, userEmail, address, cfg, onSaveCfg, up
     const note = String(p.note || "").trim();
     return `${gc ? lwName(gc) : "Contractor"}: payment ${payNo(p.id)}${p.final ? " (final)" : ""}${note ? ` — ${note}` : ""}`;
   };
-  const markPaid = (p, date, toLedger, why) => {
+  // the contractor's unconditional waiver on a progress payment, asked for once it's paid
+  const upKey = (p) => (gc ? `up|${gc.id}|${p.id}` : "");
+  const upOpen = (p) => !!gc && !p.final && !(L.waivers || []).some((w) => w.key === upKey(p) && w.status !== "void");
+  const markPaid = (p, date, toLedger, why, sendUp) => {
     const n = payNo(p.id);
     const note = String(p.note || "").trim();
     setL((cur) => ({ payments: cur.payments.map((x) => (x.id === p.id ? { ...x, paidOn: date, ...(why ? { override: why } : {}) } : x)) }));
     if (toLedger) setActuals((prev) => [...prev, { id: Date.now(), cat: "Rehab / Construction", label: ledgerLabel(p), amount: num(p.amount), date, files: [], lwPay: p.id }]);
     addLog(`Contractor payment ${n} paid ${fmtDate(date)}: ${fmt(num(p.amount))}${note ? ` (${note})` : ""}${why ? `, without ${why}` : ""}`);
+    if (sendUp && upOpen(p))
+      sendOne({ key: upKey(p), kind: "up", party: gc.id, amount: num(p.amount), through: p.through || date, payment: p.id, about: p.id, when: "paid", w: null, changed: false }).then(
+        (ok) => ok && say(`Unconditional waiver on payment ${n} sent to ${lwName(gc)}`),
+      );
+  };
+  // not paid after all: an unconditional waiver still waiting for a signature is withdrawn
+  const markUnpaid = (p) => {
+    const n = payNo(p.id);
+    const w = gc && (L.waivers || []).find((x) => x.key === upKey(p) && x.status === "sent");
+    setPay(p.id, { paidOn: "", override: undefined });
+    if (w) {
+      if (esign && w.token) lwApi(C, "void", { token: w.token }).catch(() => {});
+      setL((cur) => ({ waivers: cur.waivers.map((x) => (x.id === w.id ? { ...x, status: "void" } : x)) }));
+    }
+    addLog(`Contractor payment ${n} marked unpaid${w ? "; its unconditional waiver request was withdrawn" : ""}`);
   };
   // what a payment covers; once it's paid, its Expenses line follows (unless someone retitled that line by hand)
   const setNote = (p, v) => {
@@ -789,7 +817,10 @@ function LienTab({ mgmt, setMgmt, addLog, userEmail, address, cfg, onSaveCfg, up
       <div className="lw-head">
         <div>
           <h2>Lien waivers</h2>
-          <p>Each payment to the contractor needs its waivers signed first: the contractor's conditional waiver on this payment, and unconditional ones on the payment before it from the contractor and from every sub and supplier it paid.</p>
+          <p>
+            Each payment to the contractor needs its waivers signed first: the contractor's conditional waiver on this payment, and unconditional ones on the payment before it from the contractor and from every sub and supplier it paid. Once a payment
+            is made, the contractor signs its unconditional waiver on it.
+          </p>
         </div>
         <div className="lw-head-r">
           {nextPay &&
@@ -924,6 +955,7 @@ function LienTab({ mgmt, setMgmt, addLog, userEmail, address, cfg, onSaveCfg, up
         {L.payments.map((p, i) => {
           const { before, miss } = lwPayNeeds(V, p);
           const toSend = miss.filter((r) => esign && partyOf(r.party).email && (r.st === "none" || r.changed));
+          const paidRows = V.filter((r) => r.payment === p.id && r.when === "paid");
           return (
             <div key={p.id} className={"lw-pay" + (p.paidOn ? " paid" : "")} data-pay={p.id}>
               <div className="lw-pay-h">
@@ -970,6 +1002,12 @@ function LienTab({ mgmt, setMgmt, addLog, userEmail, address, cfg, onSaveCfg, up
                   {before.map(wRow)}
                 </div>
               )}
+              {paidRows.length > 0 && (
+                <div className="lw-ws">
+                  <div className="lw-sub-h">After paying it</div>
+                  {paidRows.map(wRow)}
+                </div>
+              )}
               {subsChoices.length > 0 && (
                 <div className="lw-subs">
                   <div className="lw-sub-h">The contractor paid from it</div>
@@ -1003,7 +1041,7 @@ function LienTab({ mgmt, setMgmt, addLog, userEmail, address, cfg, onSaveCfg, up
                   </button>
                 )}
                 {p.paidOn ? (
-                  <button className="link-btn" onClick={() => (setPay(p.id, { paidOn: "", override: undefined }), addLog(`Contractor payment ${i + 1} marked unpaid`))}>
+                  <button className="link-btn" onClick={() => markUnpaid(p)}>
                     Mark unpaid
                   </button>
                 ) : (
@@ -1046,7 +1084,18 @@ function LienTab({ mgmt, setMgmt, addLog, userEmail, address, cfg, onSaveCfg, up
         (() => {
           const p = L.payments.find((x) => x.id === paying);
           if (!p) return null;
-          return <LienPaidWindow p={p} n={payNo(p.id)} miss={lwPayNeeds(V, p).miss} partyOf={partyOf} actuals={actuals} onPaid={(date, toLedger, why) => (markPaid(p, date, toLedger, why), setPaying(null))} onClose={() => setPaying(null)} />;
+          return (
+            <LienPaidWindow
+              p={p}
+              n={payNo(p.id)}
+              miss={lwPayNeeds(V, p).miss}
+              partyOf={partyOf}
+              actuals={actuals}
+              upTo={esign && upOpen(p) && gc.email ? gc : null}
+              onPaid={(date, toLedger, why, sendUp) => (markPaid(p, date, toLedger, why, sendUp), setPaying(null))}
+              onClose={() => setPaying(null)}
+            />
+          );
         })()}
       {cs && <LienSignWindow signer={signer} w={cs} party={partyOf(cs.party)} onSign={(s) => countersign(cs, s)} onClose={() => setCs(null)} />}
       {signerOpen && (
@@ -1112,10 +1161,11 @@ function LienPreview({ L, r, address, state, party, onDownload, onClose }) {
   );
 }
 
-function LienPaidWindow({ p, n, miss, partyOf, actuals, onPaid, onClose }) {
+function LienPaidWindow({ p, n, miss, partyOf, actuals, upTo, onPaid, onClose }) {
   const [date, setDate] = useState(p.planned && p.planned <= todayISO() ? p.planned : todayISO());
   const dup = (actuals || []).some((a) => Math.round(num(a.amount)) === Math.round(num(p.amount)) && a.date && Math.abs(daysBetween(a.date, date) || 0) <= 10);
   const [toLedger, setToLedger] = useState(!dup);
+  const [sendUp, setSendUp] = useState(!!upTo);
   const [anyway, setAnyway] = useState(false);
   const ok = !miss.length || anyway;
   return (
@@ -1147,11 +1197,19 @@ function LienPaidWindow({ p, n, miss, partyOf, actuals, onPaid, onClose }) {
         <input type="checkbox" checked={toLedger} onChange={(e) => setToLedger(e.target.checked)} /> Add it to Expenses (Rehab / Construction)
       </label>
       {dup && <p className="lw-hint">Expenses already has {fmt(num(p.amount))} within 10 days of that date, so it's left unticked.</p>}
+      {upTo && (
+        <>
+          <label className="lw-check">
+            <input type="checkbox" checked={sendUp} onChange={(e) => setSendUp(e.target.checked)} /> Email {lwName(upTo)} the unconditional waiver on this payment now
+          </label>
+          <p className="lw-hint">The contractor signs it once the money arrives. The next payment needs it too.</p>
+        </>
+      )}
       <div className="lw-win-f">
         <button style={btnGhost()} onClick={onClose}>
           Cancel
         </button>
-        <button style={btnPrimary()} disabled={!ok} onClick={() => onPaid(date, toLedger, miss.length ? `${miss.length} waiver${miss.length === 1 ? "" : "s"}` : "")}>
+        <button style={btnPrimary()} disabled={!ok} onClick={() => onPaid(date, toLedger, miss.length ? `${miss.length} waiver${miss.length === 1 ? "" : "s"}` : "", !!upTo && sendUp)}>
           Mark paid
         </button>
       </div>
