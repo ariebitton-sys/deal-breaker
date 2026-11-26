@@ -68,6 +68,7 @@ const ICONS = {
   template: "M4 4h16v6H4zM4 14h7v6H4zM15 14h5v6h-5z",
   gantt: "M4 5h8M8 10h10M6 15h7M11 20h9",
   trash: "M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3",
+  shield: "M12 3l7.5 3v6c0 4.6-3.2 7.9-7.5 9-4.3-1.1-7.5-4.4-7.5-9V6zM9 12l2 2 4-4",
 };
 function Icon({ name, size = 16, stroke = 1.8, style }) {
   return (

@@ -94,6 +94,7 @@ const PROJECT_NAV = [
   ["manage", "Stages and milestones", "cal"],
   ["schedule", "Schedule", "gantt"],
   ["expenses", "Expenses & Documents", "receipt"],
+  ["liens", "Lien waivers", "shield"],
 ];
 // Older tab keys (saved history entries, links inside the app) land on the merged screen.
 const MODE_ALIAS = { budget: "expenses", actuals: "expenses", docs: "expenses" };

@@ -2409,6 +2409,7 @@ function App() {
       }
     });
     s.teamKeys = { anthropicKey: String(content.anthropicKey || "").trim(), mapsApiKey: String(content.mapsApiKey || "").trim() };
+    if (content && content.liens && typeof content.liens === "object") s.lienCfg = content.liens;
     s.teamSync = meta.modifiedTime;
     if (!s.folderId) {
       s.folderId = String(content.folderId || "").trim() || (meta.parents || [])[0];
@@ -2564,6 +2565,7 @@ function App() {
       folderId: s.folderId,
       anthropicKey: s.anthropicKey || "",
       mapsApiKey: s.mapsApiKey || "",
+      ...(s.lienCfg ? { liens: s.lienCfg } : {}),
       updatedBy: userEmailRef.current || "",
       updatedAt: new Date().toISOString(),
     };
@@ -2586,6 +2588,50 @@ function App() {
       setDriveMsg("❌ Couldn't share the keys with the team: " + e.message);
     }
   };
+  // Lien waiver settings (the signing service, the defaults): kept in this browser and in the team settings file,
+  // next to the team's keys (which are left as the team has them)
+  const saveLienCfg = async (cfg) => {
+    const s = { ...settingsRef.current, lienCfg: cfg };
+    persistSettings(s);
+    if (!s.folderId || !accessToken) return;
+    const tk = s.teamKeys || {};
+    const data = {
+      kind: "deal-breaker-team-settings",
+      v: 1,
+      note: "Read by Deal Breaker: team members get these keys when they connect Google. Anyone with access to this folder can read them.",
+      folderId: s.folderId,
+      anthropicKey: tk.anthropicKey || "",
+      mapsApiKey: tk.mapsApiKey || "",
+      liens: cfg,
+      updatedBy: userEmailRef.current || "",
+      updatedAt: new Date().toISOString(),
+    };
+    try {
+      const res = await withAuthRetry(async (tok) => {
+        if (teamFile && teamFile.id) {
+          try {
+            return await driveUpdateFull(tok, teamFile.id, data, { name: TEAM_FILE });
+          } catch (e) {
+            if (e.status !== 404) throw e;
+          }
+        }
+        return driveCreate(tok, s.folderId, TEAM_FILE, data, { dbTeam: "1" });
+      });
+      persistSettings({ ...settingsRef.current, teamSync: res.modifiedTime });
+      setTeamFile({ id: res.id, modifiedTime: res.modifiedTime, by: userEmailRef.current || "" });
+      setDriveMsg("✓ Lien waiver settings saved for the team");
+      setTimeout(() => setDriveMsg(""), 3000);
+    } catch (e) {
+      setDriveMsg("❌ Saved in this browser only: couldn't update the team settings file (" + e.message + ")");
+    }
+  };
+  // signed lien waivers go to the deals folder, like the other documents
+  const lienUpload = (file) =>
+    withAuthRetry(async (tok) => {
+      const r = await driveUploadFile(tok, settings.folderId, file);
+      return { driveFileId: r.id, name: r.name, mimeType: r.mimeType };
+    });
+  const lienRemove = (id) => withAuthRetry((tok) => driveDelete(tok, id)).catch(() => {});
   // A token saved by an earlier page load: load the deal list straight away.
   useEffect(() => {
     if (!accessToken) return;
@@ -3762,7 +3808,7 @@ function App() {
   }, [stage, mgmt.checklists]);
   // the Forecast tab is for deals between contract and sale
   useEffect(() => {
-    if ((mode === "forecast" && !FC_STAGES.includes(stage)) || (mode === "schedule" && !GT_STAGES.includes(stage))) setMode("overview");
+    if ((mode === "forecast" && !FC_STAGES.includes(stage)) || (mode === "schedule" && !GT_STAGES.includes(stage)) || (mode === "liens" && !LW_STAGES.includes(stage))) setMode("overview");
   }, [mode, stage]);
   const goProject = (k, anchor) => {
     setView("deal");
@@ -4489,7 +4535,7 @@ function App() {
             onBack={navIndex > 0 ? goBack : null}
             finder={{ files: driveFiles, summaries, onOpen: (f) => loadDeal(f), onDelete: deleteDeal, onRefresh: () => refreshFiles() }}
             bell={accessToken ? <TaskBell tasks={allTasks} seenAt={tasksSeen} onSeen={markTasksSeen} onOpenTask={openTasksScreen} onOpenAll={() => openTasksScreen(null)} /> : null}
-            tabs={view === "deal" ? <ProjectTabs mode={mode} go={goProject} counts={{ expenses: actuals.length }} hide={[...(FC_STAGES.includes(stage) ? [] : ["forecast"]), ...(GT_STAGES.includes(stage) ? [] : ["schedule"])]} /> : null}
+            tabs={view === "deal" ? <ProjectTabs mode={mode} go={goProject} counts={{ expenses: actuals.length }} hide={[...(FC_STAGES.includes(stage) ? [] : ["forecast"]), ...(GT_STAGES.includes(stage) ? [] : ["schedule"]), ...(LW_STAGES.includes(stage) ? [] : ["liens"])]} /> : null}
           />
           <div className={"app-main-inner" + (view === "deal" && mode === "schedule" ? " wide" : "")}>
         {view === "portfolio" && normDash(pfFilter) === "tasks" ? (
@@ -4505,6 +4551,7 @@ function App() {
             onOpen={openTaskProject}
             onOpenPm={openPmPanel}
             onOpenSchedule={(t) => openTaskProject(t.fid, "schedule")}
+            onOpenLiens={(t) => openTaskProject(t.fid, "liens")}
             focus={taskFocus}
           />
         ) : view === "portfolio" && normDash(pfFilter) === "costs" ? (
@@ -5232,6 +5279,21 @@ function App() {
             }}
             setMgmt={setMgmt}
             addLog={addLogEntry}
+          />
+        ) : mode === "liens" && LW_STAGES.includes(stage) ? (
+          <LienTab
+            key={(loadedRef.current && loadedRef.current.id) || "new"}
+            mgmt={mgmt}
+            setMgmt={setMgmt}
+            addLog={addLogEntry}
+            userEmail={userEmail}
+            address={address}
+            cfg={settings.lienCfg || {}}
+            onSaveCfg={saveLienCfg}
+            upload={lienUpload}
+            removeFile={lienRemove}
+            actuals={actuals}
+            setActuals={setActuals}
           />
         ) : mode === "schedule" && GT_STAGES.includes(stage) ? (
           <GanttTab key={(loadedRef.current && loadedRef.current.id) || "new"} mgmt={mgmt} setMgmt={setMgmt} addLog={addLogEntry} userEmail={userEmail} address={address} stage={stage} />

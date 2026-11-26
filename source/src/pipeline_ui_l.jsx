@@ -9,8 +9,8 @@
 const TASK_INDEX_KEY = "kappa_task_index_v1";
 const TASK_SEEN_KEY = "kappa_tasks_seen_v1";
 const TASK_CKS = ["contract", "rehab", "market"];
-const TASK_CK_LABEL = { contract: "Under contract", rehab: "Rehab", market: "On market", pm: "Project manager", sched: "Rehab schedule" };
-const TASK_INDEX_V = 2; // v69: entries carry the schedule's tasks; older entries are read again
+const TASK_CK_LABEL = { contract: "Under contract", rehab: "Rehab", market: "On market", pm: "Project manager", sched: "Rehab schedule", liens: "Lien waivers" };
+const TASK_INDEX_V = 3; // v69: entries carry the schedule's tasks; v72: lien waivers. Older entries are read again
 const TASK_STAGES = ["contract", "rehab", "market", "sold"];
 const readTaskIndex = () => {
   try {
@@ -150,7 +150,7 @@ function dealTasks(d, today) {
       open.push({ ...base, due, dueSet: !!i.due, at });
     });
   });
-  return { st, open: [...open, ...pmTasks, ...sched.open], done: [...done, ...sched.done] };
+  return { st, open: [...open, ...pmTasks, ...sched.open, ...lwTasks(mg, st, t)], done: [...done, ...sched.done] };
 }
 const taskIndexEntry = (d, mt, name) => {
   const x = dealTasks(d);
@@ -289,7 +289,7 @@ const TASK_FILTERS = [
   ["overdue", "Overdue"],
   ["week", "Due this week"],
 ];
-function TasksScreen({ tasks, done, files, busy, onSeen, onToggle, onDue, onAdd, onOpen, onOpenPm, onOpenSchedule, focus }) {
+function TasksScreen({ tasks, done, files, busy, onSeen, onToggle, onDue, onAdd, onOpen, onOpenPm, onOpenSchedule, onOpenLiens, focus }) {
   const today = todayISO();
   const weekAgo = addDaysISO(today, -7);
   const [filter, setFilter] = useState("all");
@@ -415,7 +415,11 @@ function TasksScreen({ tasks, done, files, busy, onSeen, onToggle, onDue, onAdd,
               const ds = taskDueState(t, today);
               return (
                 <div key={t.key} className={"tk-row" + (busyKey === t.key ? " busy" : "") + (t.pm ? " pm" : "")} data-task={t.key}>
-                  {t.pm ? (
+                  {t.ck === "liens" ? (
+                    <button className="tk-pm" onClick={() => onOpenLiens && onOpenLiens(t)} title="Open the project's lien waivers" aria-label={`Open the lien waivers: ${t.label}`}>
+                      <Icon name="chevron" size={13} />
+                    </button>
+                  ) : t.pm ? (
                     <button className="tk-pm" onClick={() => onOpenPm(t)} title="Open the project manager payments on the Expenses page" aria-label={`${t.pm === "terms" ? "Set the terms" : "Log the payment"}: ${t.label}`}>
                       <Icon name="chevron" size={13} />
                     </button>
@@ -440,6 +444,13 @@ function TasksScreen({ tasks, done, files, busy, onSeen, onToggle, onDue, onAdd,
                             {t.pm === "terms" ? "Set the terms" : "Log the payment"}
                           </button>
                         </React.Fragment>
+                      ) : t.ck === "liens" ? (
+                        <React.Fragment>
+                          Lien waivers{t.who ? ` · for ${t.who}` : ""} ·{" "}
+                          <button className="link-btn tk-lw-link" onClick={() => onOpenLiens && onOpenLiens(t)}>
+                            Open lien waivers
+                          </button>
+                        </React.Fragment>
                       ) : t.ck === "sched" ? (
                         <React.Fragment>
                           Rehab schedule · {t.start === t.due ? fmtDateShort(t.due) : `${fmtDateShort(t.start)} – ${fmtDateShort(t.due)}`}
@@ -458,7 +469,7 @@ function TasksScreen({ tasks, done, files, busy, onSeen, onToggle, onDue, onAdd,
                     </span>
                   </div>
                   <span className={"tk-due " + ds}>{taskDueLabel(t, today)}</span>
-                  {t.pm || t.ck === "sched" ? (
+                  {t.pm || t.ck === "sched" || t.ck === "liens" ? (
                     <span />
                   ) : t.dueSet || dueEdit === t.key ? (
                     <input
