@@ -75,6 +75,7 @@ const DASH_META = {
   dead: { title: "Dead deals", sub: "Deals that didn't go ahead", stages: ["dead"] },
   costs: { title: "Expense search", sub: "Every ledger line across the projects", stages: [] },
   tasks: { title: "Tasks", sub: "Open tasks across the projects", stages: [] },
+  contacts: { title: "Contacts", sub: "The team's contacts", stages: [] },
 };
 // What an empty dashboard says: where its deals come from.
 const DASH_EMPTY = {
@@ -144,6 +145,11 @@ function Sidebar({ logo, view, filter, onFilter, counts, project, onNew, onSetti
           <Icon name="check" size={17} />
           <span className="sb-label">Tasks</span>
           <em>{counts.tasks || 0}</em>
+        </button>
+        <button onClick={() => onFilter("contacts")} className={"sb-item" + (view === "portfolio" && filter === "contacts" ? " on" : "")} title={collapsed ? `Contacts (${counts.contacts || 0})` : "The team's contacts"} aria-current={view === "portfolio" && filter === "contacts" ? "page" : undefined}>
+          <Icon name="users" size={17} />
+          <span className="sb-label">Contacts</span>
+          <em>{counts.contacts || 0}</em>
         </button>
         <button onClick={() => onFilter("costs")} className={"sb-item" + (view === "portfolio" && filter === "costs" ? " on" : "")} title={collapsed ? "Expense search" : "Search expenses across every project"} aria-current={view === "portfolio" && filter === "costs" ? "page" : undefined}>
           <Icon name="search" size={17} />
@@ -1260,7 +1266,7 @@ function NextUp({ stage, mgmt, setMgmt, address, by, addLog, onGo, onUploadDoc, 
     </section>
   );
 }
-function ProjectOverview({ address, mapsKey, folderId, photosUrl, setPhotosUrl, sqft, yearBuilt, arv, purchase, stage, mgmt, setMgmt, m, deal, mao, uwBaseline, actuals, actualSale, analysisDate, health, onGo, userEmail, addLog, onUploadDoc, openAttachment, connected, uw, setActuals, position }) {
+function ProjectOverview({ address, mapsKey, folderId, photosUrl, setPhotosUrl, sqft, yearBuilt, arv, purchase, stage, mgmt, setMgmt, m, deal, mao, uwBaseline, actuals, actualSale, analysisDate, health, onGo, userEmail, addLog, onUploadDoc, openAttachment, connected, uw, setActuals, position, directory, onDirAdd, onOpenDirectory }) {
   const today = todayISO();
   const [posOpen, setPosOpen] = useState(false);
   const pos = positionToday({ actuals, mgmt, uw: uw || {}, m, stage, today });
@@ -1675,7 +1681,7 @@ function ProjectOverview({ address, mapsKey, folderId, photosUrl, setPhotosUrl, 
             </div>
             {cx.map(dateRow)}
           </OvCard>
-          <ContactsPanel contacts={mgmt.contacts || []} upd={upd} />
+          <ContactsPanel contacts={mgmt.contacts || []} upd={upd} directory={directory} onDirAdd={onDirAdd} onOpenDirectory={onOpenDirectory} />
           <OvCard icon="pulse" title="Recent activity" onOpen={() => onGo("manage")} openLabel="Activity log">
             {log.length === 0 && <div className="dcard-empty">Stage changes and updates show up here.</div>}
             {log.map((l) => (

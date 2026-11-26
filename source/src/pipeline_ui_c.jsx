@@ -889,14 +889,24 @@ function KeyDates({ mgmt, analysisDate }) {
     </Panel>
   );
 }
-function ContactsPanel({ contacts, upd }) {
+function ContactsPanel({ contacts, upd, directory, onDirAdd, onOpenDirectory }) {
   const blank = { role: CONTACT_ROLES[0], name: "", company: "", phone: "", email: "" };
   const [d, setD] = useState(blank);
   const [adding, setAdding] = useState(false);
   const add = () => {
     if (!d.name.trim() && !d.company.trim()) return;
-    upd("contacts", [...contacts, { ...d, id: uid() }]);
+    const c = { ...d, name: d.name.trim(), company: d.company.trim(), phone: d.phone.trim(), email: d.email.trim(), id: uid() };
+    upd("contacts", [...contacts, c]);
+    if (onDirAdd) onDirAdd(c); // the team's contacts get it too
     setD(blank);
+    setAdding(false);
+  };
+  // v78: pick someone from the team's contacts
+  const dir = ((directory && directory.contacts) || []).filter((x) => !contacts.some((c) => (c.dirId && c.dirId === x.id) || ctMatch(c, x))).sort((a, b) => ctLabel(a).localeCompare(ctLabel(b)));
+  const pick = (id) => {
+    const x = dir.find((y) => y.id === id);
+    if (!x) return;
+    upd("contacts", [...contacts, { role: x.role || "Other", name: x.name || "", company: x.company || "", phone: x.phone || "", email: x.email || "", id: uid(), dirId: x.id }]);
     setAdding(false);
   };
   return (
@@ -941,6 +951,25 @@ function ContactsPanel({ contacts, upd }) {
       ))}
       {adding && (
         <div style={{ marginTop: 8 }}>
+          {dir.length > 0 && (
+            <div className="ct-pick">
+              <select value="" onChange={(e) => e.target.value && pick(e.target.value)} aria-label="From the team's contacts">
+                <option value="">From the team's contacts…</option>
+                {CONTACT_ROLES.filter((r) => dir.some((x) => (x.role || "Other") === r)).map((r) => (
+                  <optgroup key={r} label={r}>
+                    {dir
+                      .filter((x) => (x.role || "Other") === r)
+                      .map((x) => (
+                        <option key={x.id} value={x.id}>
+                          {x.name && x.company ? `${x.name}, ${x.company}` : ctLabel(x)}
+                        </option>
+                      ))}
+                  </optgroup>
+                ))}
+              </select>
+              <span>or add someone new:</span>
+            </div>
+          )}
           <div className="field-grid-2" style={grid2}>
             <SelectIn label="Role" value={d.role} onChange={(v) => setD({ ...d, role: v })} options={CONTACT_ROLES} />
             <TextIn label="Name" value={d.name} onChange={(v) => setD({ ...d, name: v })} autoFocus />
@@ -948,7 +977,8 @@ function ContactsPanel({ contacts, upd }) {
             <TextIn label="Phone" value={d.phone} onChange={(v) => setD({ ...d, phone: v })} />
           </div>
           <TextIn label="Email" value={d.email} onChange={(v) => setD({ ...d, email: v })} onKeyDown={(e) => e.key === "Enter" && add()} />
-          <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+          <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", alignItems: "center" }}>
+            {onDirAdd && <span className="ct-hint">Saved to the team's contacts too</span>}
             <button onClick={() => setAdding(false)} style={smallBtn(T.glass, T.txtDim)}>
               Cancel
             </button>
@@ -957,6 +987,11 @@ function ContactsPanel({ contacts, upd }) {
             </button>
           </div>
         </div>
+      )}
+      {onOpenDirectory && !adding && (
+        <button className="link-btn ct-all" onClick={onOpenDirectory}>
+          All contacts <Icon name="chevron" size={13} />
+        </button>
       )}
     </OvCard>
   );

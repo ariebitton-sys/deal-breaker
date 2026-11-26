@@ -32,6 +32,8 @@ const ledgerIndexEntry = (d, mt, fallbackName) => ({
     Array.isArray(a.items) && a.items.length ? a.items.map((it) => [String(it.label || ""), Number(it.amount) || 0]) : null,
     (a.files || []).length,
   ]),
+  // v78: the people on the deal, for Contacts
+  c: ((d.mgmt && d.mgmt.contacts) || []).filter((x) => x && (x.name || x.company)).map((x) => [x.role || "", x.name || "", x.company || "", x.phone || "", x.email || "", x.dirId || ""]),
 });
 const COST_STAGES = [
   ["all", "All stages"],

@@ -78,6 +78,8 @@ const ICONS = {
   contract: "M6 3h9l4 4v14H6zM14 3v5h5M9 14h6M9 17h4",
   scan: "M11 4a7 7 0 1 0 0 14 7 7 0 0 0 0-14zM20 20l-4-4M8 11h6M11 8v6",
   arrow: "M5 12h14M13 6l6 6-6 6",
+  phone: "M5 4h4l2 5-2.5 1.5a11 11 0 0 0 5 5L15 13l5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2",
+  mail: "M3 6h18v12H3zM3 7l9 6 9-6",
 };
 function Icon({ name, size = 16, stroke = 1.8, style }) {
   return (

@@ -2280,6 +2280,14 @@ function App() {
     setSettings(s);
   };
   const [teamFile, setTeamFile] = useState(null); // the team settings file in the deals folder: {id, modifiedTime, by}
+  // v78: the team's contacts directory, a file in the deals folder: { id, mt, contacts }
+  const [directory, setDirectoryState] = useState(readDirCache);
+  const directoryRef = useRef(directory);
+  const setDirectory = (d) => {
+    directoryRef.current = d;
+    setDirectoryState(d);
+    writeDirCache(d);
+  };
   const [teamSetup, setTeamSetup] = useState(null); // signed in without a deals folder: {status: "searching"|"notfound"|"error"}
   const [showSettings, setShowSettings] = useState(false);
   // Google access token: valid for about an hour. Kept in localStorage with its expiry so a refresh,
@@ -2434,7 +2442,20 @@ function App() {
     try {
       const all = await withAuthRetry((tok) => driveList(token || tok, settingsRef.current.folderId));
       const team = all.find((f) => f.name === TEAM_FILE);
-      const files = all.filter((f) => f.name !== TEAM_FILE);
+      const files = all.filter((f) => f.name !== TEAM_FILE && f.name !== CONTACTS_FILE);
+      const dirF = all.find((f) => f.name === CONTACTS_FILE);
+      const cur = directoryRef.current;
+      if (!dirF) {
+        if (cur && cur.id) setDirectory({ id: null, mt: null, contacts: [] }); // removed from the folder
+        else if (!cur) setDirectory({ id: null, mt: null, contacts: [] });
+      } else if (!cur || cur.id !== dirF.id || cur.mt !== dirF.modifiedTime) {
+        try {
+          const content = await withAuthRetry((tok) => driveRead(token || tok, dirF.id));
+          setDirectory({ id: dirF.id, mt: dirF.modifiedTime, contacts: (content && Array.isArray(content.contacts) ? content.contacts : []).filter((c) => c && c.id) });
+        } catch (e) {
+          console.error(e);
+        }
+      }
       if (!team) setTeamFile(null);
       else if (team.modifiedTime === settingsRef.current.teamSync)
         setTeamFile({ id: team.id, modifiedTime: team.modifiedTime, by: team.lastModifyingUser ? team.lastModifyingUser.displayName || team.lastModifyingUser.emailAddress : "" });
@@ -2597,6 +2618,51 @@ function App() {
     } catch (e) {
       setDriveMsg("❌ Couldn't share the keys with the team: " + e.message);
     }
+  };
+  // The contacts directory: read the latest copy, apply the change, write it back (two people may edit it)
+  const saveDirectory = async (mutate) => {
+    const s = settingsRef.current;
+    if (!s.folderId || !accessToken) throw new Error("connect Google first");
+    return withAuthRetry(async (tok) => {
+      let cur = directoryRef.current;
+      let id = cur && cur.id;
+      if (!id) {
+        const all = await driveList(tok, s.folderId);
+        const f = all.find((x) => x.name === CONTACTS_FILE);
+        if (f) id = f.id;
+      }
+      let base = (cur && cur.contacts) || [];
+      if (id) {
+        try {
+          const latest = await driveRead(tok, id);
+          base = latest && Array.isArray(latest.contacts) ? latest.contacts.filter((c) => c && c.id) : [];
+        } catch (e) {
+          if (e.status !== 404) throw e;
+          id = null;
+        }
+      }
+      const next = mutate(base);
+      const data = {
+        kind: "deal-breaker-contacts",
+        v: 1,
+        note: "The Kappa team's contacts, read and written by Deal Breaker (Contacts).",
+        contacts: next,
+        updatedBy: userEmailRef.current || "",
+        updatedAt: new Date().toISOString(),
+      };
+      const res = id ? await driveUpdateFull(tok, id, data, { name: CONTACTS_FILE }) : await driveCreate(tok, s.folderId, CONTACTS_FILE, data, { dbContacts: "1" });
+      const d = { id: res.id, mt: res.modifiedTime, contacts: next };
+      setDirectory(d);
+      return d;
+    });
+  };
+  // a contact added on a deal joins the directory too, unless it's already there
+  const addToDirectory = (c) => {
+    if (!c || !(c.name || c.company) || !accessToken || !settingsRef.current.folderId) return;
+    if (((directoryRef.current && directoryRef.current.contacts) || []).some((x) => ctMatch(x, c))) return;
+    saveDirectory((cur) => (cur.some((x) => ctMatch(x, c)) ? cur : [...cur, { role: c.role || "Other", name: c.name || "", company: c.company || "", phone: c.phone || "", email: c.email || "", notes: "", id: uid(), addedAt: new Date().toISOString() }])).catch((e) =>
+      setDriveMsg("❌ The contact is on the deal, but couldn't be added to the team's contacts (" + e.message + ")"),
+    );
   };
   // Lien waiver settings (the signing service, the defaults): kept in this browser and in the team settings file,
   // next to the team's keys (which are left as the team has them)
@@ -3305,12 +3371,13 @@ function App() {
     return () => clearTimeout(t);
   }, [ledgerIndex]);
   const costsOpen = view === "portfolio" && normDash(pfFilter) === "costs";
+  const contactsOpen = view === "portfolio" && normDash(pfFilter) === "contacts";
   useEffect(() => {
-    if (!costsOpen || !accessToken || !driveFiles.length) return;
+    if (!(costsOpen || contactsOpen) || !accessToken || !driveFiles.length) return;
     const ids = new Set(driveFiles.map((f) => f.id));
     if (Object.keys(ledgerIndex).some((id) => !ids.has(id)))
       setLedgerIndex((ix) => Object.fromEntries(Object.entries(ix).filter(([id]) => ids.has(id)))); // deleted deals
-    const toRead = driveFiles.filter((f) => !ledgerIndex[f.id] || ledgerIndex[f.id].mt !== f.modifiedTime);
+    const toRead = driveFiles.filter((f) => !ledgerIndex[f.id] || ledgerIndex[f.id].mt !== f.modifiedTime || !ledgerIndex[f.id].c);
     if (!toRead.length) return;
     let cancelled = false;
     const queue = [...toRead];
@@ -3335,7 +3402,16 @@ function App() {
       cancelled = true;
       setIndexBusy(null);
     };
-  }, [costsOpen, accessToken, driveFiles]);
+  }, [costsOpen, contactsOpen, accessToken, driveFiles]);
+  // a deal's contacts linked to the directory take its latest details
+  useEffect(() => {
+    const dir = directory && directory.contacts;
+    if (!dir || !dir.length) return;
+    setMgmt((mm) => {
+      const next = syncDealContacts(mm.contacts || [], dir);
+      return next ? { ...mm, contacts: next } : mm;
+    });
+  }, [directory, mgmt.contacts]);
   const openCostResult = async (fid, entryId, item) => {
     const f = driveFiles.find((x) => x.id === fid);
     if (!f) return;
@@ -4507,7 +4583,7 @@ function App() {
             setPfFilter(k);
             goPortfolio();
           }}
-          counts={{ ...navCounts, tasks: allTasks.length }}
+          counts={{ ...navCounts, tasks: allTasks.length, contacts: ((directory && directory.contacts) || []).length }}
           project={
             view !== "deal" && address.trim()
               ? {
@@ -4563,6 +4639,24 @@ function App() {
             onOpenSchedule={(t) => openTaskProject(t.fid, "schedule")}
             onOpenLiens={(t) => openTaskProject(t.fid, "liens")}
             focus={taskFocus}
+          />
+        ) : view === "portfolio" && normDash(pfFilter) === "contacts" ? (
+          <ContactsScreen
+            directory={directory}
+            projects={driveFiles.map((f) => {
+              const live = loadedRef.current && loadedRef.current.id === f.id;
+              const ix = ledgerIndex[f.id];
+              const cs = live ? mgmt.contacts || [] : ix && ix.c ? ix.c.map(([role, name, company, phone, email, dirId]) => ({ role, name, company, phone, email, dirId })) : [];
+              return { fid: f.id, address: (live && address.trim()) || (ix && ix.ad) || f.name.replace(/\.json$/i, ""), st: live ? stage : (summaries[f.id] && summaries[f.id].st) || (ix && ix.st), contacts: cs };
+            })}
+            busy={indexBusy}
+            connected={!!accessToken && !!settings.folderId}
+            onSave={saveDirectory}
+            onConnect={signIn}
+            onOpenProject={(fid) => {
+              const f = driveFiles.find((x) => x.id === fid);
+              if (f) openFromPortfolio(f);
+            }}
           />
         ) : view === "portfolio" && normDash(pfFilter) === "costs" ? (
           <CostSearch
@@ -4660,6 +4754,12 @@ function App() {
             uw={posUw}
             setActuals={setActuals}
             position={positionProps}
+            directory={directory}
+            onDirAdd={accessToken && settings.folderId ? addToDirectory : null}
+            onOpenDirectory={() => {
+              setPfFilter("contacts");
+              goPortfolio();
+            }}
           />
         ) : mode === "underwrite" ? (
           <React.Fragment>
