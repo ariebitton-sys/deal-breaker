@@ -156,7 +156,10 @@ const loadGroups = () => {
     return {};
   }
 };
+// v75: each cost group gets the icon and color its slice has in "Where the ARV goes"
+const GROUP_LOOK = { rehab: ["hammer", "amber"], pm: ["users", "violet"], financing: ["bank", "orange"], holding: ["clock", "gray"], buying: ["receipt", "teal"], selling: ["tag", "blue"] };
 function Group({ id, title, sub, total, totalTone, actions, children }) {
+  const look = GROUP_LOOK[id];
   const [open, setOpen] = useState(() => !!loadGroups()[id]);
   const toggle = () => {
     const n = !open;
@@ -168,6 +171,11 @@ function Group({ id, title, sub, total, totalTone, actions, children }) {
   return (
     <section className={"grp" + (open ? " open" : "")} id={"grp-" + id}>
       <div className="grp-head" onClick={toggle} role="button" tabIndex={0} aria-expanded={open} onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && (e.preventDefault(), toggle())}>
+        {look && (
+          <span className={"dp-ico grp-ico t-" + look[1]}>
+            <Icon name={look[0]} size={18} stroke={2} />
+          </span>
+        )}
         <div style={{ minWidth: 0 }}>
           <div className="grp-title">{title}</div>
           {sub && <div className="grp-sub">{sub}</div>}
@@ -196,13 +204,13 @@ function ResultsRail({ deal, m, mao, purchase, arv, investorAmount, sqft, gradeR
   const [more, setMore] = useState(false);
   const inc = deal.incomplete;
   const parts = [
-    ["Purchase", m.purchase, "#111827"],
-    ["Rehab", m.repair, "#374151"],
-    ...(m.pmFee > 0 ? [["Project manager", m.pmFee, "#4B5563"]] : []),
-    ["Financing", m.totalFinancing, "#6B7280"],
-    ["Selling", m.totalSelling, "#9CA3AF"],
-    ["Buying", m.totalBuying, "#C7CCD3"],
-    ["Holding", m.totalHolding, "#E2E5E9"],
+    ["Purchase", m.purchase, "#1E3A5F"],
+    ["Rehab", m.repair, "#FBBF24"],
+    ...(m.pmFee > 0 ? [["Project manager", m.pmFee, "#8B5CF6"]] : []),
+    ["Financing", m.totalFinancing, "#EA580C"],
+    ["Selling", m.totalSelling, "#3B82F6"],
+    ["Buying", m.totalBuying, "#14B8A6"],
+    ["Holding", m.totalHolding, "#94A3B8"],
   ];
   const profit = Math.max(0, m.netProfit || 0);
   const total = parts.reduce((s, p) => s + Math.max(0, p[1] || 0), 0) + profit;
@@ -220,7 +228,7 @@ function ResultsRail({ deal, m, mao, purchase, arv, investorAmount, sqft, gradeR
   return (
     <aside className="rail">
       <div ref={gradeRef} className="rail-grade" onMouseEnter={() => onGradeHover(true)} onMouseLeave={() => onGradeHover(false)} title="Hover to see how this grade was calculated">
-        <div className={"rail-letter" + (deal.grade === "REJECT" ? " word" : "")} style={{ color: deal.grade === "REJECT" ? T.red : T.txt }}>
+        <div className={"rail-letter" + (deal.grade === "REJECT" ? " word" : "") + (inc ? "" : " " + gradeTone(deal.grade))}>
           {deal.grade === "REJECT" ? "Reject" : deal.grade}
         </div>
         <div className="rail-grade-meta">

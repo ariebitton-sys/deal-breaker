@@ -4658,6 +4658,9 @@ function App() {
               <div className="uw-main">
                 <section className="uw-basics">
                   <div className="uw-basics-head">
+                    <span className="dp-ico t-navy">
+                      <Icon name="home" size={18} stroke={2} />
+                    </span>
                     <h2>The deal</h2>
                     <span>{arv > 0 && sqft > 0 ? `${fmt(arv / sqft)} per sq ft after repair` : ""}</span>
                   </div>

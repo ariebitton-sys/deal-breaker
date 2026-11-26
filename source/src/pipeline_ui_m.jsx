@@ -183,7 +183,10 @@ function ForecastTab({ ctx, setMgmt, addLog }) {
   return (
     <div className="fc">
       <div className="fc-head">
-        <div>
+        <span className="dp-ico t-green fc-head-ico">
+          <Icon name="trend" size={20} stroke={2} />
+        </span>
+        <div className="fc-head-t">
           <h2>Forecast</h2>
           <p>What the deal makes from here: the actual costs so far, plus each scenario's assumptions until the sale. The Flip analysis stays the plan you bought on.</p>
         </div>
@@ -207,7 +210,7 @@ function ForecastTab({ ctx, setMgmt, addLog }) {
                 </button>
               )}
             </div>
-            <div className="fc-profit">
+            <div className={"fc-profit " + gradeTone(f.grade)}>
               <span>Net profit</span>
               <b className={f.profit < 0 ? "neg" : ""}>{fmt(f.profit)}</b>
               <em className={f.profit - plan.profit < 0 ? "neg" : "pos"}>{fcSigned(f.profit - plan.profit)} vs plan · grade {f.grade}</em>
@@ -378,10 +381,12 @@ function ForecastTab({ ctx, setMgmt, addLog }) {
               </tr>
               <tr>
                 <td>Grade</td>
-                <td>{plan.grade}</td>
+                <td>
+                  <span className={"fc-grade " + gradeTone(plan.grade)}>{plan.grade}</span>
+                </td>
                 {res.map(({ sc, f }) => (
-                  <td key={sc.id} className={f.grade === "Reject" ? "neg" : ""}>
-                    {f.grade}
+                  <td key={sc.id}>
+                    <span className={"fc-grade " + gradeTone(f.grade)}>{f.grade}</span>
                   </td>
                 ))}
               </tr>

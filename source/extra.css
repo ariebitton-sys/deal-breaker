@@ -1736,3 +1736,67 @@ body.gt-printing .gt-r,body.gt-printing .gt-bar,body.gt-printing .gt-dia{break-i
 .ov-contacts .dcard-b{padding-top:4px}
 @media (min-width:1000px){.kpi-strip.n6{grid-template-columns:repeat(3,minmax(0,1fr))}.kpi-strip.n4{grid-template-columns:repeat(4,minmax(0,1fr))}}
 @media (min-width:1360px){.kpi-strip.n5{grid-template-columns:repeat(5,minmax(0,1fr))}}
+
+/* ===== v76: Flip analysis and Forecast in the new design language ===== */
+.dp-ico{flex:0 0 auto}
+.dp-ico svg,.dcard-h .dp-ico svg,.grp-head .dp-ico svg{color:inherit}
+.dp-ico.t-navy{background:#E8EEF7;color:#1E3A5F}
+.baseline{border:1px solid #E3E8EF;border-radius:16px;box-shadow:none;padding:12px 16px}
+.uw-basics{border:1px solid #E3E8EF;border-radius:18px;box-shadow:none;padding:16px 20px 6px}
+.uw-basics-head{align-items:center;justify-content:flex-start;gap:10px}
+.uw-basics-head h2{flex:1;font-size:15.5px;font-weight:700}
+.grp{border:1px solid #E3E8EF;border-top:none;box-shadow:none}
+.grp + .grp{margin-top:0}
+.uw-basics+.grp,.grp:first-child{border-top:1px solid #E3E8EF;border-radius:18px 18px 0 0}
+.grp:last-child{border-radius:0 0 18px 18px}
+.grp:only-child,.uw-basics+.grp:last-child{border-radius:18px}
+.grp-head{padding:13px 18px 13px 16px;gap:12px}
+.grp:first-child .grp-head,.uw-basics+.grp .grp-head{border-radius:18px 18px 0 0}
+.grp:last-child:not(.open) .grp-head{border-radius:0 0 18px 18px}
+.grp-title{font-size:14.5px;font-weight:650}
+.grp-total{font-weight:700}
+.rail{border:1px solid #E3E8EF;border-radius:18px;box-shadow:none}
+.rail-letter{font-size:44px;line-height:1;font-weight:800;padding:10px 14px;border-radius:14px;background:#F1F5F9;color:#334155;min-width:0;text-align:center}
+.rail-letter.word{font-size:28px;padding:14px 14px}
+.rail-letter.g-a{background:#DCFCE7;color:#166534}
+.rail-letter.g-b{background:#DBEAFE;color:#1E40AF}
+.rail-letter.g-c{background:#FEF3C7;color:#92400E}
+.rail-letter.g-d{background:#FEE2E2;color:#B91C1C}
+.rail-profit{font-weight:800}
+.rail-stats{gap:8px;padding:0;border:none;margin:14px 0 4px}
+.rail-stats>div{background:#F8FAFC;border:1px solid #EEF1F5;border-radius:12px;padding:9px 10px}
+.rail-stats b{font-size:15.5px;font-weight:700}
+.rail-bar{height:12px;gap:2px}
+.rail-legend i{width:10px;height:10px;border-radius:3px}
+@media (max-width:640px){.rail-letter{font-size:38px}}
+
+.fc-head{align-items:center;justify-content:flex-start}
+.fc-head-ico{width:42px;height:42px;border-radius:12px}
+.fc-head-t{flex:1;min-width:240px}
+.fc-head h2{font-size:22px;font-weight:800;letter-spacing:-.02em}
+.fc .dcard{border:1px solid #E3E8EF;border-radius:18px;box-shadow:none}
+.fc-card{padding:16px}
+.fc-card.main{border:2px solid #0E7C86;box-shadow:0 8px 22px rgba(14,124,134,.12);padding:15px}
+.fc-main{background:#0E7C86;border-color:#0E7C86;color:#fff}
+.fc-profit{border-radius:12px;padding:11px 13px;border:1px solid transparent}
+.fc-profit b{font-weight:800}
+.fc-profit.g-a{background:#F0FDF4;border-color:#BBF7D0}
+.fc-profit.g-b{background:#EFF6FF;border-color:#BFDBFE}
+.fc-profit.g-c{background:#FFFBEB;border-color:#FDE68A}
+.fc-profit.g-d{background:#FEF2F2;border-color:#FECACA}
+.fc .dcard-h{border-bottom:none;font-size:15.5px;font-weight:700;padding:15px 18px 10px;gap:10px}
+.fc .dcard-h>svg:first-child{width:34px;height:34px;padding:8px;box-sizing:border-box;border-radius:10px;flex:0 0 auto}
+.fc-cmp .dcard-h>svg:first-child{background:#EDE9FE;color:#6D28D9}
+.fc-sens .dcard-h>svg:first-child{background:#CCFBF1;color:#0F766E}
+.fc-tbl th.main{color:#0E7C86}
+.fc-tbl tr.fc-net td{background:#F8FAFC}
+.fc-grid td.base{background:#E6F4F5;color:#0B5F66}
+.fc-cmp,.fc-sens{overflow:hidden}
+.grp-head>div:first-of-type{flex:1}
+.rail-stats em{font-size:11px}
+.fc-grade{display:inline-block;font-size:12px;font-weight:700;border-radius:999px;padding:2px 10px;background:#F1F5F9;color:#334155}
+.fc-grade.g-a{background:#DCFCE7;color:#166534}
+.fc-grade.g-b{background:#DBEAFE;color:#1E40AF}
+.fc-grade.g-c{background:#FEF3C7;color:#92400E}
+.fc-grade.g-d{background:#FEE2E2;color:#B91C1C}
+@media (max-width:640px){.baseline{align-items:flex-start}.baseline>div{flex:1 1 200px!important}}

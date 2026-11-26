@@ -529,6 +529,9 @@ function BaselineBanner({ uwBaseline, current, grade, stage, onRefreeze, onFreez
   if (!uwBaseline)
     return stage && stage !== "analyzing" && stage !== "dead" && onFreeze ? (
       <div className="no-print baseline">
+        <span className="dp-ico t-amber">
+          <Icon name="alert" size={18} stroke={2} />
+        </span>
         <div style={{ flex: "1 1 300px", fontSize: 13.5, color: T.txtDim, lineHeight: 1.5 }}>
           <b style={{ color: T.txt, fontWeight: 600 }}>No original plan is saved for this deal.</b> Save the current numbers ({fmt(current)}, {grade}) as the plan first, then update the forecast; the overview and dashboards will show the change against it.
         </div>
@@ -541,6 +544,9 @@ function BaselineBanner({ uwBaseline, current, grade, stage, onRefreeze, onFreez
   const changed = Math.abs(diff) >= 1;
   return (
     <div className="no-print baseline">
+      <span className="dp-ico t-violet">
+        <Icon name="calc" size={18} stroke={2} />
+      </span>
       <div style={{ flex: "1 1 300px", fontSize: 13.5, color: T.txtDim, lineHeight: 1.5 }}>
         <b style={{ color: T.txt, fontWeight: 600 }}>Original underwriting</b>, frozen {fmtDate(uwBaseline.date)}
         {uwBaseline.by ? ` by ${nameOnly(uwBaseline.by)}` : ""}: <b style={{ color: T.txt, fontWeight: 600 }}>{fmt(uwBaseline.m.netProfit)}</b> ({uwBaseline.grade}).
