@@ -810,7 +810,7 @@ function LienTab({ mgmt, setMgmt, addLog, userEmail, address, cfg, onSaveCfg, up
           <FinText className="lw-in" value={L.county || ""} onCommit={(v) => setL(() => ({ county: v.trim() }))} placeholder={st === "IN" ? "e.g. Marion" : "e.g. Cuyahoga"} aria-label="County" />
         </label>
         <div className="lw-f">
-          <span>Waivers from subs and suppliers paid</span>
+          <span title="Subs and suppliers paid at least this much from a payment sign a waiver for it">Waivers from subs paid at least</span>
           <FinNum value={num(L.threshold)} onCommit={(v) => setL(() => ({ threshold: Math.max(0, Math.round(v)) }))} prefix="$" label="Threshold" />
         </div>
         <div className="lw-f">

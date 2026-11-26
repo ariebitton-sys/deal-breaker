@@ -1450,7 +1450,10 @@ body.gt-printing .gt-r,body.gt-printing .gt-bar,body.gt-printing .gt-dia{break-i
 .lw-msg.bad{background:#FEF2F2;border-color:#FECACA;color:#991B1B}
 .lw-start{display:flex;flex-direction:column;align-items:flex-start;gap:10px;padding:22px 24px;font-size:13.5px;color:var(--mut);line-height:1.55}
 .lw-start b{color:var(--ink);font-size:14.5px}
-.lw-setup{display:grid;grid-template-columns:1.4fr 1fr 1fr 1.3fr 1.2fr;gap:14px 20px;padding:14px 18px;align-items:start}
+.lw-setup{display:grid;grid-template-columns:1.4fr 1fr 1.2fr 1.3fr 1.2fr;gap:14px 20px;padding:14px 18px;align-items:start}
+.lw-setup>.lw-f>span:first-child{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.lw-setup>.lw-f>.link-btn{align-self:flex-start}
+.lw-setup .fin-in input{padding-top:6px;padding-bottom:6px}
 .lw-f{display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--soft);font-weight:500;min-width:0}
 .lw-f input,.lw-f .fin-in input,.lw-f select{font-size:13px}
 .lw-f>input,.lw-f>select,.lw-pr select,.lw-subrow select,.lw-sel{border:1px solid var(--line2);border-radius:7px;padding:6px 8px;font-size:13px;color:var(--ink);background:#fff;color-scheme:light;min-width:0}
