@@ -1,6 +1,6 @@
-// v72: Lien waivers. The rules (which waivers each payment to the contractor needs), the documents and their
+// v72–v73: Lien waivers. The rules (which waivers each payment to the contractor needs), the documents and their
 // fingerprint, the PDF, the tasks; and the tab: set up from the team defaults, parties, payments, e-signature
-// through the n8n signing service (mocked), filing the signed PDF in Drive, Kappa's signature, paper uploads,
+// through the n8n signing service (mocked), filing the signed PDF in Drive, paper uploads,
 // paying with and without the waivers, team settings.
 const fs = require("fs"),
   vm = require("vm"),
@@ -50,8 +50,7 @@ const L = {
   owner: "Kappa Flips LLC",
   county: "Marion",
   threshold: 1000,
-  countersign: true,
-  signer: { name: "Arie Bitton", title: "Managing member", email: "arie@kappainv.com" },
+  signer: { name: "Arie Bitton", email: "arie@kappainv.com" },
   parties: [
     { id: "gc", role: "contractor", company: "Mauricio Construction LLC", name: "Mauricio Lopez", email: "m@example.com" },
     { id: "el", role: "sub", company: "Bright Electric", email: "e@example.com" },
@@ -95,9 +94,9 @@ assert(F.Owner === "Kappa Flips LLC" && F.Claimant === "Bright Electric" && F["P
 assert(/has received a progress payment from Mauricio Construction LLC in the sum of \$6,000/.test(doc.paras[0]) && /has been paid for that work/.test(doc.paras[1]), "the wording: received, and its own subs and suppliers paid");
 const fin = lwDoc(L, R.find((r) => r.key === "uf|gc|final"), { address: "x", state: "IN" });
 assert(fin.title === "Unconditional Waiver and Release on Final Payment" && Object.fromEntries(fin.fields)["Total paid"] === "$66,000" && Object.fromEntries(fin.fields)["Disputed claims"] === "None", "the final unconditional: total paid, disputed claims");
-let pdf = lwPdfBuild(FakePdf, doc, { claimant: null, claimantCompany: "Bright Electric", kappaLine: true, owner: "Kappa Flips LLC", ref: "" });
-assert(pdf.texts[0] === doc.title && pdf.texts.includes("CLAIMANT") && pdf.texts.includes("RECEIVED ON BEHALF OF THE OWNER, KAPPA FLIPS LLC") && !pdf.texts.some((x) => /Signed electronically/.test(x)), "the PDF to sign on paper: blank lines for the claimant and the owner");
-pdf = lwPdfBuild(FakePdf, doc, { claimant: { company: "Bright Electric", name: "Dana Volt", title: "Owner", at: "2026-11-20T15:04:00Z", sig: "", email: "e@example.com", ip: "203.0.113.7", ua: "Safari" }, kappaLine: false, ref: "tok1", esign: true });
+let pdf = lwPdfBuild(FakePdf, doc, { claimant: null, claimantCompany: "Bright Electric", ref: "", logo: "data:image/png;base64,LOGO" });
+assert(pdf.images[0] === "data:image/png;base64,LOGO" && pdf.texts[0] === doc.title && pdf.texts.includes("CLAIMANT") && !pdf.texts.some((x) => /OWNER/.test(x) && /RECEIVED/.test(x)) && !pdf.texts.some((x) => /Signed electronically/.test(x)), "the PDF to sign on paper: Kappa's logo on top, a line for the claimant only");
+pdf = lwPdfBuild(FakePdf, doc, { claimant: { company: "Bright Electric", name: "Dana Volt", title: "Owner", at: "2026-11-20T15:04:00Z", sig: "", email: "e@example.com", ip: "203.0.113.7", ua: "Safari" }, ref: "tok1", esign: true, logo: "" });
 assert(pdf.texts.includes("/s/ Dana Volt") && pdf.texts.some((x) => /Signed electronically by Dana Volt \(e@example\.com\) on 2026-11-20 15:04 UTC from IP 203\.0\.113\.7/.test(x)) && pdf.texts.some((x) => x.includes(doc.hash)), "e-signed with a typed name: /s/ Dana Volt, the audit line, the fingerprint");
 
 console.log("3. Tasks");
@@ -105,7 +104,7 @@ const mg = { liens: { ...L, waivers: [{ id: "w9", key: "cp|gc|p1", kind: "cp", p
 let tk = lwTasks({ liens: L }, "rehab", "2026-11-05");
 assert(tk.some((x) => x.id === "lw-pay-p1" && x.due === "2026-11-10" && /before payment 1: 1 of 1 not signed/.test(x.label)) && !tk.some((x) => x.id === "lw-pay-p2"), "a payment within 10 days with a waiver missing: a task; the later one waits");
 tk = lwTasks(mg, "rehab", "2026-11-05");
-assert(!tk.some((x) => x.id === "lw-pay-p1") && tk.some((x) => x.id === "lw-cs-w9" && x.who === "Arie Bitton"), "once the contractor signed: no task for the payment, one for Arie to sign for Kappa");
+assert(!tk.some((x) => x.id === "lw-pay-p1") && !tk.some((x) => /Sign for Kappa/.test(x.label)), "once the contractor signed: no task for the payment, and nothing for Kappa to sign");
 assert(lwTasks({}, "rehab", "2026-11-05").length === 0 && lwTasks(mg, "analyzing", "2026-11-05").length === 0, "no lien waivers, or a deal in analysis: none");
 
 // ---------- the app ----------
@@ -128,7 +127,7 @@ const deal = {
 };
 const N8N = "https://kappa.app.n8n.cloud/webhook/kappa-lien-waivers";
 const KEY = "k3y";
-const lienCfg = { url: N8N, key: KEY, owner: "Kappa Flips LLC", threshold: 1000, countersign: true, signer: { name: "Arie Bitton", title: "Managing member", email: "arie@kappainv.com" } };
+const lienCfg = { url: N8N, key: KEY, owner: "Kappa Flips LLC", threshold: 1000, signer: { name: "Arie Bitton", email: "arie@kappainv.com" } };
 
 (async () => {
   const drive = makeDrive();
@@ -177,7 +176,7 @@ const lienCfg = { url: N8N, key: KEY, owner: "Kappa Flips LLC", threshold: 1000,
   assert([...d.querySelectorAll(".ptabs button")].some((b) => b.textContent === "Lien waivers"), "a Lien waivers tab");
   await click(nav(/^Lien waivers/));
   await click(btn("Set up lien waivers", LW()));
-  assert(LW().querySelector('[aria-label="Owner of record"]').value === "Kappa Flips LLC" && /Arie Bitton/.test(LW().querySelector(".lw-signer").textContent) && /On: sent by email/.test(LW().textContent), "set up: the team's owner LLC, Arie signs for Kappa, e-signature on");
+  assert(LW().querySelector('[aria-label="Owner of record"]').value === "Kappa Flips LLC" && /Arie Bitton/.test(LW().querySelector(".lw-signer").textContent) && /On: sent by email/.test(LW().textContent), "set up: the team's owner LLC, sent by Arie, e-signature on");
   const pr = () => [...LW().querySelectorAll(".lw-pr")];
   assert(pr().length === 1 && pr()[0].querySelector('[aria-label="Company"]').value === "Mauricio Construction LLC" && pr()[0].querySelector("select").value === "contractor", "the contractor from the contacts");
   await click(btn(/Add$/, LW().querySelectorAll(".lw-card")[0]));
@@ -210,20 +209,8 @@ const lienCfg = { url: N8N, key: KEY, owner: "Kappa Flips LLC", threshold: 1000,
   await sleep(30);
   await settle(8);
   const filed = Object.values(drive.files).find((f) => /lien waiver — Mauricio Construction LLC — Conditional \$18,000/.test(f.name));
-  assert(filed && /Signed electronically by Mauricio Lopez \(m@example\.com\)/.test(filed.content) && /RECEIVED ON BEHALF OF THE OWNER/.test(filed.content), "the signed PDF filed in Drive, with the audit line and Kappa's line");
-  assert(/Signed .* waiting for Arie Bitton/.test(row(k1).querySelector(".lw-st").textContent) && btn("Sign for Kappa", row(k1)), "status: signed, waiting for Arie, who can sign for Kappa");
-
-  console.log("7. Arie signs for Kappa");
-  await click(btn("Sign for Kappa", row(k1)));
-  const sb = btn(/^Sign$/, d.body);
-  assert(sb.disabled, "Sign waits for the box to be ticked");
-  await click([...d.querySelectorAll(".lw-check input")].pop());
-  await click(btn(/^Sign$/, d.body));
-  await sleep(30);
-  await settle(8);
-  const files = Object.values(drive.files).filter((f) => /lien waiver — Mauricio Construction LLC/.test(f.name));
-  assert(files.length === 1 && /Signed for the Owner in Deal Breaker by Arie Bitton \(arie@kappainv\.com\)/.test(files[0].content) && /SIG/.test(pdfs[pdfs.length - 1].images.join()), "a new PDF with both signatures replaces the first one");
-  assert(/^Signed /.test(row(k1).querySelector(".lw-st").textContent) && !/waiting/.test(row(k1).querySelector(".lw-st").textContent) && /Ready to pay/.test(pay(0).textContent), "complete: payment 1 is ready to pay");
+  assert(filed && /Signed electronically by Mauricio Lopez \(m@example\.com\)/.test(filed.content) && !/RECEIVED ON BEHALF OF THE OWNER/.test(filed.content) && /SIG/.test(pdfs[pdfs.length - 1].images.join()) && /^data:image\/png;base64,iVBOR/.test(pdfs[pdfs.length - 1].images[0]), "the signed PDF filed in Drive: Kappa's logo, the signature and the audit line, no line for the owner");
+  assert(/^Signed /.test(row(k1).querySelector(".lw-st").textContent) && !/waiting/.test(row(k1).querySelector(".lw-st").textContent) && ![...LW().querySelectorAll("button")].some((b) => /Sign for Kappa/.test(b.textContent)) && /Ready to pay/.test(pay(0).textContent), "signed: done, nothing for Kappa to sign, payment 1 is ready to pay");
 
   console.log("8. Pay, on paper, and paying without");
   await type(pay(0).querySelector('[aria-label="What this payment covers"]'), "Demo and framing");

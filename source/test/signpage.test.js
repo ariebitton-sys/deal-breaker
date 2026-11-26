@@ -49,6 +49,7 @@ const $ = (w, id) => w.doc.getElementById(id);
   await sleep(50);
   assert(seen === API + "-doc?t=tok123", "asks the service for the document by its token");
   assert($(w, "title").textContent === "Conditional Waiver and Release on Progress Payment" && /Arie Bitton at Kappa Real Estate Investments asks Mauricio Construction LLC to sign/.test($(w, "intro").textContent), "shows the waiver and who asks");
+  assert(w.doc.querySelector(".brand img") && w.doc.querySelector(".brand img").getAttribute("src") === "kappa-logo.png" && require("fs").existsSync(require("path").join(__dirname, "..", "..", "kappa-logo.png")), "Kappa's logo on top of the page");
   assert([...w.doc.querySelectorAll("dt")].map((x) => x.textContent).includes("Covers work through") && w.doc.querySelectorAll("p.para").length === 3, "the fields and the paragraphs");
   assert($(w, "name").value === "Mauricio Lopez" && $(w, "sign").disabled, "the name filled in; Sign off until they agree");
   $(w, "jobtitle").value = "Owner";

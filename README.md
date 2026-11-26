@@ -7,6 +7,7 @@ Fix-and-flip deal analysis and flip management for Kappa Real Estate Investments
 ## How it's hosted
 
 - `index.html` at the root of this repo is the whole app (one self-contained file). GitHub Pages serves it.
+- `sign.html` is the public page where contractors, subs and suppliers e-sign lien waivers; `kappa-logo.png` is its logo. Both are written by the build.
 - Every push to `main` updates the live app within a minute or two. Refresh the page to get the new version; the version number is shown in the footer.
 - No keys or IDs live in this repo. Google sign-in, the Drive folder, the Claude API key and the Maps key are entered in the app's Settings and stay in each user's browser. Deals are stored in Google Drive.
 

@@ -37,6 +37,10 @@ html = head + read('logo.html') + '<script>' + js + '</script></body></html>'
 open(OUT, 'w', encoding='utf-8').write(html)
 # the public page where contractors sign lien waivers (served next to the app)
 open(os.path.join(HERE, '..', 'sign.html'), 'w', encoding='utf-8').write(read('sign.html'))
+# Kappa's logo for the signing page: the same image the app embeds
+import base64, re as _re
+_logo = _re.search(r'base64,([A-Za-z0-9+/=]+)', read('logo.html')).group(1)
+open(os.path.join(HERE, '..', 'kappa-logo.png'), 'wb').write(base64.b64decode(_logo))
 
 r = subprocess.run(['node', '--check', js_path], capture_output=True, text=True)
 print('node --check:', 'OK' if r.returncode == 0 else r.stderr[:500])

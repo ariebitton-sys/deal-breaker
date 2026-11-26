@@ -1,17 +1,18 @@
 // ============================================================================
 // v72 — LIEN WAIVERS: what has to be waived before each payment to the contractor, the documents, the
-// signatures (e-signed through Kappa's signing service in n8n, or on paper), and Kappa's countersignature
+// signatures (e-signed through Kappa's signing service in n8n, or on paper). Only the claimant signs a waiver.
 // ============================================================================
-// mgmt.liens = { owner, county, threshold, countersign, signer {name,title,email}, parties, payments, waivers }
+// mgmt.liens = { owner, county, threshold, signer {name,email}, parties, payments, waivers }
+//   signer = who the waivers are sent by: named in the emails, and told when one is signed
 //   parties  [{ id, role: "contractor" | "sub" | "supplier", company, name, email, phone, trade }]
 //   payments [{ id, amount, note, planned, through, final, paidOn, subs: [{ id, party, amount }], override }]
 //            to the general contractor, in order; subs = who the contractor paid from it: they waive before the next one
 //            note = what the payment covers; it goes into the Expenses line made when the payment is marked paid
 //   waivers  [{ id, key, kind, party, payment, about, amount, through, status, via, token, sentAt, signedAt, signer, kappa, file, hash }]
 //            kind cp / up: conditional / unconditional on a progress payment; cf / uf: on the final payment.
-//            status sent → signed (waiting for Kappa's countersignature) → complete; void when replaced or cancelled
+//            status sent → complete once signed ("signed" in deals from v72: the same); void when replaced or cancelled
 // The team's defaults and the signing service (settings.lienCfg, kept in the team settings file):
-//   { url, key, owner, threshold, countersign, signer {name,title,email} }
+//   { url, key, owner, threshold, signer {name,email} }
 const LW_STAGES = ["contract", "rehab", "market", "sold"];
 const LW_THRESHOLD = 1000;
 const LW_KINDS = {
@@ -28,8 +29,7 @@ const LW_ROLES = [
 const LW_STATE_NAME = { IN: "Indiana", OH: "Ohio" };
 const LW_JSPDF = "https://unpkg.com/jspdf@2.5.2/dist/jspdf.umd.min.js";
 const LW_SIGN_PAGE = "https://ariebitton-sys.github.io/deal-breaker/sign.html";
-const LW_SIG_KEY = "kappa_lw_sig_v1"; // the Kappa signer's adopted signature, in this browser
-const lwEmpty = () => ({ owner: "", county: "", threshold: LW_THRESHOLD, countersign: true, signer: null, parties: [], payments: [], waivers: [] });
+const lwEmpty = () => ({ owner: "", county: "", threshold: LW_THRESHOLD, signer: null, parties: [], payments: [], waivers: [] });
 const lwOf = (mg) => ({ ...lwEmpty(), ...((mg && mg.liens) || {}) });
 const lwState = (address) => {
   const m = String(address || "").match(/,\s*([A-Z]{2})\s+\d{5}/);
@@ -218,13 +218,22 @@ function lwLoadPdf() {
     document.head.appendChild(s);
   });
 }
-// o: { claimant {company,name,title,at,sig,email,ip,ua} | null, claimantCompany, kappaLine, kappa {name,title,at,sig,email} | null, owner, ref, esign }
+// o: { claimant {company,name,title,at,sig,email,ip,ua} | null, claimantCompany, ref, esign, logo (data URL; Kappa's logo by default) }
 function lwPdfBuild(JsPDF, doc, o) {
   const pdf = new JsPDF({ unit: "pt", format: "letter" });
   const M = 56,
     W = 612 - 2 * M,
     BOT = 742;
   let y = 64;
+  const logo = o.logo !== undefined ? o.logo : typeof window !== "undefined" ? window._KAPPA_LOGO : "";
+  if (logo) {
+    try {
+      const ip = pdf.getImageProperties ? pdf.getImageProperties(logo) : null;
+      const lh = 36;
+      pdf.addImage(logo, "PNG", M, 36, ip && ip.height ? (lh * ip.width) / ip.height : 85, lh);
+      y = 104;
+    } catch (e) {}
+  }
   const room = (h) => {
     if (y + h > BOT) {
       pdf.addPage();
@@ -309,7 +318,6 @@ function lwPdfBuild(JsPDF, doc, o) {
     y += 8;
   };
   block("CLAIMANT", o.claimant, (o.claimant && o.claimant.company) || o.claimantCompany || "");
-  if (o.kappaLine) block(`RECEIVED ON BEHALF OF THE OWNER${o.owner ? `, ${String(o.owner).toUpperCase()}` : ""}`, o.kappa, null);
   const grey = [120, 128, 140];
   if (o.esign && o.claimant) {
     const c = o.claimant;
@@ -320,7 +328,6 @@ function lwPdfBuild(JsPDF, doc, o) {
       grey,
     );
   }
-  if (o.kappa && o.kappa.at) write(`Signed for the Owner in Deal Breaker by ${o.kappa.name}${o.kappa.email ? ` (${o.kappa.email})` : ""} on ${lwStamp(o.kappa.at)}.`, 7.5, "normal", grey);
   write(`${o.ref ? `Document ${o.ref} · ` : ""}Text fingerprint (SHA-256): ${doc.hash}`, 7, "normal", [156, 163, 175]);
   return pdf;
 }
@@ -368,69 +375,7 @@ function lwTasks(mg, st, t) {
     const miss = after.filter((r) => !r.ok);
     if (miss.length) out.push({ ...base, id: "lw-final", lw: "final", label: `Final lien waivers: ${miss.length} of ${after.length} not signed`, due: "", dueSet: false, at: fin.paidOn });
   }
-  if (L.countersign && L.signer && L.signer.name)
-    (L.waivers || [])
-      .filter((w) => w.status === "signed")
-      .forEach((w) => {
-        const p = (L.parties || []).find((x) => x.id === w.party);
-        out.push({ ...base, id: "lw-cs-" + w.id, lw: "cs", who: L.signer.name, label: `Sign for Kappa: the lien waiver from ${lwName(p)}`, due: "", dueSet: false, at: String(w.signedAt || t).slice(0, 10) });
-      });
   return out;
-}
-
-// ---------- a signature: drawn, or the typed name ----------
-function SignPad({ onChange }) {
-  const ref = useRef(null);
-  const st = useRef({ on: false, dirty: false });
-  const ctx = () => (ref.current && ref.current.getContext ? ref.current.getContext("2d") : null);
-  const at = (e) => {
-    const c = ref.current,
-      r = c.getBoundingClientRect();
-    return [((e.clientX - r.left) * c.width) / (r.width || c.width), ((e.clientY - r.top) * c.height) / (r.height || c.height)];
-  };
-  const down = (e) => {
-    const c = ctx();
-    if (!c) return;
-    st.current.on = true;
-    const [x, y] = at(e);
-    c.lineWidth = 2.4;
-    c.lineCap = "round";
-    c.lineJoin = "round";
-    c.strokeStyle = "#111827";
-    c.beginPath();
-    c.moveTo(x, y);
-    try {
-      e.currentTarget.setPointerCapture(e.pointerId);
-    } catch (er) {}
-    e.preventDefault();
-  };
-  const move = (e) => {
-    if (!st.current.on) return;
-    const c = ctx();
-    const [x, y] = at(e);
-    c.lineTo(x, y);
-    c.stroke();
-    st.current.dirty = true;
-  };
-  const up = () => {
-    if (!st.current.on) return;
-    st.current.on = false;
-    if (st.current.dirty) onChange(ref.current.toDataURL("image/png"));
-  };
-  const clear = () => {
-    const c = ctx();
-    if (c) c.clearRect(0, 0, ref.current.width, ref.current.height);
-    st.current.dirty = false;
-    onChange("");
-  };
-  return (
-    <div className="lw-pad">
-      <canvas ref={ref} width={460} height={120} onPointerDown={down} onPointerMove={move} onPointerUp={up} onPointerLeave={up} aria-label="Draw your signature" />
-      <button className="link-btn" onClick={clear}>
-        Clear
-      </button>
-    </div>
-  );
 }
 
 // ---------- the tab ----------
@@ -447,10 +392,8 @@ function LienTab({ mgmt, setMgmt, addLog, userEmail, address, cfg, onSaveCfg, up
   const partyOf = (id) => parties.find((p) => p.id === id) || { company: "Removed party" };
   const payNo = (id) => L.payments.findIndex((p) => p.id === id) + 1;
   const signer = L.signer || C.signer || null;
-  const iSign = !!signer && (!signer.email || lwSameEmail(signer.email, userEmail));
   const [preview, setPreview] = useState(null);
   const [paying, setPaying] = useState(null);
-  const [cs, setCs] = useState(null);
   const [cfgOpen, setCfgOpen] = useState(false);
   const [signerOpen, setSignerOpen] = useState(false);
   const [busy, setBusy] = useState("");
@@ -474,7 +417,6 @@ function LienTab({ mgmt, setMgmt, addLog, userEmail, address, cfg, onSaveCfg, up
         ...lwEmpty(),
         owner: C.owner || "",
         threshold: C.threshold != null && C.threshold !== "" ? num(C.threshold) : LW_THRESHOLD,
-        countersign: C.countersign !== false,
         signer: C.signer && C.signer.name ? { ...C.signer } : null,
         parties: gcContact ? [{ id: uid(), role: "contractor", company: gcContact.company || gcContact.name || "", name: gcContact.company ? gcContact.name || "" : "", email: gcContact.email || "", phone: gcContact.phone || "", trade: "" }] : [],
       },
@@ -581,11 +523,11 @@ function LienTab({ mgmt, setMgmt, addLog, userEmail, address, cfg, onSaveCfg, up
     const p = partyOf(w.party);
     const doc = it.doc && it.doc.title ? it.doc : lwDoc(L, w, { address, state: st });
     const claimant = { company: lwName(p), name: it.name || "", title: it.title || "", at: it.signedAt || new Date().toISOString(), sig: it.signature || "", email: it.email || p.email || "", ip: it.ip || "", ua: it.ua || "" };
-    const blob = await lwPdfBlob(doc, { claimant, kappaLine: !!L.countersign, owner: L.owner, ref: w.token, esign: true });
+    const blob = await lwPdfBlob(doc, { claimant, ref: w.token, esign: true });
     const file = await upload(lwFile(blob, lwFileName(address, p, w.kind, w.amount)));
     setL((cur) => ({
       waivers: cur.waivers.map((x) =>
-        x.id === w.id ? { ...x, status: L.countersign ? "signed" : "complete", signedAt: claimant.at, signer: { name: claimant.name, title: claimant.title, email: claimant.email, ip: claimant.ip, ua: claimant.ua }, file } : x,
+        x.id === w.id ? { ...x, status: "complete", signedAt: claimant.at, signer: { name: claimant.name, title: claimant.title, email: claimant.email, ip: claimant.ip, ua: claimant.ua }, file } : x,
       ),
     }));
     addLog(`Lien waiver signed by ${claimant.name} for ${lwName(p)}: ${LW_KINDS[w.kind].title}, ${fmt(w.amount)}`);
@@ -648,30 +590,11 @@ function LienTab({ mgmt, setMgmt, addLog, userEmail, address, cfg, onSaveCfg, up
   const download = async (r) => {
     const p = partyOf(r.party);
     try {
-      const pdf = lwPdfBuild(await lwLoadPdf(), lwDoc(L, r, { address, state: st }), { claimant: null, claimantCompany: lwName(p), kappaLine: !!L.countersign, owner: L.owner, ref: "" });
+      const pdf = lwPdfBuild(await lwLoadPdf(), lwDoc(L, r, { address, state: st }), { claimant: null, claimantCompany: lwName(p), ref: "" });
       pdf.save(lwFileName(address, p, r.kind, r.amount).replace(/\.pdf$/, " (to sign).pdf"));
     } catch (e) {
       say("Couldn't make the PDF: " + e.message, true);
     }
-  };
-
-  // ---------- Kappa's signature ----------
-  const countersign = async (w, s) => {
-    const p = partyOf(w.party);
-    let it = null;
-    if (w.via === "esign" && esign && w.token) {
-      const res = await lwApi(C, "status", { tokens: [w.token] });
-      it = (res.items || []).find((x) => x.token === w.token) || null;
-    }
-    const doc = it && it.doc && it.doc.title ? it.doc : lwDoc(L, w, { address, state: st });
-    const sg = w.signer || {};
-    const claimant = { company: lwName(p), name: sg.name || "", title: sg.title || "", at: w.signedAt, sig: (it && it.signature) || "", email: sg.email || "", ip: sg.ip || "", ua: sg.ua || "" };
-    const kappa = { name: s.name, title: s.title, at: new Date().toISOString(), sig: s.sig || "", email: userEmail || "" };
-    const blob = await lwPdfBlob(doc, { claimant, kappaLine: true, kappa, owner: L.owner, ref: w.token, esign: w.via === "esign" });
-    const file = await upload(lwFile(blob, lwFileName(address, p, w.kind, w.amount)));
-    if (w.file && w.file.driveFileId) removeFile(w.file.driveFileId);
-    setL((cur) => ({ waivers: cur.waivers.map((x) => (x.id === w.id ? { ...x, status: "complete", kappa: { name: kappa.name, title: kappa.title, email: kappa.email, at: kappa.at }, file } : x)) }));
-    addLog(`Lien waiver from ${lwName(p)} signed for Kappa by ${s.name}`);
   };
 
   // ---------- marking a payment paid ----------
@@ -741,12 +664,6 @@ function LienTab({ mgmt, setMgmt, addLog, userEmail, address, cfg, onSaveCfg, up
     const w = r.w;
     if (r.st === "none") return <span className="lw-st none">Not requested</span>;
     if (r.st === "sent") return <span className={"lw-st sent" + (r.changed ? " bad" : "")}>{r.changed ? `Sent for ${fmt(num(w.amount))}: the amount changed` : `Sent ${fmtDateShort(String(w.sentAt).slice(0, 10))}`}</span>;
-    if (r.st === "signed")
-      return (
-        <span className="lw-st signed">
-          Signed {fmtDateShort(String(w.signedAt).slice(0, 10))} · waiting for {signer ? signer.name : "Kappa"}
-        </span>
-      );
     return <span className={"lw-st done" + (r.changed ? " bad" : "")}>{r.changed ? `Signed for ${fmt(num(w.amount))}: the amount changed` : `Signed ${fmtDateShort(String(w.signedAt).slice(0, 10))}${w.via === "paper" ? " (uploaded)" : ""}`}</span>;
   };
   const wRow = (r) => {
@@ -772,11 +689,6 @@ function LienTab({ mgmt, setMgmt, addLog, userEmail, address, cfg, onSaveCfg, up
             <a className="lw-a" href={`https://drive.google.com/file/d/${w.file.driveFileId}/view`} target="_blank" rel="noopener noreferrer">
               Open
             </a>
-          )}
-          {r.st === "signed" && L.countersign && iSign && (
-            <button className="lw-a strong" onClick={() => setCs(w)}>
-              Sign for Kappa
-            </button>
           )}
           {canSend && (
             <button className="lw-a strong" disabled={!p.email || !!busy} title={p.email ? `Email ${p.email} a link to sign` : "Add this party's email first"} onClick={() => sendOne(r)}>
@@ -808,7 +720,6 @@ function LienTab({ mgmt, setMgmt, addLog, userEmail, address, cfg, onSaveCfg, up
   const contactsToAdd = (mgmt.contacts || []).filter((c) => (c.name || c.company) && !parties.some((p) => lwSameEmail(p.email, c.email) || (p.company && p.company === c.company)));
   const subsChoices = parties.filter((p) => p.role !== "contractor");
   const nextPay = L.payments.find((p) => !p.paidOn);
-  const csCount = (L.waivers || []).filter((w) => w.status === "signed").length;
   const finalPaid = L.payments.find((p) => p.final && p.paidOn);
   const after = V.filter((r) => r.when === "after");
 
@@ -862,17 +773,13 @@ function LienTab({ mgmt, setMgmt, addLog, userEmail, address, cfg, onSaveCfg, up
           <FinNum value={num(L.threshold)} onCommit={(v) => setL(() => ({ threshold: Math.max(0, Math.round(v)) }))} prefix="$" label="Threshold" />
         </div>
         <div className="lw-f">
-          <span>Signs for Kappa</span>
+          <span title="Named in the emails asking to sign, and told when a waiver is signed">Sent by</span>
           <span className="lw-signer">
             <b>{signer ? signer.name : "Nobody set"}</b>
-            {signer && signer.title ? <em>{signer.title}</em> : null}
             <button className="link-btn" onClick={() => setSignerOpen(true)}>
               {signer ? "Change" : "Set"}
             </button>
           </span>
-          <label className="lw-check">
-            <input type="checkbox" checked={!!L.countersign} onChange={(e) => setL(() => ({ countersign: e.target.checked }))} /> Kappa signs each waiver too
-          </label>
         </div>
         <div className="lw-f">
           <span>E-signature</span>
@@ -1075,7 +982,6 @@ function LienTab({ mgmt, setMgmt, addLog, userEmail, address, cfg, onSaveCfg, up
           </div>
         )}
       </section>
-      {csCount > 0 && !iSign && signer && <p className="lw-note">{csCount} signed waiver{csCount === 1 ? " is" : "s are"} waiting for {signer.name} to sign for Kappa.</p>}
       <p className="lw-note">The waiver wording is Kappa's own draft: Indiana and Ohio have no required form. Have an attorney or the title company review it before relying on it.</p>
       <input ref={fileRef} type="file" accept="application/pdf,image/*" style={{ display: "none" }} onChange={onUpload} aria-label="Signed waiver file" />
 
@@ -1097,7 +1003,6 @@ function LienTab({ mgmt, setMgmt, addLog, userEmail, address, cfg, onSaveCfg, up
             />
           );
         })()}
-      {cs && <LienSignWindow signer={signer} w={cs} party={partyOf(cs.party)} onSign={(s) => countersign(cs, s)} onClose={() => setCs(null)} />}
       {signerOpen && (
         <LienSignerWindow
           cur={signer}
@@ -1106,7 +1011,7 @@ function LienTab({ mgmt, setMgmt, addLog, userEmail, address, cfg, onSaveCfg, up
           onSave={(s, asTeam) => {
             setL(() => ({ signer: s }));
             if (asTeam) onSaveCfg({ ...C, signer: s });
-            addLog(`Signs for Kappa on lien waivers: ${s ? s.name : "nobody"}`);
+            addLog(`Lien waivers sent by: ${s ? s.name : "nobody"}`);
             setSignerOpen(false);
           }}
           onClose={() => setSignerOpen(false)}
@@ -1131,6 +1036,7 @@ function LienPreview({ L, r, address, state, party, onDownload, onClose }) {
   return (
     <Modal kicker={`${lwName(party)} · ${fmt(r.amount)}`} title="Lien waiver" width={680} onClose={onClose}>
       <div className="lw-doc" data-hash={doc.hash}>
+        {window._KAPPA_LOGO && <img className="lw-doc-logo" src={window._KAPPA_LOGO} alt="Kappa Real Estate Investments" />}
         <h4>{doc.title}</h4>
         <p className="lw-doc-n">{doc.notice}</p>
         <dl>
@@ -1217,93 +1123,19 @@ function LienPaidWindow({ p, n, miss, partyOf, actuals, upTo, onPaid, onClose })
   );
 }
 
-function LienSignWindow({ signer, w, party, onSign, onClose }) {
-  const saved = (() => {
-    try {
-      return JSON.parse(localStorage.getItem(LW_SIG_KEY) || "null");
-    } catch (e) {
-      return null;
-    }
-  })();
-  const [name, setName] = useState((signer && signer.name) || (saved && saved.name) || "");
-  const [title, setTitle] = useState((signer && signer.title) || (saved && saved.title) || "");
-  const [sig, setSig] = useState(saved && saved.sig && saved.name === ((signer && signer.name) || saved.name) ? saved.sig : "");
-  const [agree, setAgree] = useState(false);
-  const [busy, setBusy] = useState(false);
-  const [err, setErr] = useState("");
-  const go = async () => {
-    setBusy(true);
-    setErr("");
-    try {
-      await onSign({ name: name.trim(), title: title.trim(), sig });
-      try {
-        localStorage.setItem(LW_SIG_KEY, JSON.stringify({ name: name.trim(), title: title.trim(), sig }));
-      } catch (e) {}
-      onClose();
-    } catch (e) {
-      setErr(e.message);
-      setBusy(false);
-    }
-  };
-  return (
-    <Modal kicker={`${lwName(party)} · ${fmt(num(w.amount))}`} title="Sign for Kappa" width={540} onClose={onClose}>
-      <p className="lw-hint">Signed by {w.signer ? w.signer.name : lwName(party)}. Your signature goes on the line "Received on behalf of the Owner", and the PDF in Drive is replaced with the copy signed by both.</p>
-      <div className="lw-f2">
-        <label className="lw-f">
-          <span>Name</span>
-          <input value={name} onChange={(e) => setName(e.target.value)} aria-label="Your name" />
-        </label>
-        <label className="lw-f">
-          <span>Title</span>
-          <input value={title} onChange={(e) => setTitle(e.target.value)} aria-label="Your title" />
-        </label>
-      </div>
-      <div className="lw-f">
-        <span>Signature: draw it, or leave it empty to sign with your typed name</span>
-        {sig ? (
-          <div className="lw-sig-saved">
-            <img src={sig} alt="Your signature" />
-            <button className="link-btn" onClick={() => setSig("")}>
-              Draw again
-            </button>
-          </div>
-        ) : (
-          <SignPad onChange={setSig} />
-        )}
-      </div>
-      <label className="lw-check">
-        <input type="checkbox" checked={agree} onChange={(e) => setAgree(e.target.checked)} /> I sign this document electronically on behalf of the Owner
-      </label>
-      {err && <p className="lw-hint bad">Couldn't sign: {err}</p>}
-      <div className="lw-win-f">
-        <button style={btnGhost()} onClick={onClose}>
-          Cancel
-        </button>
-        <button style={btnPrimary()} disabled={!agree || !name.trim() || busy} onClick={go}>
-          {busy ? "Signing…" : "Sign"}
-        </button>
-      </div>
-    </Modal>
-  );
-}
-
 function LienSignerWindow({ cur, team, userEmail, onSave, onClose }) {
   const [s, setS] = useState({ name: "", title: "", email: "", ...(cur || team || {}) });
   const [asTeam, setAsTeam] = useState(!team);
   const set = (k) => (e) => setS({ ...s, [k]: e.target.value });
   return (
-    <Modal kicker="Lien waivers" title="Who signs for Kappa" width={500} onClose={onClose}>
-      <p className="lw-hint">They sign each waiver after the contractor or sub has, inside Deal Breaker, signed in with this email. Legally only the claimant's signature is needed: Kappa's records receipt.</p>
+    <Modal kicker="Lien waivers" title="Who the waivers are sent by" width={500} onClose={onClose}>
+      <p className="lw-hint">Their name is in the emails asking to sign, replies go to their email, and they're emailed when a waiver is signed.</p>
       <label className="lw-f">
         <span>Name</span>
         <input value={s.name} onChange={set("name")} aria-label="Signer name" autoFocus />
       </label>
       <label className="lw-f">
-        <span>Title</span>
-        <input value={s.title} onChange={set("title")} placeholder="e.g. Managing member" aria-label="Signer title" />
-      </label>
-      <label className="lw-f">
-        <span>Email (their Deal Breaker sign-in)</span>
+        <span>Email</span>
         <input value={s.email} onChange={set("email")} placeholder={userEmail || ""} aria-label="Signer email" />
       </label>
       <label className="lw-check">
@@ -1318,7 +1150,7 @@ function LienSignerWindow({ cur, team, userEmail, onSave, onClose }) {
         <button style={btnGhost()} onClick={onClose}>
           Cancel
         </button>
-        <button style={btnPrimary()} disabled={!s.name.trim()} onClick={() => onSave({ name: s.name.trim(), title: s.title.trim(), email: s.email.trim() }, asTeam)}>
+        <button style={btnPrimary()} disabled={!s.name.trim()} onClick={() => onSave({ name: s.name.trim(), email: s.email.trim() }, asTeam)}>
           Save
         </button>
       </div>
@@ -1327,7 +1159,7 @@ function LienSignerWindow({ cur, team, userEmail, onSave, onClose }) {
 }
 
 function LienCfgWindow({ cfg, onSave, onClose }) {
-  const [c, setC] = useState({ url: "", key: "", owner: "", threshold: LW_THRESHOLD, countersign: true, ...cfg });
+  const [c, setC] = useState({ url: "", key: "", owner: "", threshold: LW_THRESHOLD, ...cfg });
   const set = (k) => (e) => setC({ ...c, [k]: e.target.value });
   return (
     <Modal kicker="Lien waivers" title="Team settings" width={560} onClose={onClose}>
@@ -1340,9 +1172,6 @@ function LienCfgWindow({ cfg, onSave, onClose }) {
         <label className="lw-f">
           <span>Waivers from subs paid at least ($)</span>
           <input inputMode="numeric" value={c.threshold} onChange={set("threshold")} aria-label="Default threshold" />
-        </label>
-        <label className="lw-check" style={{ alignSelf: "end" }}>
-          <input type="checkbox" checked={c.countersign !== false} onChange={(e) => setC({ ...c, countersign: e.target.checked })} /> Kappa signs each waiver too
         </label>
       </div>
       <div className="lw-cfg-svc">
