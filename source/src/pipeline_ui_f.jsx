@@ -377,6 +377,37 @@ function ProjectHeader({ address, setAddress, stage, health, context, dirty, sav
 
 // ---------- dashboards ----------
 const DASH_LAYOUT_KEY = "kappa_dash_layout";
+// Capital deployed, split by who funded it: investors, and Kappa (lender loans it took plus its own money)
+function CapitalSplit({ cap, total, rows }) {
+  const pct = (v) => `${Math.round((v / total) * 100)}%`;
+  const kappa = cap.len + cap.own;
+  const tip = [
+    `Investors ${fmt(cap.inv)} (${pct(cap.inv)}) · Kappa ${fmt(kappa)} (${pct(kappa)}): lender loans ${fmt(cap.len)}, Kappa's own ${fmt(cap.own)}`,
+    "",
+    ...rows.map((r) => `${r.name}: ${fmt(r.D)}. Investors ${fmt(r.inv)}, Kappa ${fmt(r.len + r.own)}${r.len ? ` (lenders ${fmt(r.len)}, own ${fmt(r.own)})` : ""}`),
+  ].join("\n");
+  return (
+    <div className="cap-split" title={tip}>
+      <div className="cap-bar" aria-hidden="true">
+        {cap.inv > 0 && <i className="inv keep-color" style={{ width: `${(cap.inv / total) * 100}%` }} />}
+        {cap.len > 0 && <i className="len keep-color" style={{ width: `${(cap.len / total) * 100}%` }} />}
+        {cap.own > 0 && <i className="own keep-color" style={{ width: `${(cap.own / total) * 100}%` }} />}
+      </div>
+      <div className="cap-l">
+        <span>
+          <i className="inv keep-color" />
+          Investors <b>{fmtK(cap.inv)}</b>
+        </span>
+        <span>
+          <i className="kap keep-color" />
+          Kappa <b>{fmtK(kappa)}</b>
+        </span>
+      </div>
+      {kappa > 0 && <em className="cap-sub">{cap.len > 0 ? `Kappa: ${fmtK(cap.len)} loans + ${fmtK(cap.own)} own` : "Kappa: all its own money"}</em>}
+    </div>
+  );
+}
+
 function Dashboard({ filter: rawFilter, files, summaries, busy, connected, hasClientId, teamSetup, userEmail, onRetrySetup, invited, onConnect, onOpenSettings, onOpen, onNew, onRefresh }) {
   const filter = normDash(rawFilter);
   const meta = DASH_META[filter];
@@ -485,7 +516,23 @@ function Dashboard({ filter: rawFilter, files, summaries, busy, connected, hasCl
   // ---- tiles ----
   const S = deals.filter((d) => d.s).map((d) => d.s);
   const active = S.filter((s) => ACTIVE_STAGES.includes(s.st));
-  const capital = active.reduce((t, s) => t + (s.st === "contract" ? s.emd || 0 : s.spent || s.pp || 0), 0);
+  const deployedOf = (s) => (s.st === "contract" ? s.emd || 0 : s.spent || s.pp || 0);
+  const capital = active.reduce((t, s) => t + deployedOf(s), 0);
+  // who funded it: investors' money in, then lenders' principal, then Kappa's own (capped at what was deployed)
+  const capRows = deals
+    .filter((d) => d.s && ACTIVE_STAGES.includes(d.s.st))
+    .map((d) => {
+      const D = deployedOf(d.s);
+      const inv = Math.max(0, Math.min(d.s.ci || 0, D));
+      const len = Math.max(0, Math.min(d.s.cl || 0, D - inv));
+      return { name: d.street, D, inv, len, own: Math.max(0, D - inv - len) };
+    });
+  const cap = capRows.reduce((a, r) => ({ inv: a.inv + r.inv, len: a.len + r.len, own: a.own + r.own }), { inv: 0, len: 0, own: 0 });
+  const capKnown = active.every((s) => s.fs !== undefined);
+  const capSplit =
+    capital > 0 && capKnown ? (
+      <CapitalSplit cap={cap} total={capital} rows={capRows} />
+    ) : null;
   const projected = active.reduce((t, s) => t + (s.np || 0), 0);
   const sold = S.filter((s) => s.st === "sold");
   const soldYr = sold.filter((s) => (s.sd || "").startsWith(year));
@@ -501,7 +548,7 @@ function Dashboard({ filter: rawFilter, files, summaries, busy, connected, hasCl
   const tiles = {
     overview: [
       ["Active projects", String(active.length), `${cnt("analyzing")} properties in analysis`],
-      ["Capital deployed", fmt(capital), "spent so far plus deposits"],
+      ["Capital deployed", fmt(capital), "spent so far plus deposits", false, false, capSplit],
       ["Forecast profit", fmt(projected), "active projects", projected < 0],
       [`Realized in ${year}`, fmt(realized), `${soldYr.length} sold this year`, realized < 0],
       ["Days to flip", avgDays != null ? String(avgDays) : "—", flips.length ? `average of ${flips.length} sold` : "no sold deals yet"],
@@ -514,7 +561,7 @@ function Dashboard({ filter: rawFilter, files, summaries, busy, connected, hasCl
     ],
     active: [
       ["Active projects", String(active.length), ["contract", "rehab", "market"].map((k) => `${cnt(k)} ${stageMeta(k).label.toLowerCase()}`).join(", ")],
-      ["Capital deployed", fmt(capital), "spent so far plus deposits"],
+      ["Capital deployed", fmt(capital), "spent so far plus deposits", false, false, capSplit],
       ["Forecast profit", fmt(projected), "across active projects", projected < 0],
       ["Rehab budget used", rbSum > 0 ? `${Math.round((rspSum / rbSum) * 100)}%` : "—", rbSum > 0 ? `${fmtK(rspSum)} of ${fmtK(rbSum)}` : "no rehab under way"],
       [
@@ -566,11 +613,11 @@ function Dashboard({ filter: rawFilter, files, summaries, busy, connected, hasCl
         }
       />
       <div className={"pf-strip" + (tiles.length === 4 ? " strip-4" : tiles.length === 1 ? " strip-1" : "")}>
-        {tiles.map(([k, v, h, neg, warn]) => (
+        {tiles.map(([k, v, h, neg, warn, x]) => (
           <div key={k}>
             <span>{k}</span>
             <b style={neg ? { color: T.red } : warn ? { color: T.red } : undefined}>{v}</b>
-            <em>{h}</em>
+            {x || <em>{h}</em>}
           </div>
         ))}
       </div>

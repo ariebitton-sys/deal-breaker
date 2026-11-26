@@ -3433,7 +3433,9 @@ function App() {
     driveFiles.forEach((f) => {
       // summaries written before v50 have no paperwork flags (dk): re-read those deals once if the flags matter
       // and summaries before v65 don't know the forecast's rehab budget (fr): re-read the active deals once
-      const fresh = (sm) => sm && (sm.dk !== undefined || !DOC_NEEDS[sm.st]) && (sm.fr !== undefined || !["contract", "rehab", "market"].includes(sm.st));
+      // and summaries before v71 don't say where an active deal's money came from (fs): re-read those once too
+      const fresh = (sm) =>
+        sm && (sm.dk !== undefined || !DOC_NEEDS[sm.st]) && ((sm.fr !== undefined && sm.fs !== undefined) || !["contract", "rehab", "market"].includes(sm.st));
       const fromProps = propsToSummary(f.appProperties);
       const cached = cache[f.id] && cache[f.id].modifiedTime === f.modifiedTime ? cache[f.id].sum : null;
       if (fresh(fromProps)) next[f.id] = fromProps;

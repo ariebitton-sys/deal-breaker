@@ -556,6 +556,15 @@ function summarizeDeal(d) {
   const lastLog = mg.log.reduce((mx, l) => (l.ts && l.ts > mx ? l.ts : mx), "");
   const lu = [d.savedAt || "", lastLog].sort().pop() || "";
   const lastOffer = mg.offers.length ? mg.offers[mg.offers.length - 1] : null;
+  // v71: where an active deal's money came from, as of today: investor money in (dated) and the outside
+  // lender's principal received (at closing plus releases); Kappa (its own cash or internal loan) is the rest
+  const fund = (() => {
+    if (!["contract", "rehab", "market"].includes(inferStage(d))) return null;
+    const fin = mg.financing || {};
+    const L = finLenderOf(fin, inp, m, mg);
+    const fp = finPosition(L, finInvestorsOf(fin, inp, m, mg), mg.draws || [], todayISO(), finSpend(acts));
+    return { ci: R0(fp.invIn) || undefined, cl: fp.kappa ? undefined : R0(fp.principal) || undefined };
+  })();
   const s = {
     v: 2,
     st: inferStage(d),
@@ -609,6 +618,9 @@ function summarizeDeal(d) {
     rb: R0(fsc ? num(fsc.rehab) : base ? base.m.repair : m.repair),
     rbf: fsc ? 1 : undefined,
     fr: 1,
+    fs: fund ? 1 : undefined,
+    ci: fund ? fund.ci : undefined,
+    cl: fund ? fund.cl : undefined,
     rsp: R0(sumActuals(acts, "Rehab / Construction")),
     ld: mg.listing.date || undefined,
     lp: R0(num(mg.listing.price)) || undefined,
