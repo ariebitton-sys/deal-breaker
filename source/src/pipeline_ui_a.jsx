@@ -202,14 +202,14 @@ function StageActions({ stage, mgmt, onAction }) {
   const prev = !dead && curIdx > 0 ? STAGES[curIdx - 1] : null;
   if (dead)
     return (
-      <button onClick={() => onAction("restore")} style={btnPrimary()}>
+      <button onClick={() => onAction("restore")} className="band-btn primary">
         Restore deal
       </button>
     );
   return (
     <React.Fragment>
       {next && (
-        <button onClick={() => onAction(next.key)} style={btnPrimary()}>
+        <button onClick={() => onAction(next.key)} className="band-btn primary">
           {NEXT_ACTION_LABEL[next.key]}
         </button>
       )}
@@ -221,7 +221,7 @@ function StageMenu({ prev, canKill, onAction }) {
   const [open, setOpen] = useState(false);
   return (
     <div style={{ position: "relative" }}>
-      <button onClick={() => setOpen((o) => !o)} style={btnGhost()} aria-expanded={open} aria-label="More stage actions">
+      <button onClick={() => setOpen((o) => !o)} className="band-btn" aria-expanded={open} aria-label="More stage actions">
         More <Icon name="down" size={14} />
       </button>
       {open && (

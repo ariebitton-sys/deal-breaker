@@ -142,17 +142,37 @@ function KpiStrip({ P, uw, m, uwBaseline, grade, actuals, position, mgmt, actual
     tile("Each extra day costs", fmt(intDay + holdDay), heldHint, "", over ? "warn" : "");
   }
   return (
-    <div className="kpi-strip" role="list">
-      {tiles.map((x) => (
-        <div key={x.k} className="kpi-tile" role="listitem" title={x.title}>
-          <span className="kpi-k">{x.k}</span>
-          <b className={"kpi-v" + (x.tone ? " " + x.tone : "")}>{x.v}</b>
-          {x.h && <span className={"kpi-h" + (x.htone ? " " + x.htone : "")}>{x.h}</span>}
-        </div>
-      ))}
+    <div className={"kpi-strip n" + tiles.length} role="list">
+      {tiles.map((x) => {
+        const [icon, tone] = KPI_LOOK[x.k] || ["grid", "gray"];
+        return (
+          <div key={x.k} className={"kpi-tile t-" + tone} role="listitem" title={x.title}>
+            <span className="kpi-ico">
+              <Icon name={icon} size={20} stroke={2} />
+            </span>
+            <span className="kpi-k">{x.k}</span>
+            <b className={"kpi-v" + (x.tone ? " " + x.tone : "")}>{x.v}</b>
+            {x.h && <span className={"kpi-h" + (x.htone ? " " + x.htone : "")}>{x.h}</span>}
+          </div>
+        );
+      })}
     </div>
   );
 }
+// v74: each of a deal's key numbers with its icon and color
+const KPI_LOOK = {
+  "Profit at analysis": ["calc", "violet"],
+  "Spent so far": ["dollar", "teal"],
+  "Paying interest on": ["bank", "orange"],
+  "Projected profit at sale": ["trend", "green"],
+  "Break-even price": ["tag", "blue"],
+  "Each extra day costs": ["clock", "amber"],
+  "Actual profit": ["trophy", "green"],
+  "Sold for": ["tag", "blue"],
+  "Total spent": ["dollar", "teal"],
+  "Financing cost": ["bank", "orange"],
+  "Days held": ["clock", "amber"],
+};
 
 // ---------- the statement window ----------
 function PositionWindow({ uw, sellingAt, defaultPrice, actuals, mgmt, m, stage, setActuals, setMgmt, onClose }) {

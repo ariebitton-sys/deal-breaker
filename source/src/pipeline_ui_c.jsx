@@ -895,9 +895,10 @@ function ContactsPanel({ contacts, upd }) {
     setAdding(false);
   };
   return (
-    <Panel
+    <OvCard
+      icon="users"
       title="Contacts"
-      accent={T.blue}
+      className="ov-contacts"
       right={
         !adding && (
           <button onClick={() => setAdding(true)} style={smallBtn(T.glass, T.blue)}>
@@ -952,7 +953,7 @@ function ContactsPanel({ contacts, upd }) {
           </div>
         </div>
       )}
-    </Panel>
+    </OvCard>
   );
 }
 // Files and links kept with the deal (Drive uploads or URLs). Lives under Expenses & Documents.

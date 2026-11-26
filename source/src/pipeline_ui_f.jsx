@@ -335,8 +335,11 @@ function ProjectHeader({ address, setAddress, stage, health, context, dirty, sav
             : ["All changes saved", T.txtMute];
   const msgTone = saveMsg && !saveMsg.startsWith("✓") ? (saveMsg.startsWith("⚠") ? T.amber : T.red) : auto[1];
   const msg = saveMsg && !saveMsg.startsWith("✓") ? saveMsg.replace(/^[✓⚠❌]\s*/, "") : auto[0];
+  // v74: on the navy band the status reads in light tints of the same meaning
+  const msgCls = msgTone === T.red ? " bad" : msgTone === T.amber ? " warn" : "";
   return (
-    <div className="deal-head">
+    <div className="deal-head dh-band" style={stageVars(stage)}>
+      <span className="pf-eyebrow">Kappa Real Estate Investments · Project</span>
       <div className="dh-addr-row">
         <CopyAddress text={address} />
         <input className="dh-addr" placeholder="Property address" value={address} onChange={(e) => setAddress(e.target.value)} aria-label="Property address" />
@@ -348,14 +351,14 @@ function ProjectHeader({ address, setAddress, stage, health, context, dirty, sav
           {context && <span className="dh-context">{context}</span>}
         </div>
         <div className="dh-actions no-print">
-          <span className="dh-save" role="status" style={{ fontSize: 12.5, color: msgTone }}>
+          <span className={"dh-save" + msgCls} role="status">
             {msg}
           </span>
-          <button onClick={onSave} disabled={saving} title="Changes save themselves; this saves right now (Ctrl+S)" style={dirty && autoBlocked ? btnPrimary() : btnGhost()}>
+          <button onClick={onSave} disabled={saving} title="Changes save themselves; this saves right now (Ctrl+S)" className={"band-btn" + (dirty && autoBlocked ? " primary" : "")}>
             <Icon name="save" /> {saving ? "Saving…" : "Save deal"}
           </button>
           <div style={{ position: "relative" }}>
-            <button onClick={() => setMenu((m) => !m)} style={btnGhost()} aria-expanded={menu}>
+            <button onClick={() => setMenu((m) => !m)} className="band-btn" aria-expanded={menu}>
               Export <Icon name="down" size={14} />
             </button>
             {menu && (
@@ -1103,11 +1106,16 @@ function DealTable({ filter, deals, today, onOpen }) {
 }
 
 // ---------- project overview (the hub of each deal) ----------
-function OvCard({ icon, title, onOpen, openLabel, children, className }) {
+const ICON_TONE = { calc: "violet", cal: "blue", chart: "teal", bank: "orange", plug: "amber", users: "teal", list: "blue", alert: "orange", shield: "green", pulse: "gray", receipt: "teal", file: "blue", gantt: "blue", home: "blue" };
+function OvCard({ icon, title, onOpen, openLabel, children, className, tone, right }) {
   return (
     <section className={"dcard " + (className || "")}>
       <div className="dcard-h">
-        <Icon name={icon} /> {title}
+        <span className={"dp-ico t-" + (tone || ICON_TONE[icon] || "blue")}>
+          <Icon name={icon} size={18} stroke={2} />
+        </span>
+        {title}
+        {right && <span className="dcard-right">{right}</span>}
         {onOpen && (
           <button className="dcard-link" onClick={onOpen}>
             {openLabel || "Open"} <Icon name="chevron" size={14} />
@@ -1166,7 +1174,10 @@ function NextUp({ stage, mgmt, setMgmt, address, by, addLog, onGo, onUploadDoc, 
   return (
     <section className="dcard nx">
       <div className="dcard-h">
-        <Icon name="check" /> Next up
+        <span className="dp-ico t-blue">
+          <Icon name="check" size={18} stroke={2} />
+        </span>
+        Next up
         <span className="dcard-r">{ck ? `${stageMeta(stage).label} checklist: ${doneN} of ${tasks.length} done` : stageMeta(stage).label}</span>
         <button className="dcard-link" onClick={() => onGo("manage")}>
           All tasks <Icon name="chevron" size={14} />
@@ -1528,9 +1539,11 @@ function ProjectOverview({ address, mapsKey, folderId, photosUrl, setPhotosUrl, 
                 const on = i <= curIdx;
                 const cur = i === curIdx && !dead && s.key !== "sold";
                 return (
-                  <li key={s.key} className={"trk-st" + (on ? " on" : "") + (cur ? " cur" : "")} aria-current={cur ? "step" : undefined}>
+                  <li key={s.key} className={"trk-st" + (on ? " on" : "") + (cur ? " cur" : "")} aria-current={cur ? "step" : undefined} style={stageVars(s.key)}>
                     <span className="trk-tick" />
-                    <span className="trk-l">{s.label}</span>
+                    <span className="trk-l" data-n={i + 1}>
+                      {s.label}
+                    </span>
                     <span className="trk-d">{on && dates[s.key] ? fmtDate(dates[s.key]) : ""}</span>
                   </li>
                 );
@@ -1548,7 +1561,7 @@ function ProjectOverview({ address, mapsKey, folderId, photosUrl, setPhotosUrl, 
       <div className="ov-console">
         <OvCard icon="calc" title="Deal analysis" onOpen={() => onGo("underwrite")} openLabel="Flip analysis">
           <div className="ov-grade">
-            <div className="ov-letter" style={{ color: deal.grade === "REJECT" ? T.red : T.txt }}>
+            <div className={"ov-letter " + gradeTone(deal.grade)}>
               {deal.grade === "REJECT" ? "Reject" : deal.grade}
             </div>
             <OvStat k={stage === "sold" ? "Underwritten profit" : "Forecast profit"} v={deal.incomplete ? "—" : fmt(m.netProfit)} h={uwBaseline ? `original plan ${fmt(uwBaseline.m.netProfit)}` : `Risk ${deal.riskLevel} target ${fmt(deal.threshold)}`} tone={m.netProfit < 0 ? T.red : undefined} big />
