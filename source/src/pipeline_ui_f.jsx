@@ -140,7 +140,7 @@ function Sidebar({ logo, view, filter, onFilter, counts, project, onNew, onSetti
           <em>{counts.dead || 0}</em>
         </button>
         <div className="sb-sep" />
-        <button onClick={() => onFilter("tasks")} className={"sb-item" + (view === "portfolio" && filter === "tasks" ? " on" : "")} title={collapsed ? `Tasks (${counts.tasks || 0})` : "Open tasks across every project"} aria-current={view === "portfolio" && filter === "tasks" ? "page" : undefined}>
+        <button onClick={() => onFilter("tasks")} className={"sb-item sb-tasks" + (counts.tasks ? " has" : "") + (view === "portfolio" && filter === "tasks" ? " on" : "")} title={collapsed ? `Tasks (${counts.tasks || 0})` : "Open tasks across every project"} aria-current={view === "portfolio" && filter === "tasks" ? "page" : undefined}>
           <Icon name="check" size={17} />
           <span className="sb-label">Tasks</span>
           <em>{counts.tasks || 0}</em>
@@ -535,6 +535,9 @@ function Dashboard({ filter: rawFilter, files, summaries, busy, connected, hasCl
       <CapitalSplit cap={cap} total={capital} rows={capRows} />
     ) : null;
   const projected = active.reduce((t, s) => t + (s.np || 0), 0);
+  const planned = active.filter((s) => s.bnp != null);
+  const planDelta = planned.reduce((t, s) => t + ((s.np || 0) - s.bnp), 0);
+  const planPill = planned.length && Math.round(planDelta) !== 0 ? `${planDelta > 0 ? "↑" : "↓"} ${fmt(Math.abs(planDelta))} ${planDelta > 0 ? "above" : "below"} plan` : null;
   const sold = S.filter((s) => s.st === "sold");
   const soldYr = sold.filter((s) => (s.sd || "").startsWith(year));
   const realized = soldYr.reduce((t, s) => t + (s.ap || 0), 0);
@@ -550,9 +553,9 @@ function Dashboard({ filter: rawFilter, files, summaries, busy, connected, hasCl
     overview: [
       ["Active projects", String(active.length), `${cnt("analyzing")} properties in analysis`],
       ["Capital deployed", fmt(capital), "spent so far plus deposits", false, false, capSplit],
-      ["Forecast profit", fmt(projected), "active projects", projected < 0],
-      [`Realized in ${year}`, fmt(realized), `${soldYr.length} sold this year`, realized < 0],
-      ["Days to flip", avgDays != null ? String(avgDays) : "—", flips.length ? `average of ${flips.length} sold` : "no sold deals yet"],
+      ["Forecast profit", fmt(projected), planPill || "active projects", projected < 0, false, null, planPill ? (planDelta > 0 ? "green" : "red") : null],
+      [`Realized in ${year}`, fmt(realized), soldYr.length ? `${soldYr.length} sold this year` : "No sales yet this year", realized < 0],
+      ["Days to flip", avgDays != null ? String(avgDays) : "—", flips.length ? `average of ${flips.length} sold` : "Average after the first sale"],
     ],
     leads: [
       ["Properties", String(leads.length), "being analyzed"],
@@ -563,7 +566,7 @@ function Dashboard({ filter: rawFilter, files, summaries, busy, connected, hasCl
     active: [
       ["Active projects", String(active.length), ["contract", "rehab", "market"].map((k) => `${cnt(k)} ${stageMeta(k).label.toLowerCase()}`).join(", ")],
       ["Capital deployed", fmt(capital), "spent so far plus deposits", false, false, capSplit],
-      ["Forecast profit", fmt(projected), "across active projects", projected < 0],
+      ["Forecast profit", fmt(projected), planPill || "across active projects", projected < 0, false, null, planPill ? (planDelta > 0 ? "green" : "red") : null],
       ["Rehab budget used", rbSum > 0 ? `${Math.round((rspSum / rbSum) * 100)}%` : "—", rbSum > 0 ? `${fmtK(rspSum)} of ${fmtK(rbSum)}` : "no rehab under way"],
       [
         "Needs attention",
@@ -592,11 +595,12 @@ function Dashboard({ filter: rawFilter, files, summaries, busy, connected, hasCl
   return (
     <div>
       <DashHead
+        overlap
         title={meta.title}
-        sub={`${meta.sub}. ${mine.length} ${mine.length === 1 ? "deal" : "deals"}.`}
+        sub={`${meta.sub} · ${mine.length} ${mine.length === 1 ? "deal" : "deals"} · ${new Date(today + "T12:00:00").toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric", year: "numeric" })}`}
         right={
           <React.Fragment>
-            {busy && <span style={{ fontSize: 12.5, color: T.txtMute }}>Loading deals…</span>}
+            {busy && <span className="pf-busy">Loading deals…</span>}
             {canBoard && (
               <div className="seg" role="group" aria-label="Layout">
                 <button className={lay === "table" ? "on" : ""} onClick={() => setLayout("table")}>
@@ -607,20 +611,29 @@ function Dashboard({ filter: rawFilter, files, summaries, busy, connected, hasCl
                 </button>
               </div>
             )}
-            <button onClick={onRefresh} style={btnGhost()}>
+            <button onClick={onRefresh} className="band-btn">
               <Icon name="refresh" /> Refresh
             </button>
           </React.Fragment>
         }
       />
       <div className={"pf-strip" + (tiles.length === 4 ? " strip-4" : tiles.length === 1 ? " strip-1" : "")}>
-        {tiles.map(([k, v, h, neg, warn, x]) => (
-          <div key={k}>
-            <span>{k}</span>
-            <b style={neg ? { color: T.red } : warn ? { color: T.red } : undefined}>{v}</b>
-            {x || <em>{h}</em>}
-          </div>
-        ))}
+        {tiles.map(([k, v, h, neg, warn, x, pill]) => {
+          const [icon, tone] = tileLook(k);
+          const quiet = v === "—" || v === "$0" || v === "0";
+          return (
+            <div key={k} className={"pf-tile t-" + tone}>
+              <span className="pf-ico">
+                <Icon name={icon} size={22} stroke={2} />
+              </span>
+              <div className="pf-tile-b">
+                <span>{k}</span>
+                <b style={neg ? { color: T.red } : warn ? { color: T.red } : undefined}>{v}</b>
+                {x || <em className={"pill p-" + (pill || (warn ? "red" : quiet ? "gray" : tone))}>{h}</em>}
+              </div>
+            </div>
+          );
+        })}
       </div>
 
       {(upcoming.length > 0 || attention.length > 0) && (
@@ -672,6 +685,24 @@ function Dashboard({ filter: rawFilter, files, summaries, busy, connected, hasCl
     </div>
   );
 }
+// v74: each key number's icon and color
+const TILE_LOOK = {
+  "Active projects": ["briefcase", "blue"],
+  "Capital deployed": ["dollar", "teal"],
+  "Forecast profit": ["trend", "green"],
+  "Days to flip": ["clock", "violet"],
+  Properties: ["scan", "violet"],
+  "Grade B- or better": ["check", "green"],
+  "Offers out": ["contract", "blue"],
+  "Projected profit": ["trend", "green"],
+  "Rehab budget used": ["hammer", "amber"],
+  "Needs attention": ["alert", "orange"],
+  "Flips sold": ["trophy", "green"],
+  "Average profit": ["dollar", "teal"],
+  "Against the plan": ["trend", "blue"],
+  "Dead deals": ["x", "gray"],
+};
+const tileLook = (k) => TILE_LOOK[k] || (/^Realized/.test(k) ? ["trophy", "amber"] : ["grid", "gray"]);
 // The pipeline as one bar: how many deals sit in each stage and what they're worth. Click a stage to filter.
 function PipelineFunnel({ stages, deals, value, onChange }) {
   const rows = stages.map((st) => {
@@ -681,65 +712,71 @@ function PipelineFunnel({ stages, deals, value, onChange }) {
   const total = rows.reduce((t, r) => t + r.n, 0);
   const worth = rows.reduce((t, r) => t + r.v, 0);
   const pick = (st) => onChange(value === st ? "all" : st);
+  // v74: the stages as numbered cards joined by arrows, each in its own color; click one to filter
   return (
     <section className={"fn no-print" + (value !== "all" ? " filtered" : "")} aria-label="Pipeline by stage">
       <div className="fn-top">
-        <b>Pipeline</b>
+        <h2 className="pill-title">Pipeline</h2>
         <span>
           {total} {total === 1 ? "deal" : "deals"}
-          {total ? `, ${fmtK(worth)} profit (forecast${stages.includes("sold") ? " and realized" : ""})` : ""}
+          {total ? `, ${fmtK(worth)} profit (forecast${stages.includes("sold") ? " and realized" : ""})` : ""}. Click a stage to filter.
         </span>
         <button className={"fn-all" + (value === "all" ? " on" : "")} onClick={() => onChange("all")}>
           All {total}
         </button>
       </div>
-      <div className="fn-bar" role="group" aria-label="Filter by stage">
-        {rows.map((r) =>
-          r.n > 0 ? (
-            <button
-              key={r.st}
-              className={value === r.st ? "on" : ""}
-              style={{ flex: r.n, background: stageMeta(r.st).color }}
-              onClick={() => pick(r.st)}
-              title={`${stageMeta(r.st).label}: ${r.n} ${r.n === 1 ? "deal" : "deals"}`}
-              aria-label={`Show ${stageMeta(r.st).label}`}
-            />
-          ) : null,
-        )}
-      </div>
-      <div className="fn-steps" style={{ gridTemplateColumns: `repeat(${stages.length}, minmax(0,1fr))` }}>
-        {rows.map((r) => (
-          <button key={r.st} className={"fn-step" + (value === r.st ? " on" : "") + (r.n === 0 ? " zero" : "")} onClick={() => pick(r.st)} aria-pressed={value === r.st}>
-            <span className="fn-step-l">
-              <i style={{ background: stageMeta(r.st).color }} />
-              {stageMeta(r.st).label}
-            </span>
-            <b>{r.n}</b>
-            <em>{r.n ? `${fmtK(r.v)} ${r.st === "sold" ? "realized" : "forecast"}` : "none"}</em>
-          </button>
-        ))}
+      <div className="fn-steps" role="group" aria-label="Filter by stage">
+        {rows.map((r, i) => {
+          const m = stageMeta(r.st);
+          return (
+            <React.Fragment key={r.st}>
+              {i > 0 && (
+                <span className="fn-arrow" aria-hidden="true">
+                  <Icon name="arrow" size={18} stroke={2.2} />
+                </span>
+              )}
+              <button className={"fn-step" + (value === r.st ? " on" : "") + (r.n === 0 ? " zero" : "")} style={stageVars(r.st)} onClick={() => pick(r.st)} aria-pressed={value === r.st}>
+                <span className="fn-ico">
+                  <Icon name={m.icon} size={20} stroke={2} />
+                </span>
+                <span className="fn-step-l" data-n={stageIdx(r.st) + 1}>
+                  {m.label}
+                </span>
+                <b>
+                  {r.n} {r.n === 1 ? "deal" : "deals"}
+                </b>
+                <em>{r.n ? `${fmtK(r.v)} ${r.st === "sold" ? "realized" : "forecast"}` : "none yet"}</em>
+              </button>
+            </React.Fragment>
+          );
+        })}
       </div>
     </section>
   );
 }
-function DashHead({ title, sub, right }) {
+// v74: a dashboard opens on a navy band; with overlap, the key-number cards below ride up into it
+function DashHead({ title, sub, right, overlap }) {
   return (
-    <div className="pf-head">
-      <div>
+    <div className={"pf-head pf-band" + (overlap ? " overlap" : "")}>
+      <div className="pf-band-l">
+        <span className="pf-eyebrow">Kappa Real Estate Investments · Fix &amp; Flip</span>
         <h1 className="pf-title">{title}</h1>
-        <div className="dh-meta" style={{ marginTop: 4 }}>
-          {sub}
-        </div>
+        <div className="pf-sub">{sub}</div>
       </div>
       {right && <div className="dh-actions">{right}</div>}
     </div>
   );
 }
+const MONTHS3 = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"];
+// v74: dates as small calendar chips in the deal's stage color; late ones in red
 function ComingUp({ items, onOpen }) {
   return (
-    <section className="dcard">
+    <section className="dcard dash-panel">
       <div className="dcard-h">
-        <Icon name="cal" /> Coming up
+        <span className="dp-ico t-blue">
+          <Icon name="cal" size={18} stroke={2} />
+        </span>
+        Coming up
         <span className="dcard-r">next 14 days</span>
       </div>
       {items.length === 0 ? (
@@ -747,9 +784,26 @@ function ComingUp({ items, onOpen }) {
       ) : (
         items.slice(0, 7).map((x, i) => (
           <button key={i} className="cu-row" onClick={() => onOpen(x.d.f)}>
-            <span className={"cu-date" + (x.dd < 0 ? " late" : x.dd <= 3 ? " soon" : "")}>{x.dd < 0 ? `${-x.dd}d overdue` : fmtDateShort(x.date)}</span>
-            <span className="cu-label">{x.label}</span>
-            <span className="cu-deal">{x.d.street}</span>
+            <span className={"cu-date" + (x.dd < 0 ? " late" : x.dd <= 3 ? " soon" : "")} style={stageVars(x.d.s.st)}>
+              {x.dd < 0 ? (
+                <React.Fragment>
+                  <i>LATE</i>
+                  <b>{-x.dd}d</b>
+                </React.Fragment>
+              ) : (
+                <React.Fragment>
+                  <i>{MONTHS3[Number(x.date.slice(5, 7)) - 1]}</i>
+                  <b>{Number(x.date.slice(8, 10))}</b>
+                </React.Fragment>
+              )}
+            </span>
+            <span className="cu-txt">
+              <span className="cu-label">{x.label}</span>
+              <span className="cu-deal">
+                {x.d.street} · {stageMeta(x.d.s.st).label.toLowerCase()}
+                {x.dd >= 0 && x.dd <= 3 ? ` · ${x.dd === 0 ? "today" : x.dd === 1 ? "tomorrow" : `in ${x.dd} days`}` : ""}
+              </span>
+            </span>
           </button>
         ))
       )}
@@ -760,21 +814,26 @@ function AttentionList({ items, onOpen }) {
   const [all, setAll] = useState(false);
   const list = all ? items : items.slice(0, 6);
   return (
-    <section className="dcard">
+    <section className="dcard dash-panel">
       <div className="dcard-h">
-        <Icon name="alert" /> Needs attention
-        <span className="dcard-r">{items.length}</span>
+        <span className="dp-ico t-orange">
+          <Icon name="alert" size={18} stroke={2} />
+        </span>
+        Needs attention
+        <span className={"dcard-r" + (items.length ? " count" : "")}>{items.length ? `${items.length} ${items.length === 1 ? "item" : "items"}` : "0"}</span>
       </div>
       {items.length === 0 ? (
         <div className="dcard-empty">Nothing needs attention.</div>
       ) : (
         list.map((a, i) => (
-          <button key={i} className="cu-row" onClick={() => onOpen(a.d.f)}>
+          <button key={i} className={"cu-row att-row" + (a.lvl === "red" ? " red" : "")} onClick={() => onOpen(a.d.f)}>
             <i className={"att-dot" + (a.lvl === "red" ? " red" : "")} />
-            <span className="cu-label">
-              <b>{a.d.street}</b> {a.text}
+            <span className="cu-txt">
+              <span className="cu-label">{String(a.text || "").replace(/^./, (c) => c.toUpperCase())}</span>
+              <span className="cu-deal">
+                {a.d.street} · {stageMeta(a.d.s.st).label.toLowerCase()}
+              </span>
             </span>
-            <span className="cu-deal">{stageMeta(a.d.s.st).label}</span>
           </button>
         ))
       )}
@@ -788,19 +847,20 @@ function AttentionList({ items, onOpen }) {
 }
 function Board({ stages, deals, today, onOpen }) {
   return (
-    <div className="board" style={{ gridTemplateColumns: `repeat(${stages.length}, minmax(250px, 1fr))` }}>
+    <div className="board" style={{ gridTemplateColumns: `repeat(${stages.length}, minmax(214px, 1fr))` }}>
       {stages.map((st) => {
         const col = deals.filter((d) => d.s && d.s.st === st);
         const sum = col.reduce((t, d) => t + ((d.s.ap != null ? d.s.ap : d.s.np) || 0), 0);
         return (
-          <section key={st} className="board-col">
+          <section key={st} className="board-col" style={stageVars(st)}>
             <div className="board-h">
-              <span className="sb-dot" style={{ background: stageMeta(st).color }} />
               <b>{stageMeta(st).label}</b>
-              <em>{col.length}</em>
-              <span>{col.length ? fmtK(sum) : ""}</span>
+              <span>
+                {col.length} {col.length === 1 ? "deal" : "deals"}
+                {col.length ? ` · ${fmtK(sum)} ${st === "sold" ? "realized" : "forecast"}` : ""}
+              </span>
             </div>
-            {col.length === 0 && <div className="board-empty">No deals</div>}
+            {col.length === 0 && <div className="board-empty">{st === "sold" ? "No sales yet" : st === "market" ? "No deals on the market" : "No deals"}</div>}
             {col.map((d) => (
               <DealCard key={d.f.id} d={d} today={today} onOpen={onOpen} />
             ))}

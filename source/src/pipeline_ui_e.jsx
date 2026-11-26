@@ -69,6 +69,15 @@ const ICONS = {
   gantt: "M4 5h8M8 10h10M6 15h7M11 20h9",
   trash: "M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3",
   shield: "M12 3l7.5 3v6c0 4.6-3.2 7.9-7.5 9-4.3-1.1-7.5-4.4-7.5-9V6zM9 12l2 2 4-4",
+  briefcase: "M4 8h16v12H4zM9 8V5h6v3M4 13h16",
+  dollar: "M12 3v18M17 7.5c0-1.9-2.2-3-5-3s-5 1.1-5 3 2.2 2.8 5 3.5 5 1.6 5 3.5-2.2 3-5 3-5-1.1-5-3",
+  trend: "M3 17l6-6 4 4 8-8M15 7h6v6",
+  trophy: "M8 4h8v5a4 4 0 0 1-8 0zM8 6H5a3 3 0 0 0 3 4M16 6h3a3 3 0 0 1-3 4M12 13v4M8 20h8",
+  clock: "M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM12 7v5l3 2",
+  tag: "M3 12V4h8l10 10-8 8zM7.5 6a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3z",
+  contract: "M6 3h9l4 4v14H6zM14 3v5h5M9 14h6M9 17h4",
+  scan: "M11 4a7 7 0 1 0 0 14 7 7 0 0 0 0-14zM20 20l-4-4M8 11h6M11 8v6",
+  arrow: "M5 12h14M13 6l6 6-6 6",
 };
 function Icon({ name, size = 16, stroke = 1.8, style }) {
   return (

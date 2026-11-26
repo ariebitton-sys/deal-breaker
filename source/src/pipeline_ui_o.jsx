@@ -456,6 +456,10 @@ function LienTab({ mgmt, setMgmt, addLog, userEmail, address, cfg, onSaveCfg, up
   const sendOne = async (r) => {
     const p = partyOf(r.party);
     if (!esign || !p.email) return false;
+    if (!(num(r.amount) > 0)) {
+      say(`Enter the amount before sending ${lwName(p)} a waiver`, true);
+      return false;
+    }
     setBusy(r.key);
     try {
       if (r.w && r.w.status === "sent" && !r.changed && r.w.token) {
@@ -670,7 +674,7 @@ function LienTab({ mgmt, setMgmt, addLog, userEmail, address, cfg, onSaveCfg, up
     const p = partyOf(r.party);
     const w = r.w;
     const what = r.kind === "uf" ? "the whole project" : r.kind === "cf" ? "final payment" : r.about === r.payment ? "this payment" : `payment ${payNo(r.about)}`;
-    const canSend = esign && (r.st === "none" || r.st === "sent" || r.changed);
+    const canSend = esign && num(r.amount) > 0 && (r.st === "none" || r.st === "sent" || r.changed);
     return (
       <div key={r.key} className={"lw-w" + (r.ok ? " ok" : "") + (busy === r.key ? " busy" : "")} data-key={r.key}>
         <span className={"lw-kind k-" + r.kind}>{LW_KINDS[r.kind].short}</span>
@@ -680,6 +684,7 @@ function LienTab({ mgmt, setMgmt, addLog, userEmail, address, cfg, onSaveCfg, up
             {what}
             {!LW_KINDS[r.kind].final && r.through ? ` · through ${fmtDateShort(r.through)}` : ""}
             {!p.email && esign && !r.ok ? " · no email" : ""}
+            {!(num(r.amount) > 0) && !r.ok ? " · no amount yet" : ""}
           </em>
         </span>
         <span className="lw-w-amt">{fmt(r.amount)}</span>
@@ -861,7 +866,7 @@ function LienTab({ mgmt, setMgmt, addLog, userEmail, address, cfg, onSaveCfg, up
         {!gc && <p className="lw-empty">Add the general contractor above to see which waivers each payment needs.</p>}
         {L.payments.map((p, i) => {
           const { before, miss } = lwPayNeeds(V, p);
-          const toSend = miss.filter((r) => esign && partyOf(r.party).email && (r.st === "none" || r.changed));
+          const toSend = miss.filter((r) => esign && partyOf(r.party).email && num(r.amount) > 0 && (r.st === "none" || r.changed));
           const paidRows = V.filter((r) => r.payment === p.id && r.when === "paid");
           return (
             <div key={p.id} className={"lw-pay" + (p.paidOn ? " paid" : "")} data-pay={p.id}>
@@ -973,8 +978,8 @@ function LienTab({ mgmt, setMgmt, addLog, userEmail, address, cfg, onSaveCfg, up
             </div>
             <div className="lw-ws">{after.map(wRow)}</div>
             <div className="lw-pay-f">
-              {esign && after.filter((r) => !r.ok && partyOf(r.party).email && (r.st === "none" || r.changed)).length > 0 && (
-                <button style={btnGhost()} disabled={!!busy} onClick={() => sendMissing(after.filter((r) => !r.ok && partyOf(r.party).email && (r.st === "none" || r.changed)))}>
+              {esign && after.filter((r) => !r.ok && partyOf(r.party).email && num(r.amount) > 0 && (r.st === "none" || r.changed)).length > 0 && (
+                <button style={btnGhost()} disabled={!!busy} onClick={() => sendMissing(after.filter((r) => !r.ok && partyOf(r.party).email && num(r.amount) > 0 && (r.st === "none" || r.changed)))}>
                   Send the final waivers for signature
                 </button>
               )}

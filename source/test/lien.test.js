@@ -187,6 +187,7 @@ const lienCfg = { url: N8N, key: KEY, owner: "Kappa Flips LLC", threshold: 1000,
   console.log("5. Payments and what they need");
   await click(btn(/Payment$/, LW().querySelectorAll(".lw-card")[1]));
   await click(btn(/Payment$/, LW().querySelectorAll(".lw-card")[1]));
+  assert(/no amount yet/.test(pay(0).textContent) && ![...pay(0).querySelectorAll("button")].some((b) => /^Send/.test(b.textContent)), "a payment with no amount: its waiver can't be sent yet");
   await type(pay(0).querySelector('[aria-label="Payment amount"]'), "18000");
   await setVal(pay(0).querySelector('[aria-label="Planned date"]'), day(3));
   await type(pay(1).querySelector('[aria-label="Payment amount"]'), "24000");

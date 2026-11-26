@@ -90,14 +90,25 @@ const splitAddress = (name) => {
 
 // ---------- stages ----------
 const STAGES = [
-  // one blue-violet ramp, light to deep, so a stage never borrows a semantic color (emerald / amber / crimson)
-  { key: "analyzing", label: "Analyzing", color: "#94A3B8", dateLabel: "Analyzed" },
-  { key: "contract", label: "Under contract", color: "#818CF8", dateLabel: "Contract" },
-  { key: "rehab", label: "Rehab", color: "#6366F1", dateLabel: "Closed" },
-  { key: "market", label: "On market", color: "#4F46E5", dateLabel: "Listed" },
-  { key: "sold", label: "Sold", color: "#312E81", dateLabel: "Sold" },
+  // v74: each stage has its own hue, used the same way everywhere (dot, tinted header, step card):
+  // color = the dot and the strong accent; ink = text on the tint; tint / soft / line = backgrounds and border
+  { key: "analyzing", label: "Analyzing", color: "#6D28D9", ink: "#5B21B6", tint: "#EDE9FE", soft: "#F7F5FF", line: "#DDD6FE", icon: "scan", dateLabel: "Analyzed" },
+  { key: "contract", label: "Under contract", color: "#1D4ED8", ink: "#1E40AF", tint: "#DBEAFE", soft: "#F3F8FF", line: "#BFDBFE", icon: "contract", dateLabel: "Contract" },
+  { key: "rehab", label: "Rehab", color: "#B45309", ink: "#92400E", tint: "#FEF3C7", soft: "#FFFBEB", line: "#FDE68A", icon: "hammer", dateLabel: "Closed" },
+  { key: "market", label: "On market", color: "#0F766E", ink: "#115E59", tint: "#CCFBF1", soft: "#F0FDFA", line: "#99F6E4", icon: "tag", dateLabel: "Listed" },
+  { key: "sold", label: "Sold", color: "#15803D", ink: "#166534", tint: "#DCFCE7", soft: "#F0FDF4", line: "#BBF7D0", icon: "trophy", dateLabel: "Sold" },
 ];
-const DEAD_STAGE = { key: "dead", label: "Dead", color: "#D1D5DB", dateLabel: "Dead" };
+const DEAD_STAGE = { key: "dead", label: "Dead", color: "#64748B", ink: "#475569", tint: "#F1F5F9", soft: "#F8FAFC", line: "#E2E8F0", icon: "x", dateLabel: "Dead" };
+// CSS variables for a stage-colored element: style={stageVars("rehab")}
+const stageVars = (k) => {
+  const m = stageMeta(k);
+  return { "--st-fg": m.color, "--st-ink": m.ink, "--st-tint": m.tint, "--st-soft": m.soft, "--st-line": m.line };
+};
+// a grade as a colored badge: A green, B blue, C amber, D and Reject red
+const gradeTone = (g) => {
+  const x = String(g || "").toUpperCase();
+  return x.startsWith("A") ? "g-a" : x.startsWith("B") ? "g-b" : x.startsWith("C") ? "g-c" : x ? "g-d" : "";
+};
 const stageIdx = (k) => STAGES.findIndex((s) => s.key === k);
 const stageMeta = (k) => STAGES.find((s) => s.key === k) || DEAD_STAGE;
 const ACTIVE_STAGES = ["contract", "rehab", "market"];

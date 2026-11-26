@@ -63,7 +63,7 @@ function DealCard({ d, today, onOpen }) {
   const u = d.f.lastModifyingUser;
   const red = att.some((a) => a.lvl === "red");
   return (
-    <button onClick={() => onOpen(d.f)} className="deal-card">
+    <button onClick={() => onOpen(d.f)} className="deal-card" style={stageVars(s.st)}>
       <div className="dc-top">
         <span className="dc-stage">
           <i style={{ background: meta.color }} />
@@ -74,7 +74,7 @@ function DealCard({ d, today, onOpen }) {
             {att.length} {att.length === 1 ? "alert" : "alerts"}
           </span>
         )}
-        <span className="dc-grade" style={{ color: s.gr === "REJECT" ? T.red : T.txt }}>
+        <span className={"dc-grade " + gradeTone(s.gr)} title="Deal grade">
           {s.gr === "REJECT" ? "Reject" : s.gr}
         </span>
       </div>
