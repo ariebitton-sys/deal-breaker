@@ -704,6 +704,21 @@ const TILE_LOOK = {
   "Average profit": ["dollar", "teal"],
   "Against the plan": ["trend", "blue"],
   "Dead deals": ["x", "gray"],
+  // a deal's Stages and milestones strip
+  "Rehab day": ["clock", "amber"],
+  Rehab: ["hammer", "amber"],
+  "Budget used": ["dollar", "teal"],
+  "Work complete": ["check", "green"],
+  "Deal grade": ["calc", "violet"],
+  "Max allowable offer": ["tag", "blue"],
+  "Last offer": ["contract", "blue"],
+  Status: ["scan", "violet"],
+  "Contract price": ["contract", "blue"],
+  "Earnest money": ["dollar", "teal"],
+  "Inspection period": ["clock", "amber"],
+  Closing: ["cal", "blue"],
+  Since: ["clock", "gray"],
+  "Was in": ["scan", "gray"],
 };
 const tileLook = (k) => TILE_LOOK[k] || (/^Realized/.test(k) ? ["trophy", "amber"] : ["grid", "gray"]);
 // The pipeline as one bar: how many deals sit in each stage and what they're worth. Click a stage to filter.

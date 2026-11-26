@@ -132,14 +132,12 @@ function Modal({ kicker, title, children, onClose, width = 480, footer }) {
           maxHeight: "92vh",
           overflowY: "auto",
           boxShadow: "0 0 0 1px rgba(17,24,39,.06), 0 24px 60px rgba(17,24,39,.22)",
-          borderRadius: 14,
+          borderRadius: 20,
           background: "#fff",
         })}
       >
-        {kicker && (
-          <div style={{ fontSize: 12.5, color: T.txtDim, fontWeight: 500 }}>{kicker}</div>
-        )}
-        {title && <h3 style={{ margin: "4px 0 16px", fontSize: 20, fontWeight: 600, color: T.txt }}>{title}</h3>}
+        {kicker && <div className="mdl-k">{kicker}</div>}
+        {title && <h3 style={{ margin: "4px 0 16px", fontSize: 21, fontWeight: 800, letterSpacing: "-0.018em", color: T.txt }}>{title}</h3>}
         {children}
         {footer && <div style={{ display: "flex", gap: 9, flexWrap: "wrap", justifyContent: "flex-end", marginTop: 16 }}>{footer}</div>}
       </div>

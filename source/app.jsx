@@ -662,12 +662,16 @@ function LR({ label, value, strong, accent, neg }) {
     </div>
   );
 }
-function Panel({ title, kicker, children, accent, right }) {
+function Panel({ title, kicker, children, accent, right, icon, tone }) {
   return (
     <section
+      className="panel"
       style={gp({
         padding: "18px 22px",
         marginBottom: 16,
+        border: "1px solid #E3E8EF",
+        borderRadius: 18,
+        boxShadow: "none",
       })}
     >
       <div
@@ -683,18 +687,24 @@ function Panel({ title, kicker, children, accent, right }) {
         <div
           style={{
             display: "flex",
-            alignItems: "baseline",
+            alignItems: icon ? "center" : "baseline",
             gap: 10,
             minWidth: 0,
           }}
         >
+          {icon && (
+            <span className={"dp-ico t-" + (tone || "blue")} style={{ alignSelf: "center" }}>
+              <Icon name={icon} size={18} stroke={2} />
+            </span>
+          )}
           <h2
             style={{
               margin: 0,
               fontSize: 15.5,
               color: T.txt,
-              fontWeight: 600,
+              fontWeight: 700,
               letterSpacing: "-0.005em",
+              alignSelf: "center",
             }}
           >
             {sentenceCase(title)}

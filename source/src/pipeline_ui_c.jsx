@@ -23,9 +23,11 @@ function marketProjection(mgmt, dealInputs) {
 function StageSection({ st, open, onToggle, summary, current, children }) {
   const meta = stageMeta(st);
   return (
-    <section className={"stg" + (current ? " cur" : "") + (open ? " open" : "")}>
+    <section className={"stg" + (current ? " cur" : "") + (open ? " open" : "")} style={stageVars(st)}>
       <button className="stg-head" onClick={onToggle} aria-expanded={open}>
-        <span className="stg-dot" style={{ background: meta.color }} />
+        <span className="stg-ico">
+          <Icon name={meta.icon || "scan"} size={18} stroke={2} />
+        </span>
         <span className="stg-title">{meta.label}</span>
         {current && <span className="stg-cur">Current stage</span>}
         <span className="stg-sum">{!open ? summary : ""}</span>
@@ -281,7 +283,10 @@ function PmPayments({ mgmt, upd, actuals, pushActuals, fee, feeNote, addLog, onE
   return (
     <section className="pm-pay" id="pm-payments">
       <div className="pm-pay-head">
-        <div>
+        <span className="dp-ico t-violet">
+          <Icon name="users" size={18} stroke={2} />
+        </span>
+        <div className="pm-pay-t">
           <h3>Project manager payments</h3>
           <p>
             Fee {fmt(fee)} ({feeNote}), paid out of pocket.{" "}
@@ -867,7 +872,7 @@ function KeyDates({ mgmt, analysisDate }) {
     .filter(([l, d]) => l && d)
     .sort((a, b) => a[1].localeCompare(b[1]));
   return (
-    <Panel title="Key Dates" accent={T.teal}>
+    <Panel title="Key Dates" accent={T.teal} icon="cal" tone="blue">
       {rows.length === 0 && <div style={{ fontSize: 12, color: T.txtMute }}>Dates appear here as the deal moves forward.</div>}
       {rows.map(([l, d]) => {
         const dd = daysBetween(today, d);
@@ -1040,7 +1045,7 @@ function ActivityLog({ log, upd, addLog, userEmail }) {
     setShowLink(false);
   };
   return (
-    <Panel title="Activity Log" kicker={`${log.length}`}>
+    <Panel title="Activity Log" kicker={`${log.length}`} icon="pulse" tone="gray">
       <textarea
         value={text}
         onChange={(e) => setText(e.target.value)}
@@ -1182,14 +1187,23 @@ function ManagementTab(p) {
   const sections = STAGES.slice(0, curIdx + 1).reverse();
   return (
     <React.Fragment>
-      <div className="pf-strip strip-4">
-        {kpis.map(([l, v, tone, hint]) => (
-          <div key={l}>
-            <span>{l}</span>
-            <b style={tone === T.red || tone === T.amber ? { color: tone } : undefined}>{v}</b>
-            <em>{hint || "\u00a0"}</em>
-          </div>
-        ))}
+      <div className="pf-strip strip-4 stg-strip">
+        {kpis.map(([l, v, tone, hint]) => {
+          const [icon, look] = tileLook(l);
+          const bad = tone === T.red || tone === T.amber;
+          return (
+            <div key={l} className={"pf-tile t-" + look}>
+              <span className="pf-ico">
+                <Icon name={icon} size={22} stroke={2} />
+              </span>
+              <div className="pf-tile-b">
+                <span>{l}</span>
+                <b style={bad ? { color: tone } : undefined}>{v}</b>
+                {hint ? <em className={"pill p-" + (tone === T.red ? "red" : tone === T.amber ? "amber" : "gray")}>{hint}</em> : null}
+              </div>
+            </div>
+          );
+        })}
       </div>
       <div className="actuals-two-col" style={{ display: "grid", gap: 16, alignItems: "start" }}>
         <div>
@@ -1260,7 +1274,7 @@ function ManagementTab(p) {
             </StageSection>
           ))}
           {dead && (
-            <Panel title="Why it died" accent={T.red}>
+            <Panel title="Why it died" accent={T.red} icon="alert" tone="red">
               <SelectIn label="Reason" value={mgmt.dead && mgmt.dead.reason} onChange={(v) => upd("dead.reason", v)} options={DEAD_REASONS} />
               <TextIn label="Note" value={mgmt.dead && mgmt.dead.note} onChange={(v) => upd("dead.note", v)} />
             </Panel>

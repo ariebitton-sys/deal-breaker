@@ -951,7 +951,12 @@ function BudgetRail({ cats, actualsTotal, actualSale, arv, plan, baselineDate, f
       </section>
       <section className="xd-card">
         <div className="xd-card-h">
-          <span>Budget by category</span>
+          <span className="xd-card-t">
+            <span className="dp-ico t-teal">
+              <Icon name="chart" size={16} stroke={2} />
+            </span>
+            Budget by category
+          </span>
           {filter ? (
             <button className="link-btn" onClick={() => onFilter(null)}>
               Show all
@@ -995,7 +1000,12 @@ function BudgetRail({ cats, actualsTotal, actualSale, arv, plan, baselineDate, f
       </section>
       <section className="xd-card xd-sale">
         <div className="xd-card-h">
-          <span>Sale</span>
+          <span className="xd-card-t">
+            <span className="dp-ico t-blue">
+              <Icon name="tag" size={16} stroke={2} />
+            </span>
+            Sale
+          </span>
           {!sold && (
             <button className="link-btn" onClick={onReadSale}>
               Read sale HUD

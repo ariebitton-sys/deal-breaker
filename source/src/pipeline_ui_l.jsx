@@ -356,12 +356,7 @@ function TasksScreen({ tasks, done, files, busy, onSeen, onToggle, onDue, onAdd,
   const doneShown = (done || []).filter((t) => !proj || t.fid === proj).sort((a, b) => (a.doneAt < b.doneAt ? 1 : -1));
   return (
     <div className="tasks">
-      <div className="pf-head">
-        <div>
-          <h1 className="pf-title">Tasks</h1>
-          <div className="pf-sub">Open tasks across the projects: each stage's checklist, utility and added tasks still open from an earlier stage, and the rehab schedule's tasks from their start dates.</div>
-        </div>
-      </div>
+      <DashHead title="Tasks" sub="Open tasks across the projects: each stage's checklist, utility and added tasks still open from an earlier stage, and the rehab schedule's tasks from their start dates." />
       <div className="tk-bar">
         <div className="lg-chips" role="group" aria-label="Show">
           {TASK_FILTERS.map(([k, l]) => (
@@ -401,8 +396,11 @@ function TasksScreen({ tasks, done, files, busy, onSeen, onToggle, onDue, onAdd,
         <div className="dcard tk-empty">{tasks.length ? "Nothing matches this filter." : "No open tasks. Tasks come from each project's stage checklist (Stages and milestones), and you can add one above."}</div>
       )}
       {groups.map((g) => (
-        <section key={g.fid} className="dcard tk-group">
+        <section key={g.fid} className="dcard tk-group" style={stageVars(g.st)}>
           <div className="dcard-h">
+            <span className="stg-ico">
+              <Icon name={stageMeta(g.st).icon || "scan"} size={18} stroke={2} />
+            </span>
             <span className="tk-addr">{splitAddress(g.address)[0]}</span>
             <span className="tk-st">{stageMeta(g.st).label}</span>
             <span className="dcard-r">{g.items.length} open</span>

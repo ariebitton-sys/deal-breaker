@@ -649,8 +649,13 @@ function LienTab({ mgmt, setMgmt, addLog, userEmail, address, cfg, onSaveCfg, up
     return (
       <div className="lw">
         <div className="lw-head">
-          <h2>Lien waivers</h2>
-          <p>Before each payment to the contractor, collect a waiver for the money you are about to pay and for the payment before it, from the contractor and from every sub and supplier it paid. No payment without the paperwork.</p>
+          <span className="dp-ico t-green page-ico">
+            <Icon name="shield" size={20} stroke={2} />
+          </span>
+          <div className="page-head-t">
+            <h2>Lien waivers</h2>
+            <p>Before each payment to the contractor, collect a waiver for the money you are about to pay and for the payment before it, from the contractor and from every sub and supplier it paid. No payment without the paperwork.</p>
+          </div>
         </div>
         <section className="dcard lw-start">
           <b>Not set up for this project yet.</b>
@@ -731,7 +736,10 @@ function LienTab({ mgmt, setMgmt, addLog, userEmail, address, cfg, onSaveCfg, up
   return (
     <div className="lw">
       <div className="lw-head">
-        <div>
+        <span className="dp-ico t-green page-ico">
+          <Icon name="shield" size={20} stroke={2} />
+        </span>
+        <div className="page-head-t">
           <h2>Lien waivers</h2>
           <p>
             Each payment to the contractor needs its waivers signed first: the contractor's conditional waiver on this payment, and unconditional ones on the payment before it from the contractor and from every sub and supplier it paid. Once a payment
@@ -797,7 +805,10 @@ function LienTab({ mgmt, setMgmt, addLog, userEmail, address, cfg, onSaveCfg, up
 
       <section className="dcard lw-card">
         <div className="lw-card-h">
-          <div>
+          <span className="dp-ico t-teal">
+            <Icon name="users" size={18} stroke={2} />
+          </span>
+          <div className="lw-card-t">
             <h3>Who can file a lien</h3>
             <p>The general contractor, and every sub and supplier it pays on credit. Not needed: purchases paid on the spot, like Home Depot.</p>
           </div>
@@ -853,7 +864,10 @@ function LienTab({ mgmt, setMgmt, addLog, userEmail, address, cfg, onSaveCfg, up
 
       <section className="dcard lw-card">
         <div className="lw-card-h">
-          <div>
+          <span className="dp-ico t-green">
+            <Icon name="dollar" size={18} stroke={2} />
+          </span>
+          <div className="lw-card-t">
             <h3>Payments to the contractor</h3>
             <p>In order. For each payment, list who the contractor paid from it: they waive before the next one.</p>
           </div>

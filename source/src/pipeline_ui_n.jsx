@@ -897,7 +897,10 @@ function GanttTab({ mgmt, setMgmt, addLog, userEmail, address, stage, today }) {
   const body = (
     <div className={"gantt" + (full || printing ? " gt-full gt-portal" : "") + (printing ? " gt-printmode" : "")}>
       <div className="gt-head">
-        <div>
+        <span className="dp-ico t-blue page-ico gt-noprint">
+          <Icon name="gantt" size={20} stroke={2} />
+        </span>
+        <div className="page-head-t">
           <h2>
             Schedule{(full || printing) && address ? <span className="gt-h2-addr"> · {address}</span> : null}
           </h2>
