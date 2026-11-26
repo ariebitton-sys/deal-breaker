@@ -1530,6 +1530,8 @@ body.gt-printing .gt-r,body.gt-printing .gt-bar,body.gt-printing .gt-dia{break-i
 .lw-setup>.lw-f>span:first-child{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .lw-setup>.lw-f>.link-btn{align-self:flex-start}
 .lw-setup .fin-in input{padding-top:6px;padding-bottom:6px}
+.lw-pay-note>span{white-space:nowrap}
+.lw-pay-note>input{flex:1;max-width:680px}
 .lw-f{display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--soft);font-weight:500;min-width:0}
 .lw-f input,.lw-f .fin-in input,.lw-f select{font-size:13px}
 .lw-f>input,.lw-f>select,.lw-pr select,.lw-subrow select,.lw-sel{border:1px solid var(--line2);border-radius:7px;padding:6px 8px;font-size:13px;color:var(--ink);background:#fff;color-scheme:light;min-width:0}
@@ -19973,8 +19975,9 @@ function GanttTab({
 // ============================================================================
 // mgmt.liens = { owner, county, threshold, countersign, signer {name,title,email}, parties, payments, waivers }
 //   parties  [{ id, role: "contractor" | "sub" | "supplier", company, name, email, phone, trade }]
-//   payments [{ id, amount, planned, through, final, paidOn, subs: [{ id, party, amount }], override }]
+//   payments [{ id, amount, note, planned, through, final, paidOn, subs: [{ id, party, amount }], override }]
 //            to the general contractor, in order; subs = who the contractor paid from it: they waive before the next one
+//            note = what the payment covers; it goes into the Expenses line made when the payment is marked paid
 //   waivers  [{ id, key, kind, party, payment, about, amount, through, status, via, token, sentAt, signedAt, signer, kappa, file, hash }]
 //            kind cp / up: conditional / unconditional on a progress payment; cf / uf: on the final payment.
 //            status sent → signed (waiting for Kappa's countersignature) → complete; void when replaced or cancelled
@@ -20965,8 +20968,14 @@ function LienTab({
   };
 
   // ---------- marking a payment paid ----------
+  // the Expenses line of a contractor payment: "Contractor: payment 2 — what it covers"
+  const ledgerLabel = p => {
+    const note = String(p.note || "").trim();
+    return `${gc ? lwName(gc) : "Contractor"}: payment ${payNo(p.id)}${p.final ? " (final)" : ""}${note ? ` — ${note}` : ""}`;
+  };
   const markPaid = (p, date, toLedger, why) => {
     const n = payNo(p.id);
+    const note = String(p.note || "").trim();
     setL(cur => ({
       payments: cur.payments.map(x => x.id === p.id ? {
         ...x,
@@ -20979,12 +20988,33 @@ function LienTab({
     if (toLedger) setActuals(prev => [...prev, {
       id: Date.now(),
       cat: "Rehab / Construction",
-      label: `${gc ? lwName(gc) : "Contractor"}: payment ${n}${p.final ? " (final)" : ""}`,
+      label: ledgerLabel(p),
       amount: num(p.amount),
       date,
-      files: []
+      files: [],
+      lwPay: p.id
     }]);
-    addLog(`Contractor payment ${n} paid ${fmtDate(date)}: ${fmt(num(p.amount))}${why ? `, without ${why}` : ""}`);
+    addLog(`Contractor payment ${n} paid ${fmtDate(date)}: ${fmt(num(p.amount))}${note ? ` (${note})` : ""}${why ? `, without ${why}` : ""}`);
+  };
+  // what a payment covers; once it's paid, its Expenses line follows (unless someone retitled that line by hand)
+  const setNote = (p, v) => {
+    const note = v.trim();
+    if (note === String(p.note || "").trim()) return;
+    if (p.paidOn) {
+      const was = ledgerLabel(p);
+      const now = ledgerLabel({
+        ...p,
+        note
+      });
+      setActuals(prev => prev.map(a => (a.lwPay === p.id || !a.lwPay && a.date === p.paidOn && Math.round(num(a.amount)) === Math.round(num(p.amount))) && a.label === was ? {
+        ...a,
+        label: now,
+        lwPay: p.id
+      } : a));
+    }
+    setPay(p.id, {
+      note
+    });
   };
 
   // ---------- rendering ----------
@@ -21302,7 +21332,14 @@ function LienTab({
     }, /*#__PURE__*/React.createElement(Icon, {
       name: "trash",
       size: 14
-    }))), before.length > 0 && /*#__PURE__*/React.createElement("div", {
+    }))), /*#__PURE__*/React.createElement("label", {
+      className: "lw-f inline lw-pay-note"
+    }, /*#__PURE__*/React.createElement("span", null, "What it covers"), /*#__PURE__*/React.createElement(FinText, {
+      value: p.note || "",
+      onCommit: v => setNote(p, v),
+      placeholder: "e.g. Demo, framing and rough plumbing",
+      "aria-label": "What this payment covers"
+    })), before.length > 0 && /*#__PURE__*/React.createElement("div", {
       className: "lw-ws"
     }, /*#__PURE__*/React.createElement("div", {
       className: "lw-sub-h"
@@ -21523,7 +21560,9 @@ function LienPaidWindow({
     type: "checkbox",
     checked: anyway,
     onChange: e => setAnyway(e.target.checked)
-  }), " Pay without them: I accept the lien risk")), /*#__PURE__*/React.createElement("label", {
+  }), " Pay without them: I accept the lien risk")), p.note ? /*#__PURE__*/React.createElement("p", {
+    className: "lw-hint"
+  }, "For: ", p.note) : null, /*#__PURE__*/React.createElement("label", {
     className: "lw-f"
   }, /*#__PURE__*/React.createElement("span", null, "Paid on"), /*#__PURE__*/React.createElement("input", {
     type: "date",

@@ -214,12 +214,22 @@ const lienCfg = { url: N8N, key: KEY, owner: "Kappa Flips LLC", threshold: 1000,
   assert(/^Signed /.test(row(k1).querySelector(".lw-st").textContent) && !/waiting/.test(row(k1).querySelector(".lw-st").textContent) && /Ready to pay/.test(pay(0).textContent), "complete: payment 1 is ready to pay");
 
   console.log("8. Pay, on paper, and paying without");
+  await type(pay(0).querySelector('[aria-label="What this payment covers"]'), "Demo and framing");
   await click(btn("Mark paid…", pay(0)));
+  assert(/For: Demo and framing/.test(d.body.textContent), "the Mark paid window says what the payment covers");
   await click(btn(/^Mark paid$/, d.body));
   await sleep(1700);
   await settle(6);
   let s = saved();
-  assert(s.mgmt.liens.payments[0].paidOn && s.actuals.some((a) => a.cat === "Rehab / Construction" && a.amount === 18000 && /Mauricio Construction LLC: payment 1/.test(a.label)), "paid: recorded, and added to Expenses");
+  assert(
+    s.mgmt.liens.payments[0].paidOn && s.mgmt.liens.payments[0].note === "Demo and framing" && s.actuals.some((a) => a.cat === "Rehab / Construction" && a.amount === 18000 && a.label === "Mauricio Construction LLC: payment 1 — Demo and framing"),
+    "paid: recorded, and added to Expenses with what it covers",
+  );
+  await type(pay(0).querySelector('[aria-label="What this payment covers"]'), "Demo, framing and rough plumbing");
+  await sleep(1700);
+  await settle(6);
+  s = saved();
+  assert(s.actuals.filter((a) => a.amount === 18000).length === 1 && s.actuals.some((a) => a.label === "Mauricio Construction LLC: payment 1 — Demo, framing and rough plumbing"), "a later change follows into the Expenses line");
   const kUp = keyOf(1, "up", /Mauricio/);
   const input = LW().querySelector('input[type="file"]');
   await click(btn("Upload signed", row(kUp)));

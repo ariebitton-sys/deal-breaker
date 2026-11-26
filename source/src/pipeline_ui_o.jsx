@@ -4,8 +4,9 @@
 // ============================================================================
 // mgmt.liens = { owner, county, threshold, countersign, signer {name,title,email}, parties, payments, waivers }
 //   parties  [{ id, role: "contractor" | "sub" | "supplier", company, name, email, phone, trade }]
-//   payments [{ id, amount, planned, through, final, paidOn, subs: [{ id, party, amount }], override }]
+//   payments [{ id, amount, note, planned, through, final, paidOn, subs: [{ id, party, amount }], override }]
 //            to the general contractor, in order; subs = who the contractor paid from it: they waive before the next one
+//            note = what the payment covers; it goes into the Expenses line made when the payment is marked paid
 //   waivers  [{ id, key, kind, party, payment, about, amount, through, status, via, token, sentAt, signedAt, signer, kappa, file, hash }]
 //            kind cp / up: conditional / unconditional on a progress payment; cf / uf: on the final payment.
 //            status sent → signed (waiting for Kappa's countersignature) → complete; void when replaced or cancelled
@@ -664,12 +665,28 @@ function LienTab({ mgmt, setMgmt, addLog, userEmail, address, cfg, onSaveCfg, up
   };
 
   // ---------- marking a payment paid ----------
+  // the Expenses line of a contractor payment: "Contractor: payment 2 — what it covers"
+  const ledgerLabel = (p) => {
+    const note = String(p.note || "").trim();
+    return `${gc ? lwName(gc) : "Contractor"}: payment ${payNo(p.id)}${p.final ? " (final)" : ""}${note ? ` — ${note}` : ""}`;
+  };
   const markPaid = (p, date, toLedger, why) => {
     const n = payNo(p.id);
+    const note = String(p.note || "").trim();
     setL((cur) => ({ payments: cur.payments.map((x) => (x.id === p.id ? { ...x, paidOn: date, ...(why ? { override: why } : {}) } : x)) }));
-    if (toLedger)
-      setActuals((prev) => [...prev, { id: Date.now(), cat: "Rehab / Construction", label: `${gc ? lwName(gc) : "Contractor"}: payment ${n}${p.final ? " (final)" : ""}`, amount: num(p.amount), date, files: [] }]);
-    addLog(`Contractor payment ${n} paid ${fmtDate(date)}: ${fmt(num(p.amount))}${why ? `, without ${why}` : ""}`);
+    if (toLedger) setActuals((prev) => [...prev, { id: Date.now(), cat: "Rehab / Construction", label: ledgerLabel(p), amount: num(p.amount), date, files: [], lwPay: p.id }]);
+    addLog(`Contractor payment ${n} paid ${fmtDate(date)}: ${fmt(num(p.amount))}${note ? ` (${note})` : ""}${why ? `, without ${why}` : ""}`);
+  };
+  // what a payment covers; once it's paid, its Expenses line follows (unless someone retitled that line by hand)
+  const setNote = (p, v) => {
+    const note = v.trim();
+    if (note === String(p.note || "").trim()) return;
+    if (p.paidOn) {
+      const was = ledgerLabel(p);
+      const now = ledgerLabel({ ...p, note });
+      setActuals((prev) => prev.map((a) => ((a.lwPay === p.id || (!a.lwPay && a.date === p.paidOn && Math.round(num(a.amount)) === Math.round(num(p.amount)))) && a.label === was ? { ...a, label: now, lwPay: p.id } : a)));
+    }
+    setPay(p.id, { note });
   };
 
   // ---------- rendering ----------
@@ -943,6 +960,10 @@ function LienTab({ mgmt, setMgmt, addLog, userEmail, address, cfg, onSaveCfg, up
                   <Icon name="trash" size={14} />
                 </button>
               </div>
+              <label className="lw-f inline lw-pay-note">
+                <span>What it covers</span>
+                <FinText value={p.note || ""} onCommit={(v) => setNote(p, v)} placeholder="e.g. Demo, framing and rough plumbing" aria-label="What this payment covers" />
+              </label>
               {before.length > 0 && (
                 <div className="lw-ws">
                   <div className="lw-sub-h">Before paying it</div>
@@ -1117,6 +1138,7 @@ function LienPaidWindow({ p, n, miss, partyOf, actuals, onPaid, onClose }) {
           </label>
         </div>
       )}
+      {p.note ? <p className="lw-hint">For: {p.note}</p> : null}
       <label className="lw-f">
         <span>Paid on</span>
         <input type="date" value={date} onChange={(e) => e.target.value && setDate(e.target.value)} aria-label="Paid on" />
