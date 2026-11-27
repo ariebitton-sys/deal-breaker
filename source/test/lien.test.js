@@ -196,6 +196,14 @@ const lienCfg = { url: N8N, key: KEY, owner: "Kappa Flips LLC", threshold: 1000,
   await type(pay(0).querySelector('[aria-label="Amount paid to them"]'), "6000");
   assert(pay(0).querySelectorAll(".lw-w").length === 1 && pay(1).querySelectorAll(".lw-w").length === 3, "payment 1 needs 1 waiver; payment 2 needs 3 (with the electrician's on payment 1)");
   assert(/Payment 1: 1 of 1 waivers missing/.test(LW().querySelector(".lw-head-r").textContent), "the header: payment 1, 1 of 1 missing");
+  const tipOf = (input) => {
+    const l = input && input.closest("label.lw-tip");
+    return (l && l.getAttribute("data-tip")) || "";
+  };
+  const tPlanned = tipOf(pay(0).querySelector('[aria-label="Planned date"]')),
+    tThrough = tipOf(pay(0).querySelector('[aria-label="Work through"]'));
+  assert(/expect to pay/.test(tPlanned) && /isn't printed in any waiver/.test(tPlanned) && /10 days before/.test(tPlanned) && /Tasks board/.test(tPlanned), "hovering Planned explains it: when you expect to pay, not in the waiver, the task 10 days before");
+  assert(/last day of work this payment pays for/.test(tThrough) && /Covers work through/.test(tThrough) && /before you send/.test(tThrough), "hovering Work through explains it: the date printed in the waivers, set before sending");
 
   console.log("6. Send for e-signature; it comes back signed");
   const k1 = keyOf(0, "cp", /Mauricio/);
@@ -217,6 +225,7 @@ const lienCfg = { url: N8N, key: KEY, owner: "Kappa Flips LLC", threshold: 1000,
   await type(pay(0).querySelector('[aria-label="What this payment covers"]'), "Demo and framing");
   await click(btn("Mark paid…", pay(0)));
   assert(/For: Demo and framing/.test(d.body.textContent), "the Mark paid window says what the payment covers");
+  assert(/money actually went out/.test(tipOf(d.body.querySelector('[aria-label="Paid on"]'))), "hovering Paid on explains it: the day the money actually went out");
   assert(/Email Mauricio Construction LLC the unconditional waiver on this payment now/.test(d.body.textContent), "it offers to email the contractor's unconditional waiver at once");
   await click(btn(/^Mark paid$/, d.body));
   await sleep(1700);

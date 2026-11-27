@@ -1469,6 +1469,12 @@ body.gt-printing .gt-r,body.gt-printing .gt-bar,body.gt-printing .gt-dia{break-i
 .lw-f.inline{flex-direction:row;align-items:center;gap:6px}
 .lw-f.inline>input{padding:4px 6px}
 .lw-f.inline .fin-in{width:130px}
+/* v79: what each payment date is for — shown below the field after a short rest, hidden while the date is being picked */
+.lw-tip{position:relative}
+.lw-tip>span:first-child{cursor:help;text-decoration:underline dotted #9CA3AF;text-underline-offset:3px}
+.lw-tip::after{content:attr(data-tip);position:absolute;left:0;top:calc(100% + 6px);width:300px;max-width:80vw;box-sizing:border-box;padding:9px 11px;border-radius:8px;background:#111827;color:#F9FAFB;font-size:12px;font-weight:400;line-height:1.45;text-align:left;white-space:normal;text-transform:none;letter-spacing:normal;box-shadow:0 8px 24px rgba(17,24,39,.18);z-index:60;pointer-events:none;opacity:0;visibility:hidden;transform:translateY(-3px);transition:opacity .15s,transform .15s,visibility .15s}
+.lw-tip:hover:not(:focus-within)::after{opacity:1;visibility:visible;transform:none;transition-delay:.3s}
+@media (hover:none){.lw-tip::after{display:none}}
 .lw-signer{display:flex;align-items:baseline;gap:6px;flex-wrap:wrap;font-size:13px}
 .lw-signer b{color:var(--ink);font-weight:600}
 .lw-signer em{font-style:normal;color:var(--soft)}

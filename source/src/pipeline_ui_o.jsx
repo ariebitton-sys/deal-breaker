@@ -27,6 +27,15 @@ const LW_ROLES = [
   ["supplier", "Supplier"],
 ];
 const LW_STATE_NAME = { IN: "Indiana", OH: "Ohio" };
+// v79: what each payment date is for, shown when the mouse rests on the field
+const LW_DATE_TIPS = {
+  planned:
+    "When you expect to pay it. It isn't printed in any waiver. If this payment's waivers aren't all signed 10 days before this date, a task opens on the Tasks board, due on it. Once the date has passed, it's also the default Paid on date. It isn't linked to the Schedule tab: move it yourself if the work slips.",
+  through:
+    "The last day of work this payment pays for. The waivers print it as \"Covers work through\": the contractor gives up lien rights for work done up to this date. Usually the day the paid stage was finished, on or before the payment. Set it before you send: a waiver already sent keeps the date it went out with. Left empty, the waivers use the paid date, or the planned date until it's paid.",
+  paidOn:
+    "The day the money actually went out, which can differ from the planned date. The payment is recorded as paid on this date, and so is its Expenses line if you add one below. If Work through is empty, the unconditional waiver on this payment covers work up to this date.",
+};
 const LW_JSPDF = "https://unpkg.com/jspdf@2.5.2/dist/jspdf.umd.min.js";
 const LW_SIGN_PAGE = "https://ariebitton-sys.github.io/deal-breaker/sign.html";
 const lwEmpty = () => ({ owner: "", county: "", threshold: LW_THRESHOLD, signer: null, parties: [], payments: [], waivers: [] });
@@ -893,11 +902,11 @@ function LienTab({ mgmt, setMgmt, addLog, userEmail, address, cfg, onSaveCfg, up
                   <span>Amount</span>
                   <FinNum value={num(p.amount)} onCommit={(v) => setPay(p.id, { amount: Math.max(0, v) })} prefix="$" label="Payment amount" />
                 </label>
-                <label className="lw-f inline">
+                <label className="lw-f inline lw-tip" data-tip={LW_DATE_TIPS.planned}>
                   <span>Planned</span>
                   <input type="date" value={p.planned || ""} onChange={(e) => setPay(p.id, { planned: e.target.value })} aria-label="Planned date" />
                 </label>
-                <label className="lw-f inline">
+                <label className="lw-f inline lw-tip" data-tip={LW_DATE_TIPS.through}>
                   <span>Work through</span>
                   <input type="date" value={p.through || ""} onChange={(e) => setPay(p.id, { through: e.target.value })} aria-label="Work through" />
                 </label>
@@ -1114,7 +1123,7 @@ function LienPaidWindow({ p, n, miss, partyOf, actuals, upTo, onPaid, onClose })
         </div>
       )}
       {p.note ? <p className="lw-hint">For: {p.note}</p> : null}
-      <label className="lw-f">
+      <label className="lw-f lw-tip" data-tip={LW_DATE_TIPS.paidOn}>
         <span>Paid on</span>
         <input type="date" value={date} onChange={(e) => e.target.value && setDate(e.target.value)} aria-label="Paid on" />
       </label>
